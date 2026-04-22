@@ -83,13 +83,15 @@ export default async function Home() {
             Unleash the full potential of your financial data with intelligent analysis tools. Track variance, project growth, and master cash flow instantly.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button className="flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-8 py-4 rounded-full text-lg font-semibold transition-all w-full sm:w-auto group cursor-pointer">
-              Start Analyzing Now
+            <Link href={session ? "/admin" : "/register"} className="flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-8 py-4 rounded-full text-lg font-semibold transition-all w-full sm:w-auto group cursor-pointer">
+              {session ? "Enter Dashboard" : "Start Analyzing Now"}
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </button>
-            <button className="flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white px-8 py-4 rounded-full text-lg font-medium transition-all w-full sm:w-auto cursor-pointer">
-              Book a Demo
-            </button>
+            </Link>
+            {!session && (
+              <Link href="/login" className="flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white px-8 py-4 rounded-full text-lg font-medium transition-all w-full sm:w-auto cursor-pointer">
+                Log In to Account
+              </Link>
+            )}
           </div>
         </div>
       </section>
