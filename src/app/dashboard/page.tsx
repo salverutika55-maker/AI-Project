@@ -5,17 +5,33 @@ import DashboardClient from "@/components/DashboardClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: { client?: string } }) {
   const session = await getServerSession(authOptions);
 
   const user = await prisma.user.findUnique({
     where: { email: session?.user?.email as string },
   });
 
-  const records = await prisma.financialRecord.findMany({
+  const clients = await prisma.client.findMany({
     where: { userId: user?.id },
-    orderBy: { period: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 
-  return <DashboardClient initialRecords={records} />;
+  const activeClientId = searchParams.client || (clients.length > 0 ? clients[0].id : null);
+
+  let records: any[] = [];
+  if (activeClientId) {
+    records = await prisma.financialRecord.findMany({
+      where: { clientId: activeClientId },
+      orderBy: { period: "asc" },
+    });
+  }
+
+  return (
+    <DashboardClient 
+      initialRecords={records} 
+      clients={clients} 
+      activeClientId={activeClientId} 
+    />
+  );
 }

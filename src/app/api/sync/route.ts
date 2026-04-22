@@ -11,10 +11,10 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { source } = body; // 'QuickBooks' or 'Xero'
+    const { source, clientId } = body; // e.g. Tally Prime, Xero, Odoo
 
-    if (!source) {
-      return NextResponse.json({ message: "Integration Source Required" }, { status: 400 });
+    if (!source || !clientId) {
+      return NextResponse.json({ message: "Integration Source and Client ID Required" }, { status: 400 });
     }
 
     // Fetch the User ID based on session email
@@ -26,12 +26,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
+    // Verify the client belongs to the user
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, userId: user.id },
+    });
+
+    if (!client) {
+      return NextResponse.json({ message: "Client not found or unauthorized" }, { status: 404 });
+    }
+
     // Generate 6 months of robust mock financial data
     const periods = ["2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06"];
     
-    // Clear old mock data if exists for this user to simulate fresh sync
+    // Clear old mock data if exists for this client to simulate fresh sync
     await prisma.financialRecord.deleteMany({
-      where: { userId: user.id, source },
+      where: { clientId: client.id, source },
     });
 
     // Create realistic trending data
@@ -47,7 +56,7 @@ export async function POST(req: Request) {
       baseCash += netIncome; // Add net income to cash
 
       return {
-        userId: user.id,
+        clientId: client.id,
         period,
         source,
         revenue: baseRevenue,

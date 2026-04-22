@@ -11,7 +11,9 @@ import {
   BarChart3,
   TrendingDown,
   GitMerge,
-  WalletCards
+  WalletCards,
+  Building2,
+  Plus
 } from "lucide-react";
 import {
   LineChart as RechartsLineChart,
@@ -26,16 +28,47 @@ import {
   Legend
 } from "recharts";
 
-export default function DashboardClient({ initialRecords }: { initialRecords: any[] }) {
+export default function DashboardClient({ 
+  initialRecords, 
+  clients, 
+  activeClientId 
+}: { 
+  initialRecords: any[], 
+  clients: any[], 
+  activeClientId: string | null 
+}) {
   const [records, setRecords] = useState(initialRecords);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showNewClient, setShowNewClient] = useState(clients.length === 0);
+  const [newClientName, setNewClientName] = useState("");
+  const [syncModalSource, setSyncModalSource] = useState<string | null>(null);
   const router = useRouter();
+
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newClientName })
+      });
+      if (!res.ok) throw new Error("Failed to create client");
+      const data = await res.json();
+      router.push(`/dashboard?client=${data.client.id}`);
+      window.location.reload();
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
 
   const handleDragOver = (e: React.DragEvent) => e.preventDefault();
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (!activeClientId) return setError("Please select a client first.");
     const file = e.dataTransfer.files[0];
     if (file && file.type === "text/csv") {
       processCsv(file);
@@ -54,11 +87,9 @@ export default function DashboardClient({ initialRecords }: { initialRecords: an
           const res = await fetch("/api/upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ records: results.data }),
+            body: JSON.stringify({ records: results.data, clientId: activeClientId }),
           });
           if (!res.ok) throw new Error("Failed to upload CSV");
-          router.refresh();
-          // Ideally fetch fresh to update state, for now reload works
           window.location.reload();
         } catch (err: any) {
           setError(err.message);
@@ -73,90 +104,180 @@ export default function DashboardClient({ initialRecords }: { initialRecords: an
   };
 
   const handleMockSync = async (source: string) => {
+    if (!activeClientId) return setError("Select a client first");
     setLoading(true);
     setError("");
     try {
       const res = await fetch("/api/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source }),
+        body: JSON.stringify({ source, clientId: activeClientId }),
       });
-      if (!res.ok) throw new Error("Sync failed");
+      if (!res.ok) throw new Error("Sync failed. " + (await res.json()).message);
       window.location.reload();
     } catch (err: any) {
       setError(err.message);
       setLoading(false);
+      setSyncModalSource(null);
     }
   };
 
+  if (showNewClient) {
+    return (
+      <div className="flex items-center justify-center min-h-[70vh]">
+        <div className="w-full max-w-md bg-[#13131A] border border-white/10 p-8 rounded-2xl shadow-xl">
+          <Building2 className="w-12 h-12 text-cyan-400 mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Create New Client</h2>
+          <p className="text-sm text-slate-400 mb-6">Enter the business name of your client to isolate their financial data.</p>
+          
+          {error && <div className="text-red-400 text-sm mb-4">{error}</div>}
+          
+          <form onSubmit={handleCreateClient}>
+            <input 
+              type="text" 
+              value={newClientName}
+              onChange={(e) => setNewClientName(e.target.value)}
+              placeholder="e.g., Acme Corp LLC"
+              className="w-full bg-[#0A0A0C] border border-white/10 rounded-lg px-4 py-3 text-white mb-4 focus:outline-none focus:border-cyan-500"
+              required
+            />
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
+              {loading ? "Creating..." : "Initialize Client"}
+            </button>
+            {clients.length > 0 && (
+              <button 
+                type="button" 
+                onClick={() => setShowNewClient(false)}
+                className="w-full mt-3 text-sm text-slate-500 hover:text-white"
+              >
+                Cancel
+              </button>
+            )}
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  const activeClientName = clients.find(c => c.id === activeClientId)?.name;
+
+  const TopBar = () => (
+    <div className="flex flex-col md:flex-row items-center justify-between mb-8 pb-6 border-b border-white/10 gap-4">
+      <div className="flex items-center gap-4">
+        <select 
+          value={activeClientId || ""}
+          onChange={(e) => router.push(`/dashboard?client=${e.target.value}`)}
+          className="bg-[#13131A] border border-white/10 text-white font-bold text-xl px-4 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-white/5 transition-all"
+        >
+          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <button 
+          onClick={() => setShowNewClient(true)}
+          className="bg-white/5 p-2 rounded-lg hover:bg-white/10 text-slate-300 transition-colors"
+          title="Add New Client"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      </div>
+      {records.length > 0 && (
+         <button 
+           onClick={() => handleMockSync(records[records.length - 1].source)}
+           disabled={loading}
+           className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm text-white transition-colors min-w-[140px]"
+         >
+           {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+           {loading ? "Syncing..." : "Force Sync Data"}
+         </button>
+      )}
+    </div>
+  );
+
   if (records.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh]">
-        <div className="w-full max-w-2xl bg-[#13131A] border border-white/10 rounded-2xl p-10 text-center shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-cyan-500 via-purple-500 to-emerald-500"></div>
-          <CloudRain className="w-16 h-16 text-cyan-400 mx-auto mb-6" />
-          <h2 className="text-3xl font-bold text-white mb-4">Connect Your Financials</h2>
-          <p className="text-slate-400 mb-10 text-lg">
-            Synchronize your accounting software or securely drop a generic CSV to ignite the analytical engines.
-          </p>
+      <div className="space-y-4 animate-in fade-in duration-500">
+        <TopBar />
+        <div className="flex flex-col items-center justify-center">
+          <div className="w-full max-w-4xl bg-[#13131A] border border-white/10 rounded-2xl p-10 text-center shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-cyan-500 via-purple-500 to-emerald-500"></div>
+            <CloudRain className="w-16 h-16 text-cyan-400 mx-auto mb-6" />
+            <h2 className="text-3xl font-bold text-white mb-2">Connect {activeClientName}'s Financials</h2>
+            <p className="text-slate-400 mb-10 text-lg">
+              Synchronize accounting software or securely drop a generic CSV for this client to ignite the engines.
+            </p>
 
-          {error && (
-             <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl mb-6 flex items-center justify-center gap-2">
-               <AlertCircle className="w-5 h-5" />
-               {error}
-             </div>
-          )}
+            {error && (
+               <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-xl mb-6 flex items-center justify-center gap-2">
+                 <AlertCircle className="w-5 h-5" />
+                 {error}
+               </div>
+            )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <button 
-              onClick={() => handleMockSync("QuickBooks")}
-              disabled={loading}
-              className="flex items-center justify-center gap-3 p-5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all font-medium text-white disabled:opacity-50 cursor-pointer group"
-            >
-              {loading ? <RefreshCw className="w-5 h-5 animate-spin text-cyan-400" /> : <div className="w-5 h-5 rounded-full bg-green-500" />}
-              Sync QuickBooks
-            </button>
-            <button 
-              onClick={() => handleMockSync("Xero")}
-              disabled={loading}
-              className="flex items-center justify-center gap-3 p-5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all font-medium text-white disabled:opacity-50 cursor-pointer group"
-            >
-              {loading ? <RefreshCw className="w-5 h-5 animate-spin text-cyan-400" /> : <div className="w-5 h-5 rounded-full bg-blue-500" />}
-              Sync Xero
-            </button>
+            {syncModalSource === 'Tally' ? (
+              <div className="bg-[#0A0A0C] border border-white/10 rounded-2xl p-8 max-w-md mx-auto animate-in zoom-in-95 duration-200">
+                <h3 className="text-xl font-bold text-white mb-4">Select Tally Version</h3>
+                <div className="space-y-3 mb-6">
+                  <button onClick={() => handleMockSync("Tally ERP 9")} className="w-full block bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-400 hover:border-cyan-500/50 border border-white/10 p-4 rounded-xl text-left  transition-all text-white font-medium">Tally ERP 9</button>
+                  <button onClick={() => handleMockSync("Tally Prime")} className="w-full block bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-400 hover:border-cyan-500/50 border border-white/10 p-4 rounded-xl text-left transition-all text-white font-medium">Tally Prime</button>
+                  <button onClick={() => handleMockSync("Tally Cloud API")} className="w-full block bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-400 hover:border-cyan-500/50 border border-white/10 p-4 rounded-xl text-left transition-all text-white font-medium">Tally Default API Route</button>
+                </div>
+                <button onClick={() => setSyncModalSource(null)} className="text-sm text-slate-500 hover:text-white">Cancel</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+                <button onClick={() => setSyncModalSource("Tally")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group disabled:opacity-50">
+                  <div className="w-10 h-10 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center font-bold text-xl">T</div>
+                  <span className="font-semibold tracking-wide">Sync Tally</span>
+                </button>
+                <button onClick={() => handleMockSync("QuickBooks")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-emerald-500/50 transition-all text-white group disabled:opacity-50">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xl">Q</div>
+                  <span className="font-semibold tracking-wide">Sync QuickBooks</span>
+                </button>
+                <button onClick={() => handleMockSync("Xero")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-blue-500/50 transition-all text-white group disabled:opacity-50">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xl">X</div>
+                  <span className="font-semibold tracking-wide">Sync Xero</span>
+                </button>
+                <button onClick={() => handleMockSync("Odoo")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 transition-all text-white group disabled:opacity-50">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xl">O</div>
+                  <span className="font-semibold tracking-wide">Sync Odoo</span>
+                </button>
+                <button onClick={() => handleMockSync("Zoho Books")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-yellow-500/50 transition-all text-white group disabled:opacity-50 lg:col-span-2">
+                  <div className="w-10 h-10 rounded-xl bg-yellow-500/20 text-yellow-400 flex items-center justify-center font-bold text-xl">Z</div>
+                  <span className="font-semibold tracking-wide">Sync Zoho Books</span>
+                </button>
+              </div>
+            )}
+
+            {!syncModalSource && (
+              <>
+                <div className="relative py-4 mb-4">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
+                  <div className="relative flex justify-center"><span className="bg-[#13131A] px-4 text-sm text-slate-500 uppercase tracking-widest">or manually</span></div>
+                </div>
+
+                <div 
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  className="border-2 border-dashed border-white/10 hover:border-cyan-500/50 bg-[#0A0A0C] rounded-xl p-10 transition-colors flex flex-col items-center justify-center"
+                >
+                  <UploadCloud className="w-10 h-10 text-slate-500 mb-3" />
+                  <p className="text-slate-300 font-medium mb-1">Drag and drop your spreadsheet here for {activeClientName}</p>
+                  <p className="text-sm text-slate-500">Only generic .CSV supported</p>
+                  <input 
+                    type="file" accept=".csv" className="hidden" id="csv-upload"
+                    onChange={(e) => { if (e.target.files?.[0]) processCsv(e.target.files[0]); }}
+                  />
+                  <label htmlFor="csv-upload" className="mt-6 px-6 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-full text-sm text-white cursor-pointer transition-colors font-medium">
+                    Browse CSV
+                  </label>
+                </div>
+              </>
+            )}
           </div>
-
-          <div className="relative py-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10"></div>
-            </div>
-            <div className="relative flex justify-center">
-              <span className="bg-[#13131A] px-4 text-sm text-slate-500 uppercase tracking-widest">or manually</span>
-            </div>
-          </div>
-
-          <div 
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            className="mt-6 border-2 border-dashed border-white/10 hover:border-cyan-500/50 bg-[#0A0A0C] rounded-xl p-10 transition-colors flex flex-col items-center justify-center"
-          >
-            <UploadCloud className="w-10 h-10 text-slate-500 mb-3" />
-            <p className="text-slate-300 font-medium mb-1">Drag and drop your spreadsheet here</p>
-            <p className="text-sm text-slate-500">Only generic .CSV supported</p>
-            <input 
-              type="file" 
-              accept=".csv"
-              className="hidden" 
-              id="csv-upload"
-              onChange={(e) => {
-                if (e.target.files?.[0]) processCsv(e.target.files[0]);
-              }}
-            />
-            <label htmlFor="csv-upload" className="mt-6 px-6 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-full text-sm text-white cursor-pointer transition-colors font-medium">
-              Browse Files
-            </label>
-          </div>
-
         </div>
       </div>
     );
@@ -164,50 +285,34 @@ export default function DashboardClient({ initialRecords }: { initialRecords: an
 
   // Dashboard Rendering if Records Exist
   const latestRecord = records[records.length - 1];
-  const prevRecord = records.length > 1 ? records[records.length - 2] : null;
 
-  // Calculators for Engine 1
   const profitMargin = latestRecord.revenue ? ((latestRecord.netIncome / latestRecord.revenue) * 100).toFixed(1) : "0";
   const currentRatio = latestRecord.currentLiabilities ? (latestRecord.currentAssets / latestRecord.currentLiabilities).toFixed(2) : "0";
   const ebitdaMargin = latestRecord.revenue ? (((latestRecord.revenue - latestRecord.cogs - latestRecord.operatingExpenses) / latestRecord.revenue) * 100).toFixed(1) : "0";
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <header className="flex flex-col md:flex-row items-baseline justify-between mb-8 pb-6 border-b border-white/10 gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Financial Command Center</h1>
-          <p className="text-slate-400">Data synchronized successfully from <span className="text-cyan-400 font-medium">{latestRecord.source}</span>.</p>
-        </div>
-        <button 
-          onClick={() => handleMockSync(latestRecord.source)}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm text-white cursor-pointer transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Force Sync
-        </button>
-      </header>
+      <TopBar />
 
-      {/* Engine 1: Financial Ratio Engine */}
       <section>
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="w-5 h-5 text-cyan-400" />
-          <h2 className="text-xl font-bold text-white">Ratio Engine</h2>
+          <h2 className="text-xl font-bold text-white">Ratio Engine for {activeClientName}</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl">
+          <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl hover:border-cyan-500/30 transition-colors">
             <p className="text-sm text-slate-400 font-medium mb-1">Profit Margin</p>
             <p className="text-3xl font-bold text-white">{profitMargin}%</p>
           </div>
-          <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl">
+          <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl hover:border-cyan-500/30 transition-colors">
             <p className="text-sm text-slate-400 font-medium mb-1">EBITDA Margin</p>
             <p className="text-3xl font-bold text-white">{ebitdaMargin}%</p>
           </div>
-          <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl">
+          <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl hover:border-cyan-500/30 transition-colors">
             <p className="text-sm text-slate-400 font-medium mb-1">Current Ratio</p>
             <p className="text-3xl font-bold text-white">{currentRatio}x</p>
           </div>
-          <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl">
+          <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl hover:border-cyan-500/30 transition-colors">
             <p className="text-sm text-slate-400 font-medium mb-1">Total Equities</p>
             <p className="text-3xl font-bold text-white">${latestRecord.totalEquity.toLocaleString()}</p>
           </div>
@@ -229,10 +334,7 @@ export default function DashboardClient({ initialRecords }: { initialRecords: an
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                 <XAxis dataKey="period" stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value/1000}k`} />
-                <RechartsTooltip 
-                  contentStyle={{ backgroundColor: '#0A0A0C', border: '1px solid #ffffff10', borderRadius: '12px' }}
-                  itemStyle={{ color: '#fff' }}
-                />
+                <RechartsTooltip contentStyle={{ backgroundColor: '#0A0A0C', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '14px', paddingTop: '10px' }} />
                 <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#06b6d4" strokeWidth={3} dot={{ r: 4, fill: "#06b6d4" }} activeDot={{ r: 6 }} />
                 <Line type="monotone" dataKey="operatingExpenses" name="Operating Expenses" stroke="#f43f5e" strokeWidth={3} dot={{ r: 4, fill: "#f43f5e" }} />
@@ -253,10 +355,7 @@ export default function DashboardClient({ initialRecords }: { initialRecords: an
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                 <XAxis dataKey="period" stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value/1000}k`} />
-                <RechartsTooltip 
-                  cursor={{fill: '#ffffff05'}}
-                  contentStyle={{ backgroundColor: '#0A0A0C', border: '1px solid #ffffff10', borderRadius: '12px' }}
-                />
+                <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: '#0A0A0C', border: '1px solid #ffffff10', borderRadius: '12px' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '14px', paddingTop: '10px' }} />
                 <Bar dataKey="cashBalance" name="Cash Resreves" fill="#06b6d4" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="burnRate" name="Burn Rate" fill="#f97316" radius={[4, 4, 0, 0]} />
@@ -269,9 +368,12 @@ export default function DashboardClient({ initialRecords }: { initialRecords: an
 
       {/* Engine 3: Variance Analyzer */}
       <section className="bg-[#13131A] border border-white/10 p-6 rounded-2xl">
-        <div className="flex items-center gap-2 mb-6">
-          <GitMerge className="w-5 h-5 text-emerald-400" />
-          <h2 className="text-xl font-bold text-white">Variance Analyzer <span className="text-slate-500 font-normal text-sm ml-2">Budget vs Actuals</span></h2>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <GitMerge className="w-5 h-5 text-emerald-400" />
+            <h2 className="text-xl font-bold text-white">Variance Analyzer <span className="text-slate-500 font-normal text-sm ml-2">Budget vs Actuals</span></h2>
+          </div>
+          <span className="bg-slate-800/50 text-slate-400 text-xs px-2 py-1 rounded">Source: {latestRecord.source}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">

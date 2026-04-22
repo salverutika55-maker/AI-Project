@@ -18,15 +18,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
-    const { records } = await req.json();
+    const { records, clientId } = await req.json();
 
-    if (!records || !Array.isArray(records)) {
-      return NextResponse.json({ message: "Invalid CSV payload" }, { status: 400 });
+    if (!records || !Array.isArray(records) || !clientId) {
+      return NextResponse.json({ message: "Invalid CSV payload or missing Client ID" }, { status: 400 });
+    }
+
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, userId: user.id },
+    });
+
+    if (!client) {
+      return NextResponse.json({ message: "Client not found" }, { status: 404 });
     }
 
     // Transform and map standard CSV to Prisma Model
     const cleanRecords = records.map((row: any) => ({
-      userId: user.id,
+      clientId: client.id,
       source: "CSV",
       period: row.Period || new Date().toISOString().slice(0, 7),
       revenue: parseFloat(row.Revenue) || 0,
@@ -46,7 +54,7 @@ export async function POST(req: Request) {
 
     // Clear old CSV data to prevent duplicate period conflicts for MVP setup
     await prisma.financialRecord.deleteMany({
-      where: { userId: user.id, source: "CSV" },
+      where: { clientId: client.id, source: "CSV" },
     });
 
     await prisma.financialRecord.createMany({
