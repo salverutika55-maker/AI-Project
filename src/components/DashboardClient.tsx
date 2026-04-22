@@ -47,7 +47,17 @@ export default function DashboardClient({
   const [syncCreds, setSyncCreds] = useState({ username: "", password: "" });
   const [syncRange, setSyncRange] = useState({ start: "2023-01", end: "2024-04" });
   const [showIntegrations, setShowIntegrations] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState("USD");
   const router = useRouter();
+
+  const formatMoney = (amount: number, compact = false) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: displayCurrency,
+      maximumFractionDigits: 0,
+      notation: compact ? "compact" : "standard"
+    }).format(amount);
+  };
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,6 +245,21 @@ export default function DashboardClient({
         >
           <Plus className="w-5 h-5" />
         </button>
+        {records.length > 0 && (
+          <select 
+            value={displayCurrency}
+            onChange={(e) => setDisplayCurrency(e.target.value)}
+            className="bg-[#13131A] border border-white/10 text-slate-300 text-sm px-3 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-white/5 transition-all ml-2"
+          >
+            <option value="USD">USD ($)</option>
+            <option value="INR">INR (₹)</option>
+            <option value="EUR">EUR (€)</option>
+            <option value="GBP">GBP (£)</option>
+            <option value="AUD">AUD (A$)</option>
+            <option value="CAD">CAD (C$)</option>
+            <option value="JPY">JPY (¥)</option>
+          </select>
+        )}
       </div>
       {records.length > 0 && (
         <div className="flex items-center gap-2">
@@ -448,7 +473,7 @@ export default function DashboardClient({
           </div>
           <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl hover:border-cyan-500/30 transition-colors">
             <p className="text-sm text-slate-400 font-medium mb-1">Total Equities</p>
-            <p className="text-3xl font-bold text-white">${latestRecord.totalEquity.toLocaleString()}</p>
+            <p className="text-3xl font-bold text-white">{formatMoney(latestRecord.totalEquity)}</p>
           </div>
         </div>
       </section>
@@ -467,7 +492,7 @@ export default function DashboardClient({
               <RechartsLineChart data={records} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                 <XAxis dataKey="period" stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value/1000}k`} />
+                <YAxis stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatMoney(value, true)} />
                 <RechartsTooltip contentStyle={{ backgroundColor: '#0A0A0C', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '14px', paddingTop: '10px' }} />
                 <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#06b6d4" strokeWidth={3} dot={{ r: 4, fill: "#06b6d4" }} activeDot={{ r: 6 }} />
@@ -488,7 +513,7 @@ export default function DashboardClient({
               <BarChart data={records.slice(-3)} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                 <XAxis dataKey="period" stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value/1000}k`} />
+                <YAxis stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatMoney(value, true)} />
                 <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: '#0A0A0C', border: '1px solid #ffffff10', borderRadius: '12px' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '14px', paddingTop: '10px' }} />
                 <Bar dataKey="cashBalance" name="Cash Resreves" fill="#06b6d4" radius={[4, 4, 0, 0]} />
@@ -528,11 +553,11 @@ export default function DashboardClient({
                 return (
                   <tr key={i} className="hover:bg-white/5 transition-colors">
                     <td className="py-4 pr-6 font-medium text-slate-300">{record.period}</td>
-                    <td className="py-4 px-6 text-right text-white">${record.revenue.toLocaleString()}</td>
-                    <td className="py-4 px-6 text-right text-slate-400">${record.budgetedRevenue.toLocaleString()}</td>
+                    <td className="py-4 px-6 text-right text-white">{formatMoney(record.revenue)}</td>
+                    <td className="py-4 px-6 text-right text-slate-400">{formatMoney(record.budgetedRevenue)}</td>
                     <td className="py-4 pl-6 text-right">
                       <span className={`inline-flex items-center gap-1 font-medium px-2.5 py-1 rounded-lg text-xs ${isPositive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                        {isPositive ? '+' : '-'}${Math.abs(varianceAmount).toLocaleString()} ({variancePercent}%)
+                        {isPositive ? '+' : '-'}{formatMoney(Math.abs(varianceAmount))} ({variancePercent}%)
                       </span>
                     </td>
                   </tr>
