@@ -9,10 +9,46 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  role      String   @default("USER") // 'USER' or 'ADMIN'
-  lastLogin DateTime?
-  createdAt DateTime @default(now())
+  id               String            @id @default(cuid())
+  email            String            @unique
+  password         String
+  role             String            @default("USER") // 'USER' or 'ADMIN'
+  lastLogin        DateTime?
+  financialRecords FinancialRecord[]
+  createdAt        DateTime          @default(now())
+}
+
+model FinancialRecord {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  period             String   // e.g., "2024-01", "Q1-2024"
+  source             String   @default("CSV") // 'CSV', 'QuickBooks', 'Xero'
+
+  // Income Statement
+  revenue            Float    @default(0)
+  cogs               Float    @default(0)
+  operatingExpenses  Float    @default(0)
+  netIncome          Float    @default(0)
+
+  // Balance Sheet
+  totalAssets        Float    @default(0)
+  currentAssets      Float    @default(0)
+  currentLiabilities Float    @default(0)
+  totalEquity        Float    @default(0)
+
+  // Cash Flow
+  operatingCashFlow  Float    @default(0)
+  cashBalance        Float    @default(0)
+  burnRate           Float    @default(0)
+
+  // Budget
+  budgetedRevenue    Float    @default(0)
+  budgetedExpenses   Float    @default(0)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([userId, period])
 }
