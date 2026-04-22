@@ -45,13 +45,34 @@ export default function DashboardClient({
   const [syncModalSource, setSyncModalSource] = useState<string | null>(null);
   const [syncStep, setSyncStep] = useState(0); // 0=Idle, 1=Credentials, 2=TimePeriod
   const [syncCreds, setSyncCreds] = useState({ username: "", password: "" });
-  const [syncPeriodPreset, setSyncPeriodPreset] = useState("FY23-24");
+  const [syncRange, setSyncRange] = useState({
+    startMonth: "01", startYear: "2023",
+    endMonth: "12", endYear: "2023"
+  });
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState("USD");
   const router = useRouter();
 
+  const CURRENCY_LOCALES: Record<string, string> = {
+    USD: 'en-US',
+    INR: 'en-IN',
+    EUR: 'de-DE',
+    GBP: 'en-GB',
+    AUD: 'en-AU',
+    CAD: 'en-CA',
+    JPY: 'ja-JP'
+  };
+
+  const MONTHS = [
+    { v: "01", l: "Jan" }, { v: "02", l: "Feb" }, { v: "03", l: "Mar" }, { v: "04", l: "Apr" },
+    { v: "05", l: "May" }, { v: "06", l: "Jun" }, { v: "07", l: "Jul" }, { v: "08", l: "Aug" },
+    { v: "09", l: "Sep" }, { v: "10", l: "Oct" }, { v: "11", l: "Nov" }, { v: "12", l: "Dec" }
+  ];
+  const YEARS = ["2022", "2023", "2024", "2025", "2026"];
+
   const formatMoney = (amount: number, compact = false) => {
-    return new Intl.NumberFormat('en-US', {
+    const locale = CURRENCY_LOCALES[displayCurrency] || 'en-US';
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: displayCurrency,
       maximumFractionDigits: 0,
@@ -136,19 +157,11 @@ export default function DashboardClient({
     if (e) e.preventDefault();
     if (!activeClientId || !syncModalSource) return setError("Missing parameters");
     
-    // Map preset periods to physical dates
-    let startDate = "2023-04";
-    let endDate = "2024-03";
-    
-    if (syncPeriodPreset === "FY23-24") { startDate = "2023-04"; endDate = "2024-03"; }
-    else if (syncPeriodPreset === "FY24-25") { startDate = "2024-04"; endDate = "2025-03"; }
-    else if (syncPeriodPreset === "H1-2024") { startDate = "2024-01"; endDate = "2024-06"; }
-    else if (syncPeriodPreset === "H2-2024") { startDate = "2024-07"; endDate = "2024-12"; }
-    else if (syncPeriodPreset === "LTM") {
-      const d = new Date();
-      endDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
-      d.setFullYear(d.getFullYear() - 1);
-      startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
+    const startDate = `${syncRange.startYear}-${syncRange.startMonth}`;
+    const endDate = `${syncRange.endYear}-${syncRange.endMonth}`;
+
+    if (new Date(startDate) > new Date(endDate)) {
+      return setError("Start date cannot be after end date.");
     }
 
     setLoading(true);
@@ -360,19 +373,41 @@ export default function DashboardClient({
                 </div>
                 <p className="text-sm text-slate-400 mb-6 font-medium">Select the historical period to construct metrics for.</p>
                 <form onSubmit={handleMockSyncFinal}>
-                  <div className="mb-8">
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Financial Period</label>
-                    <select 
-                      value={syncPeriodPreset} 
-                      onChange={(e) => setSyncPeriodPreset(e.target.value)}
-                      className="w-full bg-[#13131A] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none cursor-pointer"
-                    >
-                      <option value="FY23-24">Financial Year 2023-2024</option>
-                      <option value="FY24-25">Financial Year 2024-2025</option>
-                      <option value="H1-2024">H1 2024 (Jan - Jun)</option>
-                      <option value="H2-2024">H2 2024 (Jul - Dec)</option>
-                      <option value="LTM">Last 12 Months (Rolling LTM)</option>
-                    </select>
+                  <div className="grid grid-cols-2 gap-6 mb-8">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">From</label>
+                      <div className="flex gap-2">
+                        <select 
+                          value={syncRange.startMonth} onChange={(e) => setSyncRange({...syncRange, startMonth: e.target.value})}
+                          className="flex-1 bg-[#13131A] border border-white/10 rounded-lg px-2 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
+                        >
+                           {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                        </select>
+                        <select 
+                          value={syncRange.startYear} onChange={(e) => setSyncRange({...syncRange, startYear: e.target.value})}
+                          className="flex-1 bg-[#13131A] border border-white/10 rounded-lg px-2 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
+                        >
+                           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">To</label>
+                      <div className="flex gap-2">
+                        <select 
+                          value={syncRange.endMonth} onChange={(e) => setSyncRange({...syncRange, endMonth: e.target.value})}
+                          className="flex-1 bg-[#13131A] border border-white/10 rounded-lg px-2 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
+                        >
+                           {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                        </select>
+                        <select 
+                          value={syncRange.endYear} onChange={(e) => setSyncRange({...syncRange, endYear: e.target.value})}
+                          className="flex-1 bg-[#13131A] border border-white/10 rounded-lg px-2 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
+                        >
+                           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                      </div>
+                    </div>
                   </div>
                   <button type="submit" disabled={loading} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
                     {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <TrendingDown className="w-5 h-5" />}
@@ -520,7 +555,7 @@ export default function DashboardClient({
                 <YAxis stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatMoney(value, true)} />
                 <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: '#0A0A0C', border: '1px solid #ffffff10', borderRadius: '12px' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '14px', paddingTop: '10px' }} />
-                <Bar dataKey="cashBalance" name="Cash Resreves" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="cashBalance" name="Cash Reserves" fill="#06b6d4" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="burnRate" name="Burn Rate" fill="#f97316" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
