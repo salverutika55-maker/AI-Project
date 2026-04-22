@@ -323,7 +323,47 @@ export default function DashboardClient({
                </div>
             )}
 
-            {syncModalSource === 'Tally' && syncStep === 0 ? (
+            {syncModalSource === 'API Webhook' ? (
+              <div className="bg-[#0A0A0C] border border-cyan-500/50 rounded-2xl p-8 max-w-2xl mx-auto animate-in zoom-in-95 duration-200 text-left">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center font-bold text-cyan-400">&lt;/&gt;</div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Live Data Ingestion API</h3>
+                    <p className="text-xs text-cyan-500 uppercase tracking-widest">{activeClientName}</p>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-slate-400 mb-6 font-medium leading-relaxed">
+                  Bypass simulated modeling by pushing live data directly from your local servers (Tally / Custom ERP) or cloud platforms. POST JSON payloads securely using your unique Bearer Token.
+                </p>
+
+                <div className="bg-[#13131A] p-5 rounded-xl border border-white/10 mb-6 font-mono text-sm overflow-x-auto text-slate-300">
+                  <span className="text-emerald-400 font-bold">curl</span> -X POST https://ai-project-orpin-omega.vercel.app/api/ingest \<br/>
+                  &nbsp;&nbsp;-H <span className="text-purple-400">"Authorization: Bearer {clients.find(c => c.id === activeClientId)?.apiKey}"</span> \<br/>
+                  &nbsp;&nbsp;-H <span className="text-purple-400">"Content-Type: application/json"</span> \<br/>
+                  &nbsp;&nbsp;-d <span className="text-yellow-400">"[<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;{'{'}<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\"period\": \"2024-04\",<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\"source\": \"Tally XML Bridge\",<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\"revenue\": 1450000,<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\"cogs\": 300000<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;{'}'}<br/>
+                  &nbsp;&nbsp;]"</span>
+                </div>
+                
+                <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-xl text-sm mb-6 flex gap-3">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold mb-1">Persistent Upsert Enabled</p>
+                    <p>Pushing data for the same `period` string will gracefully overwrite the existing record, avoiding duplicates.</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <button onClick={() => setSyncModalSource(null)} className="flex-1 bg-white/5 hover:bg-white/10 text-white font-medium py-3 rounded-lg transition-colors border border-white/10">Return Home</button>
+                </div>
+              </div>
+            ) : syncModalSource === 'Tally' && syncStep === 0 ? (
               <div className="bg-[#0A0A0C] border border-white/10 rounded-2xl p-8 max-w-md mx-auto animate-in zoom-in-95 duration-200">
                 <h3 className="text-xl font-bold text-white mb-4">Select Tally Version</h3>
                 <div className="space-y-3 mb-6">
@@ -437,6 +477,11 @@ export default function DashboardClient({
                 <button onClick={() => openWizard("Zoho Books")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-yellow-500/50 transition-all text-white group disabled:opacity-50 lg:col-span-2">
                   <div className="w-10 h-10 rounded-xl bg-yellow-500/20 text-yellow-400 flex items-center justify-center font-bold text-xl">Z</div>
                   <span className="font-semibold tracking-wide">Sync Zoho Books</span>
+                </button>
+                <button onClick={() => setSyncModalSource("API Webhook")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-cyan-500/10 hover:border-cyan-500/50 transition-all text-white group disabled:opacity-50 lg:col-span-3">
+                   <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl">&lt;/&gt;</div>
+                   <span className="font-semibold tracking-wide text-cyan-400">Custom API Webhook</span>
+                   <span className="text-xs text-slate-500">Push real data securely via POST</span>
                 </button>
               </div>
             )}

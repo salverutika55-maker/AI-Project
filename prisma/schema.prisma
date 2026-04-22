@@ -22,6 +22,7 @@ model Client {
   id               String            @id @default(cuid())
   name             String
   userId           String
+  apiKey           String            @default(cuid()) @unique
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   financialRecords FinancialRecord[]
   createdAt        DateTime          @default(now())
