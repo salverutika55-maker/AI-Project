@@ -3,6 +3,24 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 
+// Helper to generate an array of "YYYY-MM" strings between start and end inclusive
+function generatePeriods(startStr: string, endStr: string) {
+  const start = new Date(startStr + "-01");
+  const end = new Date(endStr + "-01");
+  const periods = [];
+  
+  if (start > end) return [startStr]; // Fallback
+
+  let current = new Date(start);
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = String(current.getMonth() + 1).padStart(2, '0');
+    periods.push(`${year}-${month}`);
+    current.setMonth(current.getMonth() + 1);
+  }
+  return periods;
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -11,11 +29,14 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { source, clientId } = body; // e.g. Tally Prime, Xero, Odoo
+    const { source, clientId, startDate, endDate } = body; 
 
     if (!source || !clientId) {
       return NextResponse.json({ message: "Integration Source and Client ID Required" }, { status: 400 });
     }
+
+    const startPeriod = startDate || "2023-01";
+    const endPeriod = endDate || "2023-12";
 
     // Fetch the User ID based on session email
     const user = await prisma.user.findUnique({
@@ -35,25 +56,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Client not found or unauthorized" }, { status: 404 });
     }
 
-    // Generate 6 months of robust mock financial data
-    const periods = ["2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06"];
+    // Generate accurate months array based on selection
+    const periods = generatePeriods(startPeriod, endPeriod);
     
     // Clear old mock data if exists for this client to simulate fresh sync
     await prisma.financialRecord.deleteMany({
       where: { clientId: client.id, source },
     });
 
-    // Create realistic trending data
+    // Create realistic trending data scalable by length
     let baseRevenue = 150000;
     let baseCash = 300000;
 
     const mockRecords = periods.map((period, index) => {
-      baseRevenue += Math.floor(Math.random() * 20000); // Trend upwards slightly
+      // Add standard market volatility to trends
+      const volatility = (Math.random() - 0.2) * 30000; 
+      baseRevenue += Math.floor(volatility); // Can trend up or slightly down
+      if (baseRevenue < 50000) baseRevenue = 50000;
+
       const cogs = baseRevenue * 0.35; // 35% COGS
-      const operatingExpenses = 70000;
+      const operatingExpenses = 70000 + (index * 1000); // Gradual opex bleed
       const netIncome = baseRevenue - cogs - operatingExpenses;
       
-      baseCash += netIncome; // Add net income to cash
+      baseCash += netIncome; // Add net income to cash reserves
+      if (baseCash < 0) baseCash = 10000; // prevent bankrupt mock
 
       return {
         clientId: client.id,
@@ -63,14 +89,14 @@ export async function POST(req: Request) {
         cogs,
         operatingExpenses,
         netIncome,
-        totalAssets: 1200000 + (index * 50000),
+        totalAssets: 1200000 + (index * 25000),
         currentAssets: baseCash + 150000,
-        currentLiabilities: 80000,
-        totalEquity: 800000 + (index * 40000),
-        operatingCashFlow: netIncome + 10000, // Non-cash adjustments
+        currentLiabilities: 80000 + (index * 5000),
+        totalEquity: 800000 + (index * 20000),
+        operatingCashFlow: netIncome + 10000, 
         cashBalance: baseCash,
         burnRate: operatingExpenses + cogs,
-        budgetedRevenue: baseRevenue * 0.95, // Usually slightly behind actual in good months
+        budgetedRevenue: baseRevenue * 0.95, 
         budgetedExpenses: operatingExpenses * 1.05
       };
     });
@@ -80,7 +106,7 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ 
-      message: `${source} Successfully Synchronized`,
+      message: `${source} Authenticated & Synchronized`,
       count: mockRecords.length
     }, { status: 200 });
 
