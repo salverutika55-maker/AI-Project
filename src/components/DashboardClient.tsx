@@ -43,6 +43,7 @@ export default function DashboardClient({
   const [showNewClient, setShowNewClient] = useState(clients.length === 0);
   const [newClientName, setNewClientName] = useState("");
   const [syncModalSource, setSyncModalSource] = useState<string | null>(null);
+  const [showIntegrations, setShowIntegrations] = useState(false);
   const router = useRouter();
 
   const handleCreateClient = async (e: React.FormEvent) => {
@@ -119,6 +120,7 @@ export default function DashboardClient({
       setError(err.message);
       setLoading(false);
       setSyncModalSource(null);
+      setShowIntegrations(false);
     }
   };
 
@@ -185,19 +187,27 @@ export default function DashboardClient({
         </button>
       </div>
       {records.length > 0 && (
-         <button 
-           onClick={() => handleMockSync(records[records.length - 1].source)}
-           disabled={loading}
-           className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm text-white transition-colors min-w-[140px]"
-         >
-           {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-           {loading ? "Syncing..." : "Force Sync Data"}
-         </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => handleMockSync(records[records.length - 1].source)}
+            disabled={loading}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm text-white transition-colors"
+          >
+            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Force Sync
+          </button>
+          <button 
+            onClick={() => setShowIntegrations(true)}
+            className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-medium rounded-lg text-sm transition-colors"
+          >
+            Manage Data Source
+          </button>
+        </div>
       )}
     </div>
   );
 
-  if (records.length === 0) {
+  if (records.length === 0 || showIntegrations) {
     return (
       <div className="space-y-4 animate-in fade-in duration-500">
         <TopBar />
@@ -207,7 +217,7 @@ export default function DashboardClient({
             <CloudRain className="w-16 h-16 text-cyan-400 mx-auto mb-6" />
             <h2 className="text-3xl font-bold text-white mb-2">Connect {activeClientName}'s Financials</h2>
             <p className="text-slate-400 mb-10 text-lg">
-              Synchronize accounting software or securely drop a generic CSV for this client to ignite the engines.
+              Synchronize accounting software or securely drop a generic CSV to redefine the analytics.
             </p>
 
             {error && (
@@ -275,6 +285,15 @@ export default function DashboardClient({
                     Browse CSV
                   </label>
                 </div>
+
+                {records.length > 0 && (
+                  <button 
+                    onClick={() => setShowIntegrations(false)}
+                    className="mt-6 text-sm text-slate-500 hover:text-white"
+                  >
+                    Close Without Changing
+                  </button>
+                )}
               </>
             )}
           </div>
