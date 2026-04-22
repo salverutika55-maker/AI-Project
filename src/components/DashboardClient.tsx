@@ -45,7 +45,7 @@ export default function DashboardClient({
   const [syncModalSource, setSyncModalSource] = useState<string | null>(null);
   const [syncStep, setSyncStep] = useState(0); // 0=Idle, 1=Credentials, 2=TimePeriod
   const [syncCreds, setSyncCreds] = useState({ username: "", password: "" });
-  const [syncRange, setSyncRange] = useState({ start: "2023-01", end: "2024-04" });
+  const [syncPeriodPreset, setSyncPeriodPreset] = useState("FY23-24");
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState("USD");
   const router = useRouter();
@@ -136,9 +136,19 @@ export default function DashboardClient({
     if (e) e.preventDefault();
     if (!activeClientId || !syncModalSource) return setError("Missing parameters");
     
-    // Validate period bounds
-    if (new Date(syncRange.start) > new Date(syncRange.end)) {
-      return setError("Start date cannot be after end date.");
+    // Map preset periods to physical dates
+    let startDate = "2023-04";
+    let endDate = "2024-03";
+    
+    if (syncPeriodPreset === "FY23-24") { startDate = "2023-04"; endDate = "2024-03"; }
+    else if (syncPeriodPreset === "FY24-25") { startDate = "2024-04"; endDate = "2025-03"; }
+    else if (syncPeriodPreset === "H1-2024") { startDate = "2024-01"; endDate = "2024-06"; }
+    else if (syncPeriodPreset === "H2-2024") { startDate = "2024-07"; endDate = "2024-12"; }
+    else if (syncPeriodPreset === "LTM") {
+      const d = new Date();
+      endDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
+      d.setFullYear(d.getFullYear() - 1);
+      startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
     }
 
     setLoading(true);
@@ -150,8 +160,8 @@ export default function DashboardClient({
         body: JSON.stringify({ 
           source: syncModalSource, 
           clientId: activeClientId,
-          startDate: syncRange.start,
-          endDate: syncRange.end
+          startDate,
+          endDate
         }),
       });
       if (!res.ok) throw new Error("Authentication failed. " + (await res.json()).message);
@@ -245,21 +255,19 @@ export default function DashboardClient({
         >
           <Plus className="w-5 h-5" />
         </button>
-        {records.length > 0 && (
-          <select 
-            value={displayCurrency}
-            onChange={(e) => setDisplayCurrency(e.target.value)}
-            className="bg-[#13131A] border border-white/10 text-slate-300 text-sm px-3 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-white/5 transition-all ml-2"
-          >
-            <option value="USD">USD ($)</option>
-            <option value="INR">INR (₹)</option>
-            <option value="EUR">EUR (€)</option>
-            <option value="GBP">GBP (£)</option>
-            <option value="AUD">AUD (A$)</option>
-            <option value="CAD">CAD (C$)</option>
-            <option value="JPY">JPY (¥)</option>
-          </select>
-        )}
+        <select 
+          value={displayCurrency}
+          onChange={(e) => setDisplayCurrency(e.target.value)}
+          className="bg-[#13131A] border border-white/10 text-white font-medium text-sm px-3 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-white/5 transition-all ml-2"
+        >
+          <option value="USD">USD ($)</option>
+          <option value="INR">INR (₹)</option>
+          <option value="EUR">EUR (€)</option>
+          <option value="GBP">GBP (£)</option>
+          <option value="AUD">AUD (A$)</option>
+          <option value="CAD">CAD (C$)</option>
+          <option value="JPY">JPY (¥)</option>
+        </select>
       </div>
       {records.length > 0 && (
         <div className="flex items-center gap-2">
@@ -352,23 +360,19 @@ export default function DashboardClient({
                 </div>
                 <p className="text-sm text-slate-400 mb-6 font-medium">Select the historical period to construct metrics for.</p>
                 <form onSubmit={handleMockSyncFinal}>
-                  <div className="grid grid-cols-2 gap-4 mb-8">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Start Month</label>
-                      <input 
-                        type="month" required 
-                        value={syncRange.start} onChange={(e) => setSyncRange({...syncRange, start: e.target.value})}
-                        className="w-full bg-[#13131A] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">End Month</label>
-                      <input 
-                        type="month" required 
-                        value={syncRange.end} onChange={(e) => setSyncRange({...syncRange, end: e.target.value})}
-                        className="w-full bg-[#13131A] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
-                      />
-                    </div>
+                  <div className="mb-8">
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Financial Period</label>
+                    <select 
+                      value={syncPeriodPreset} 
+                      onChange={(e) => setSyncPeriodPreset(e.target.value)}
+                      className="w-full bg-[#13131A] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none cursor-pointer"
+                    >
+                      <option value="FY23-24">Financial Year 2023-2024</option>
+                      <option value="FY24-25">Financial Year 2024-2025</option>
+                      <option value="H1-2024">H1 2024 (Jan - Jun)</option>
+                      <option value="H2-2024">H2 2024 (Jul - Dec)</option>
+                      <option value="LTM">Last 12 Months (Rolling LTM)</option>
+                    </select>
                   </div>
                   <button type="submit" disabled={loading} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
                     {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <TrendingDown className="w-5 h-5" />}
