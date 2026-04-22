@@ -48,7 +48,9 @@ export default async function Home() {
             ) : (
               <div className="flex items-center gap-4">
                 <span className="text-sm text-slate-400 hidden sm:inline-block">{session.user?.email}</span>
-                {/* Ensure admin can see the dashboard button */}
+                <Link href="/dashboard" className="text-sm font-medium text-cyan-400 hover:text-cyan-300">
+                  Main Dashboard
+                </Link>
                 {(session.user as any)?.role === 'ADMIN' && (
                   <Link href="/admin" className="text-sm font-medium text-emerald-400 hover:text-emerald-300">
                     Admin Dashboard
@@ -83,7 +85,7 @@ export default async function Home() {
             Unleash the full potential of your financial data with intelligent analysis tools. Track variance, project growth, and master cash flow instantly.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href={session ? "/admin" : "/register"} className="flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-8 py-4 rounded-full text-lg font-semibold transition-all w-full sm:w-auto group cursor-pointer">
+            <Link href={session ? "/dashboard" : "/register"} className="flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-8 py-4 rounded-full text-lg font-semibold transition-all w-full sm:w-auto group cursor-pointer">
               {session ? "Enter Dashboard" : "Start Analyzing Now"}
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Link>
