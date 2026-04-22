@@ -11,8 +11,13 @@ import {
   ShieldCheck,
   CheckCircle2
 } from 'lucide-react';
+import Link from 'next/link';
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-export default function Home() {
+export default async function Home() {
+  const session = await getServerSession(authOptions);
+
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-slate-200 font-sans selection:bg-cyan-500/30 selection:text-cyan-100">
       
@@ -31,12 +36,29 @@ export default function Home() {
             <a href="#security" className="hover:text-white transition-colors">Security</a>
           </div>
           <div>
-            <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-full text-sm font-medium transition-all mr-3 cursor-pointer">
-              Log In
-            </button>
-            <button className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-5 py-2.5 rounded-full text-sm font-semibold transition-all cursor-pointer">
-              Start Free Trial
-            </button>
+            {!session ? (
+              <>
+                <Link href="/login" className="inline-block bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-full text-sm font-medium transition-all mr-3 cursor-pointer">
+                  Log In
+                </Link>
+                <Link href="/register" className="inline-block bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-5 py-2.5 rounded-full text-sm font-semibold transition-all cursor-pointer">
+                  Register
+                </Link>
+              </>
+            ) : (
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-slate-400 hidden sm:inline-block">{session.user?.email}</span>
+                {/* Ensure admin can see the dashboard button */}
+                {(session.user as any)?.role === 'ADMIN' && (
+                  <Link href="/admin" className="text-sm font-medium text-emerald-400 hover:text-emerald-300">
+                    Admin Dashboard
+                  </Link>
+                )}
+                <Link href="/api/auth/signout" className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-full text-sm font-medium transition-all cursor-pointer">
+                  Log Out
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </nav>
