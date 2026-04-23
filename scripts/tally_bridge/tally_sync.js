@@ -26,7 +26,7 @@ const getTallyXMLPayload = (fromDateStr, toDateStr) => `
   <BODY>
     <EXPORTDATA>
       <REQUESTDESC>
-        <REPORTNAME>Profit and Loss</REPORTNAME>
+        <REPORTNAME>Trial Balance</REPORTNAME>
         <STATICVARIABLES>
           <EXPLODEFLAG>Yes</EXPLODEFLAG>
           <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
@@ -79,31 +79,40 @@ async function runTallySync() {
     const allFinancialPayloads = [];
     const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
 
-    // Intelligent XML Node Searcher for Tally's nested format
-    function findTallyAmount(node, keywords) {
-      let foundAmount = 0;
-      const searchTree = (n) => {
-        if (!n) return;
-        if (n.DSPDISPINFO && n.DSPDISPINFO.DSPDISPNAME) {
-          const name = String(n.DSPDISPINFO.DSPDISPNAME).toLowerCase();
-          const match = keywords.some(kw => name.includes(kw.toLowerCase()));
-          if (match) {
-            const amtStr = n.DSPCLDAMTA || n.DSPCLDAMT;
-            if (amtStr) {
-               const amt = parseFloat(String(amtStr).replace(/[^0-9.-]+/g, ""));
-               if (!isNaN(amt)) foundAmount += Math.abs(amt);
-            }
+    // Helper to extract amounts from the flattened Trial Balance XML arrays
+    function extractTrialBalance(parsedData, keywords) {
+      let total = 0;
+      if (!parsedData || !parsedData.ENVELOPE) return 0;
+      
+      const names = parsedData.ENVELOPE.DSPACCNAME || [];
+      const infos = parsedData.ENVELOPE.DSPACCINFO || [];
+      
+      const nameArr = Array.isArray(names) ? names : [names];
+      const infoArr = Array.isArray(infos) ? infos : [infos];
+
+      nameArr.forEach((nameObj, idx) => {
+        if (!nameObj || !nameObj.DSPDISPNAME) return;
+        const name = String(nameObj.DSPDISPNAME).toLowerCase();
+        
+        const match = keywords.some(kw => name.includes(kw.toLowerCase()));
+        if (match) {
+          const info = infoArr[idx];
+          if (info) {
+             let drAmtStr = info.DSPCLDRAMT && info.DSPCLDRAMT.DSPCLDRAMTA ? info.DSPCLDRAMT.DSPCLDRAMTA : null;
+             let crAmtStr = info.DSPCLCRAMT && info.DSPCLCRAMT.DSPCLCRAMTA ? info.DSPCLCRAMT.DSPCLCRAMTA : null;
+             
+             if (drAmtStr) {
+               const amt = parseFloat(String(drAmtStr).replace(/[^0-9.-]+/g, ""));
+               if (!isNaN(amt)) total += Math.abs(amt);
+             }
+             if (crAmtStr) {
+               const amt = parseFloat(String(crAmtStr).replace(/[^0-9.-]+/g, ""));
+               if (!isNaN(amt)) total += Math.abs(amt);
+             }
           }
         }
-        if (typeof n === 'object') {
-          Object.values(n).forEach(child => {
-            if (Array.isArray(child)) child.forEach(searchTree);
-            else searchTree(child);
-          });
-        }
-      };
-      searchTree(node);
-      return foundAmount;
+      });
+      return total;
     }
 
     for (const period of periodsToSync) {
@@ -117,12 +126,12 @@ async function runTallySync() {
 
         const parsedData = await parser.parseStringPromise(tallyResponse.data);
 
-        const rawRevenue = findTallyAmount(parsedData, ["Sales Accounts", "Direct Incomes", "Revenue"]);
-        const rawCOGS = findTallyAmount(parsedData, ["Purchase Accounts", "Direct Expenses", "Cost of Goods"]);
-        const rawOpEx = findTallyAmount(parsedData, ["Indirect Expenses", "Operating Expenses"]);
-        const rawCash = findTallyAmount(parsedData, ["Cash-in-hand", "Bank Accounts"]);
-        const rawCurrentAssets = findTallyAmount(parsedData, ["Current Assets"]);
-        const rawCurrentLiab = findTallyAmount(parsedData, ["Current Liabilities"]);
+        const rawRevenue = extractTrialBalance(parsedData, ["Sales Accounts", "Direct Incomes", "Revenue"]);
+        const rawCOGS = extractTrialBalance(parsedData, ["Purchase Accounts", "Direct Expenses", "Cost of Goods", "Opening Stock"]);
+        const rawOpEx = extractTrialBalance(parsedData, ["Indirect Expenses", "Operating Expenses"]);
+        const rawCash = extractTrialBalance(parsedData, ["Cash-in-hand", "Bank Accounts"]);
+        const rawCurrentAssets = extractTrialBalance(parsedData, ["Current Assets"]);
+        const rawCurrentLiab = extractTrialBalance(parsedData, ["Current Liabilities", "Sundry Creditors", "Duties & Taxes"]);
 
         // If no data is found for this month, default to 0 instead of generating fake demo data
         const finalRevenue = rawRevenue > 0 ? rawRevenue : 0;
