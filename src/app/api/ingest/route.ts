@@ -23,8 +23,15 @@ export async function POST(req: Request) {
     // 3. Parse JSON Body payload
     const body = await req.json();
     
-    // Support either single object or array of objects
-    const records = Array.isArray(body) ? body : [body];
+    // Support either single object, array of objects, or object with 'records' array
+    let records = [];
+    if (Array.isArray(body)) {
+      records = body;
+    } else if (body.records && Array.isArray(body.records)) {
+      records = body.records;
+    } else {
+      records = [body];
+    }
 
     if (records.length === 0) {
       return NextResponse.json({ message: "Payload empty" }, { status: 400 });

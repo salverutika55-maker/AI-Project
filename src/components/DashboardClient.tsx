@@ -43,13 +43,8 @@ export default function DashboardClient({
   const [error, setError] = useState("");
   const [showNewClient, setShowNewClient] = useState(clients.length === 0);
   const [newClientName, setNewClientName] = useState("");
-  const [syncModalSource, setSyncModalSource] = useState<string | null>(null);
-  const [syncStep, setSyncStep] = useState(0); // 0=Idle, 1=Credentials, 2=TimePeriod
-  const [syncCreds, setSyncCreds] = useState({ username: "", password: "" });
-  const [syncRange, setSyncRange] = useState({
-    startMonth: "01", startYear: "2023",
-    endMonth: "12", endYear: "2023"
-  });
+  const [showAgentSetup, setShowAgentSetup] = useState(false);
+  const [handshakeCode, setHandshakeCode] = useState<string | null>(null);
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState("USD");
   
@@ -188,71 +183,21 @@ export default function DashboardClient({
     });
   };
 
-  const openWizard = (source: string) => {
-    setSyncModalSource(source);
-    setSyncStep(1); // Open Credentials
-    setError("");
-  };
-
-  const submitCredentials = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!syncCreds.username || !syncCreds.password) {
-      return setError("Please enter valid integration credentials");
-    }
-    setError("");
-    setSyncStep(2); // Proceed to Time Period
-  };
-
-  const handleMockSyncFinal = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!activeClientId || !syncModalSource) return setError("Missing parameters");
-    
-    const startDate = `${syncRange.startYear}-${syncRange.startMonth}`;
-    const endDate = `${syncRange.endYear}-${syncRange.endMonth}`;
-
-    if (new Date(startDate) > new Date(endDate)) {
-      return setError("Start date cannot be after end date.");
-    }
-
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          source: syncModalSource, 
-          clientId: activeClientId,
-          startDate,
-          endDate
-        }),
-      });
-      if (!res.ok) throw new Error("Authentication failed. " + (await res.json()).message);
-      window.location.reload();
-    } catch (err: any) {
-      setError(err.message);
-      setLoading(false);
-    }
-  };
-
-  // Safe manual override function when users click "Force Sync" on TopBar
-  const handleQuickForceSync = async (source: string) => {
+  const generateHandshakeCode = async () => {
     if (!activeClientId) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/sync", {
+      const res = await fetch("/api/handshake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          source, 
-          clientId: activeClientId,
-          startDate: "2023-01", // Defaults for quick sync
-          endDate: "2024-04"
-        }),
+        body: JSON.stringify({ clientId: activeClientId })
       });
-      if (res.ok) window.location.reload();
-      else { setLoading(false); setError("Sync failed"); }
-    } catch {
+      if (!res.ok) throw new Error("Failed to generate connection code");
+      const data = await res.json();
+      setHandshakeCode(data.code);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
       setLoading(false);
     }
   };
@@ -491,166 +436,70 @@ export default function DashboardClient({
                </div>
             )}
 
-            {syncModalSource === 'API Webhook' ? (
+            {showAgentSetup ? (
               <div className="bg-[#0A0A0C] border border-cyan-500/50 rounded-2xl p-8 max-w-2xl mx-auto animate-in zoom-in-95 duration-200 text-left">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center font-bold text-cyan-400">&lt;/&gt;</div>
+                  <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center font-bold text-cyan-400">
+                    <UploadCloud className="w-5 h-5" />
+                  </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Live Data Ingestion API</h3>
+                    <h3 className="text-xl font-bold text-white">Desktop Sync Agent</h3>
                     <p className="text-xs text-cyan-500 uppercase tracking-widest">{activeClientName}</p>
                   </div>
                 </div>
                 
-                <p className="text-sm text-slate-400 mb-6 font-medium leading-relaxed">
-                  Bypass simulated modeling by pushing live data directly from your local servers (Tally / Custom ERP) or cloud platforms. POST JSON payloads securely using your unique Bearer Token.
-                </p>
+                <div className="space-y-6">
+                  <div className="bg-[#13131A] border border-white/10 rounded-xl p-6">
+                    <h4 className="text-white font-bold mb-2">Step 1: Download Agent</h4>
+                    <p className="text-sm text-slate-400 mb-4">Download the secure Windows executable to the computer where your accounting software is installed.</p>
+                    <a href="/downloads/FinAnalyzerSync.exe" download className="inline-block px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm text-white transition-colors">
+                      Download FinAnalyzerSync.exe
+                    </a>
+                  </div>
 
-                <div className="bg-[#13131A] p-5 rounded-xl border border-white/10 mb-6 font-mono text-sm overflow-x-auto text-slate-300">
-                  <span className="text-emerald-400 font-bold">curl</span> -X POST https://ai-project-orpin-omega.vercel.app/api/ingest \<br/>
-                  &nbsp;&nbsp;-H <span className="text-purple-400">"Authorization: Bearer {clients.find(c => c.id === activeClientId)?.apiKey}"</span> \<br/>
-                  &nbsp;&nbsp;-H <span className="text-purple-400">"Content-Type: application/json"</span> \<br/>
-                  &nbsp;&nbsp;-d <span className="text-yellow-400">"[<br/>
-                  &nbsp;&nbsp;&nbsp;&nbsp;{'{'}<br/>
-                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\"period\": \"2024-04\",<br/>
-                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\"source\": \"Tally XML Bridge\",<br/>
-                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\"revenue\": 1450000,<br/>
-                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\"cogs\": 300000<br/>
-                  &nbsp;&nbsp;&nbsp;&nbsp;{'}'}<br/>
-                  &nbsp;&nbsp;]"</span>
-                </div>
-                
-                <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-xl text-sm mb-6 flex gap-3">
-                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                  <div>
-                    <p className="font-bold mb-1">Persistent Upsert Enabled</p>
-                    <p>Pushing data for the same `period` string will gracefully overwrite the existing record, avoiding duplicates.</p>
+                  <div className="bg-[#13131A] border border-white/10 rounded-xl p-6">
+                    <h4 className="text-white font-bold mb-2">Step 2: Generate Connection Code</h4>
+                    <p className="text-sm text-slate-400 mb-4">Run the downloaded agent. When prompted, enter a secure connection code to link your software.</p>
+                    
+                    {handshakeCode ? (
+                      <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-6 text-center">
+                        <p className="text-xs text-cyan-500 uppercase tracking-widest mb-2 font-bold">Your Connection Code</p>
+                        <p className="text-4xl font-mono text-white tracking-[0.2em]">{handshakeCode}</p>
+                        <p className="text-xs text-slate-500 mt-3">Expires in 15 minutes</p>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={generateHandshakeCode}
+                        disabled={loading}
+                        className="w-full px-4 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                      >
+                        {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                        Generate New Code
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex gap-4">
-                  <button onClick={() => setSyncModalSource(null)} className="flex-1 bg-white/5 hover:bg-white/10 text-white font-medium py-3 rounded-lg transition-colors border border-white/10">Return Home</button>
+                <div className="flex gap-4 mt-8">
+                  <button onClick={() => { setShowAgentSetup(false); setShowIntegrations(false); setHandshakeCode(null); }} className="flex-1 bg-white/5 hover:bg-white/10 text-white font-medium py-3 rounded-lg transition-colors border border-white/10">Close</button>
                 </div>
-              </div>
-            ) : syncModalSource === 'Tally' && syncStep === 0 ? (
-              <div className="bg-[#0A0A0C] border border-white/10 rounded-2xl p-8 max-w-md mx-auto animate-in zoom-in-95 duration-200">
-                <h3 className="text-xl font-bold text-white mb-4">Select Tally Version</h3>
-                <div className="space-y-3 mb-6">
-                  <button onClick={() => openWizard("Tally ERP 9")} className="w-full block bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-400 hover:border-cyan-500/50 border border-white/10 p-4 rounded-xl text-left  transition-all text-white font-medium">Tally ERP 9</button>
-                  <button onClick={() => openWizard("Tally Prime")} className="w-full block bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-400 hover:border-cyan-500/50 border border-white/10 p-4 rounded-xl text-left transition-all text-white font-medium">Tally Prime</button>
-                  <button onClick={() => openWizard("Tally Cloud API")} className="w-full block bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-400 hover:border-cyan-500/50 border border-white/10 p-4 rounded-xl text-left transition-all text-white font-medium">Tally Default API Route</button>
-                </div>
-                <button onClick={() => setSyncModalSource(null)} className="text-sm text-slate-500 hover:text-white">Cancel</button>
-              </div>
-            ) : syncStep === 1 ? (
-              <div className="bg-[#0A0A0C] border border-white/10 rounded-2xl p-8 max-w-md mx-auto animate-in zoom-in-95 duration-200 text-left">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center"><CloudRain className="w-5 h-5 text-cyan-400" /></div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Authenticate {syncModalSource}</h3>
-                    <p className="text-xs text-slate-500 uppercase tracking-widest">{activeClientName}</p>
-                  </div>
-                </div>
-                <form onSubmit={submitCredentials}>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Integration Username / API Email</label>
-                    <input 
-                      type="text" required 
-                      value={syncCreds.username} onChange={(e) => setSyncCreds({...syncCreds, username: e.target.value})}
-                      className="w-full bg-[#13131A] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Secure Password / Token</label>
-                    <input 
-                      type="password" required 
-                      value={syncCreds.password} onChange={(e) => setSyncCreds({...syncCreds, password: e.target.value})}
-                      className="w-full bg-[#13131A] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-                  <button type="submit" className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-3 rounded-lg transition-colors">
-                    Verify Access
-                  </button>
-                </form>
-                <button onClick={() => { setSyncStep(0); setSyncModalSource(null); }} className="w-full mt-4 text-sm text-slate-500 hover:text-white">Cancel</button>
-              </div>
-            ) : syncStep === 2 ? (
-              <div className="bg-[#0A0A0C] border border-white/10 rounded-2xl p-8 max-w-md mx-auto animate-in fade-in slide-in-from-right-4 duration-300 text-left">
-                <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
-                  <h3 className="text-xl font-bold text-white">Data Extraction Filter</h3>
-                  <span className="text-emerald-400 text-xs px-2 py-1 bg-emerald-500/10 rounded-md font-bold text-right tracking-widest uppercase shadow">Auth OK</span>
-                </div>
-                <p className="text-sm text-slate-400 mb-6 font-medium">Select the historical period to construct metrics for.</p>
-                <form onSubmit={handleMockSyncFinal}>
-                  <div className="grid grid-cols-2 gap-6 mb-8">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">From</label>
-                      <div className="flex gap-2">
-                        <select 
-                          value={syncRange.startMonth} onChange={(e) => setSyncRange({...syncRange, startMonth: e.target.value})}
-                          className="flex-1 bg-[#13131A] border border-white/10 rounded-lg px-2 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
-                        >
-                           {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
-                        </select>
-                        <select 
-                          value={syncRange.startYear} onChange={(e) => setSyncRange({...syncRange, startYear: e.target.value})}
-                          className="flex-1 bg-[#13131A] border border-white/10 rounded-lg px-2 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
-                        >
-                           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">To</label>
-                      <div className="flex gap-2">
-                        <select 
-                          value={syncRange.endMonth} onChange={(e) => setSyncRange({...syncRange, endMonth: e.target.value})}
-                          className="flex-1 bg-[#13131A] border border-white/10 rounded-lg px-2 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
-                        >
-                           {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
-                        </select>
-                        <select 
-                          value={syncRange.endYear} onChange={(e) => setSyncRange({...syncRange, endYear: e.target.value})}
-                          className="flex-1 bg-[#13131A] border border-white/10 rounded-lg px-2 py-3 text-white text-sm focus:border-cyan-500 focus:outline-none"
-                        >
-                           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                  <button type="submit" disabled={loading} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
-                    {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <TrendingDown className="w-5 h-5" />}
-                    {loading ? "Constructing Models..." : "Initiate Synchronization"}
-                  </button>
-                </form>
-                <button disabled={loading} onClick={() => setSyncStep(1)} className="w-full mt-4 text-sm text-slate-500 hover:text-white">Back to Credentials</button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
-                <button onClick={() => setSyncModalSource("Tally")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group disabled:opacity-50">
-                  <div className="w-10 h-10 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center font-bold text-xl">T</div>
-                  <span className="font-semibold tracking-wide">Sync Tally</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 max-w-2xl mx-auto">
+                <button onClick={() => setShowAgentSetup(true)} className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group">
+                  <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl">
+                    <UploadCloud className="w-6 h-6" />
+                  </div>
+                  <span className="font-semibold tracking-wide text-lg">Desktop Sync Agent</span>
+                  <span className="text-sm text-slate-500 text-center px-4">Tally, QuickBooks, Xero via secure local connection.</span>
                 </button>
-                <button onClick={() => openWizard("QuickBooks")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-emerald-500/50 transition-all text-white group disabled:opacity-50">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xl">Q</div>
-                  <span className="font-semibold tracking-wide">Sync QuickBooks</span>
-                </button>
-                <button onClick={() => openWizard("Xero")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-blue-500/50 transition-all text-white group disabled:opacity-50">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xl">X</div>
-                  <span className="font-semibold tracking-wide">Sync Xero</span>
-                </button>
-                <button onClick={() => openWizard("Odoo")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-purple-500/50 transition-all text-white group disabled:opacity-50">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xl">O</div>
-                  <span className="font-semibold tracking-wide">Sync Odoo</span>
-                </button>
-                <button onClick={() => openWizard("Zoho Books")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-yellow-500/50 transition-all text-white group disabled:opacity-50 lg:col-span-2">
-                  <div className="w-10 h-10 rounded-xl bg-yellow-500/20 text-yellow-400 flex items-center justify-center font-bold text-xl">Z</div>
-                  <span className="font-semibold tracking-wide">Sync Zoho Books</span>
-                </button>
-                <button onClick={() => setSyncModalSource("API Webhook")} disabled={loading} className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border border-white/10 bg-white/5 hover:bg-cyan-500/10 hover:border-cyan-500/50 transition-all text-white group disabled:opacity-50 lg:col-span-3">
-                   <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl">&lt;/&gt;</div>
-                   <span className="font-semibold tracking-wide text-cyan-400">Custom API Webhook</span>
-                   <span className="text-xs text-slate-500">Push real data securely via POST</span>
-                </button>
+                <div className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-dashed border-white/10 bg-[#13131A] text-slate-500">
+                  <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center">
+                    <GitMerge className="w-6 h-6" />
+                  </div>
+                  <span className="font-semibold tracking-wide text-lg">Cloud APIs</span>
+                  <span className="text-sm text-center px-4">Direct cloud-to-cloud connections coming soon.</span>
+                </div>
               </div>
             )}
 
