@@ -22,10 +22,11 @@ model Client {
   id               String            @id @default(cuid())
   name             String
   userId           String
-  apiKey           String            @default(cuid()) @unique
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  financialRecords FinancialRecord[]
-  createdAt        DateTime          @default(now())
+  apiKey               String            @default(cuid()) @unique
+  fiscalYearStartMonth Int               @default(4) // 4 = April, 1 = January
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  financialRecords     FinancialRecord[]
+  createdAt            DateTime          @default(now())
 }
 
 model FinancialRecord {

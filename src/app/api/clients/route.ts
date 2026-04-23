@@ -38,3 +38,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Internal Error" }, { status: 500 });
   }
 }
+
+export async function PUT(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const { clientId, fiscalYearStartMonth } = await req.json();
+
+    if (!clientId || !fiscalYearStartMonth) {
+      return NextResponse.json({ message: "Missing fields" }, { status: 400 });
+    }
+
+    // Verify ownership
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: { clients: true }
+    });
+
+    if (!user || !user.clients.find(c => c.id === clientId)) {
+      return NextResponse.json({ message: "Unauthorized client access" }, { status: 403 });
+    }
+
+    const updatedClient = await prisma.client.update({
+      where: { id: clientId },
+      data: { fiscalYearStartMonth: parseInt(fiscalYearStartMonth) }
+    });
+
+    return NextResponse.json({ message: "Settings updated", client: updatedClient }, { status: 200 });
+
+  } catch (error) {
+    console.error("Client Update Error:", error);
+    return NextResponse.json({ message: "Internal Error" }, { status: 500 });
+  }
+}
