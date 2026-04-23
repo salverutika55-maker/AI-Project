@@ -28,6 +28,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   }, [initialRecords]);
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [showNewClient, setShowNewClient] = useState(clients.length === 0);
   const [newClientName, setNewClientName] = useState("");
   const [showIntegrations, setShowIntegrations] = useState(false);
@@ -50,8 +51,18 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
 
   const router = useRouter();
 
+  const CURRENCY_LOCALES: Record<string, string> = {
+    USD: 'en-US',
+    INR: 'en-IN',
+    EUR: 'de-DE',
+    GBP: 'en-GB',
+    AUD: 'en-AU',
+    CAD: 'en-CA',
+    JPY: 'ja-JP'
+  };
+
   const formatMoney = (amount: number, compact = false) => {
-    const locale = 'en-US';
+    const locale = CURRENCY_LOCALES[displayCurrency] || 'en-US';
     let finalAmount = amount;
     const activeClient = clients.find((c: any) => c.id === activeClientId);
     if (activeClient && activeClient.baseCurrency && activeClient.baseCurrency !== displayCurrency) {
@@ -144,6 +155,29 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
     }, 2000);
   };
 
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newClientName })
+      });
+      if (res.ok) {
+        setNewClientName("");
+        setShowNewClient(false);
+        router.refresh();
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to create client");
+      }
+    } catch (err) {
+      setError("An error occurred");
+    }
+    setLoading(false);
+  };
+
   if (!activeClientId && !showNewClient) {
     // Client Hub
     return (
@@ -155,6 +189,9 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
             </div>
             <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">Client Hub</h1>
           </div>
+          <button onClick={() => setShowNewClient(true)} className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all">
+            <Plus className="w-5 h-5" /> Add New Client
+          </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto w-full">
           {clients.map((client: any) => (
@@ -169,6 +206,27 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
               <p className="text-slate-500 text-sm">Access Financial Dashboard &rarr;</p>
             </button>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (showNewClient) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0C] flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-md bg-[#13131A] border border-white/10 rounded-2xl p-8">
+          <h2 className="text-2xl font-bold text-white mb-6">Create New Client</h2>
+          {error && <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3"><AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" /><p className="text-red-400 text-sm">{error}</p></div>}
+          <form onSubmit={handleCreateClient} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">Company Name</label>
+              <input type="text" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} required className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors" placeholder="e.g. Acme Corp LLC" />
+            </div>
+            <div className="flex gap-3 pt-4">
+              {clients.length > 0 && <button type="button" onClick={() => setShowNewClient(false)} className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium rounded-xl transition-all">Cancel</button>}
+              <button type="submit" disabled={loading} className="flex-1 px-4 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl transition-all disabled:opacity-50">{loading ? "Creating..." : "Create Client"}</button>
+            </div>
+          </form>
         </div>
       </div>
     );
