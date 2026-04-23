@@ -13,8 +13,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     where: { email: session?.user?.email as string },
   });
 
+  let whereClause = {};
+  if (user?.role !== "ADMIN") {
+    whereClause = { userId: user?.id };
+  }
+
   const clients = await prisma.client.findMany({
-    where: { userId: user?.id },
+    where: whereClause,
     orderBy: { createdAt: "desc" },
   });
 

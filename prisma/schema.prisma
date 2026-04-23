@@ -27,6 +27,7 @@ model Client {
   baseCurrency         String            @default("USD")
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   financialRecords     FinancialRecord[]
+  handshakeCodes       HandshakeCode[]
   createdAt            DateTime          @default(now())
 }
 
@@ -63,4 +64,13 @@ model FinancialRecord {
   updatedAt          DateTime @updatedAt
 
   @@unique([clientId, period])
+}
+
+model HandshakeCode {
+  id        String   @id @default(cuid())
+  code      String   @unique // e.g. "A7B-9X2"
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }
