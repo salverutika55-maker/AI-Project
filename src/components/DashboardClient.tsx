@@ -44,6 +44,15 @@ export default function DashboardClient({
   activeClientId: string | null 
 }) {
   const [records, setRecords] = useState(initialRecords);
+  
+  useEffect(() => {
+    setRecords(initialRecords);
+    const newAvailablePeriods = Array.from(new Set(initialRecords.map(r => r.period))).sort();
+    if (newAvailablePeriods.length > 0) {
+      setSelectedPeriod(newAvailablePeriods[newAvailablePeriods.length - 1]);
+    }
+  }, [initialRecords]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showNewClient, setShowNewClient] = useState(clients.length === 0);
@@ -539,12 +548,25 @@ export default function DashboardClient({
                   </label>
                 </div>
 
-                {records.length > 0 && (
                   <button 
                     onClick={() => setShowIntegrations(false)}
                     className="mt-6 text-sm text-slate-500 hover:text-white"
                   >
                     Close Without Changing
+                  </button>
+                )}
+                
+                {records.length === 0 && (
+                  <button 
+                    onClick={() => {
+                      setLoading(true);
+                      router.refresh();
+                      setTimeout(() => setLoading(false), 2000);
+                    }}
+                    className="mt-10 px-8 py-4 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/50 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                  >
+                    {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                    Refresh Dashboard
                   </button>
                 )}
               </>
