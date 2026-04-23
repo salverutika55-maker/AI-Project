@@ -516,8 +516,7 @@ export default function DashboardClient({
               </div>
             )}
 
-            {!syncModalSource && (
-              <>
+            <>
                 <div className="relative py-4 mb-4">
                   <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
                   <div className="relative flex justify-center"><span className="bg-[#13131A] px-4 text-sm text-slate-500 uppercase tracking-widest">or manually</span></div>
@@ -549,7 +548,6 @@ export default function DashboardClient({
                   </button>
                 )}
               </>
-            )}
           </div>
         </div>
       </div>
