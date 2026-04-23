@@ -12,9 +12,11 @@ import {
   TrendingDown,
   GitMerge,
   WalletCards,
-  Building2,
   Plus,
-  Search
+  Search,
+  Settings,
+  Zap,
+  Link2
 } from "lucide-react";
 import {
   LineChart as RechartsLineChart,
@@ -375,12 +377,20 @@ export default function DashboardClient({
         >
           <Plus className="w-5 h-5" />
         </button>
-        <button
+        <button 
           onClick={() => setShowSettingsModal(true)}
           className="bg-white/5 p-2 rounded-lg hover:bg-white/10 text-slate-300 transition-colors ml-2"
           title="Client Settings"
         >
-          <TrendingDown className="w-5 h-5" />
+          <Settings className="w-5 h-5" />
+        </button>
+        <button 
+          onClick={() => setShowIntegrations(true)}
+          className="bg-cyan-500/10 p-2 rounded-lg hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all ml-2 flex items-center gap-2"
+          title="Manage Data Source / Connect Tally"
+        >
+          <Zap className="w-4 h-4" />
+          <span className="text-xs font-bold uppercase tracking-wider">Connect Tally</span>
         </button>
         {records.length > 0 && (
           <select 
