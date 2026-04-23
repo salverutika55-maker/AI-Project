@@ -462,20 +462,10 @@ export default function DashboardClient({
       </div>
       {records.length > 0 && (
         <div className="flex items-center gap-2">
-          <button 
-            onClick={() => handleQuickForceSync(records[records.length - 1].source)}
-            disabled={loading}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm text-white transition-colors"
-          >
-            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Force Sync
-          </button>
-          <button 
-            onClick={() => setShowIntegrations(true)}
-            className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-medium rounded-lg text-sm transition-colors"
-          >
-            Manage Data Source
-          </button>
+          <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-400 flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 text-cyan-500" />
+            Live Sync Active via Node Bridge
+          </div>
         </div>
       )}
     </div>
