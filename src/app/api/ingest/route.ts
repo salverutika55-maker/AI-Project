@@ -77,6 +77,9 @@ export async function POST(req: Request) {
           operatingCashFlow: financials.operatingCashFlow || 0,
           cashBalance: financials.cashBalance || 0,
           burnRate: financials.burnRate || 0,
+          accountsReceivable: financials.accountsReceivable || 0,
+          accountsPayable: financials.accountsPayable || 0,
+          inventory: financials.inventory || 0,
           budgetedRevenue: financials.budgetedRevenue || 0,
           budgetedExpenses: financials.budgetedExpenses || 0
         }
