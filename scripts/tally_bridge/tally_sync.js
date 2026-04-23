@@ -124,10 +124,10 @@ async function runTallySync() {
         const rawCurrentAssets = findTallyAmount(parsedData, ["Current Assets"]);
         const rawCurrentLiab = findTallyAmount(parsedData, ["Current Liabilities"]);
 
-        // Generate baseline if completely empty (just for demo purposes)
-        const finalRevenue = rawRevenue > 0 ? rawRevenue : (Math.floor(Math.random() * 500000) + 1500000);
-        const finalOpEx = rawOpEx > 0 ? rawOpEx : 800000;
-        const finalCogs = rawCOGS > 0 ? rawCOGS : 200000;
+        // If no data is found for this month, default to 0 instead of generating fake demo data
+        const finalRevenue = rawRevenue > 0 ? rawRevenue : 0;
+        const finalOpEx = rawOpEx > 0 ? rawOpEx : 0;
+        const finalCogs = rawCOGS > 0 ? rawCOGS : 0;
 
         const payload = {
           period: period,
@@ -136,12 +136,12 @@ async function runTallySync() {
           cogs: finalCogs,
           operatingExpenses: finalOpEx,
           netIncome: finalRevenue - finalCogs - finalOpEx,
-          totalAssets: rawCurrentAssets * 1.5 || 9000000,
-          currentAssets: rawCurrentAssets || 5000000,
-          currentLiabilities: rawCurrentLiab || 1000000,
-          totalEquity: rawCurrentAssets - rawCurrentLiab || 4000000,
+          totalAssets: rawCurrentAssets * 1.5 || 0,
+          currentAssets: rawCurrentAssets || 0,
+          currentLiabilities: rawCurrentLiab || 0,
+          totalEquity: rawCurrentAssets - rawCurrentLiab || 0,
           operatingCashFlow: finalRevenue * 0.1,
-          cashBalance: rawCash || 1500000,
+          cashBalance: rawCash || 0,
           burnRate: finalOpEx * 0.2,
           budgetedRevenue: finalRevenue * 1.1,
           budgetedExpenses: finalOpEx * 1.05
