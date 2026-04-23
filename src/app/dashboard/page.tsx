@@ -5,7 +5,8 @@ import DashboardClient from "@/components/DashboardClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage({ searchParams }: { searchParams: { client?: string } }) {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ client?: string }> }) {
+  const params = await searchParams;
   const session = await getServerSession(authOptions);
 
   const user = await prisma.user.findUnique({
@@ -18,7 +19,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   });
 
   // Only select a client if it's explicitly in the URL
-  const activeClientId = searchParams.client || null;
+  const activeClientId = params.client || null;
 
   let records: any[] = [];
   if (activeClientId) {
