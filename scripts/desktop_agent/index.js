@@ -234,9 +234,9 @@ function startLocalGUI() {
 
   const server = app.listen(PORT, async () => {
     console.log(`[AGENT] Starting connection interface on http://localhost:${PORT}`);
-    // Automatically open the user's default browser
-    const { default: openBrowser } = await import('open');
-    await openBrowser(`http://localhost:${PORT}`);
+    // Automatically open the user's default browser (Windows)
+    const { exec } = require('child_process');
+    exec(`start http://localhost:${PORT}`);
   });
 }
 
