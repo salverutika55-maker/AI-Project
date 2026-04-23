@@ -16,7 +16,8 @@ import {
   Search,
   Settings,
   Zap,
-  Link2
+  Link2,
+  Building2
 } from "lucide-react";
 import {
   LineChart as RechartsLineChart,
