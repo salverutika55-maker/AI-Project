@@ -51,6 +51,15 @@ export default function DashboardClient({
   });
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState("USD");
+  
+  // Available periods from the records
+  const availablePeriods = Array.from(new Set(records.map(r => r.period))).sort();
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(
+    availablePeriods.length > 0 ? availablePeriods[availablePeriods.length - 1] : null
+  );
+  
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
   const router = useRouter();
 
   const CURRENCY_LOCALES: Record<string, string> = {
@@ -92,6 +101,23 @@ export default function DashboardClient({
       if (!res.ok) throw new Error("Failed to create client");
       const data = await res.json();
       router.push(`/dashboard?client=${data.client.id}`);
+      window.location.reload();
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateSettings = async (fiscalYearStartMonth: number) => {
+    if (!activeClientId) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/clients", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: activeClientId, fiscalYearStartMonth })
+      });
+      if (!res.ok) throw new Error("Failed to update settings");
       window.location.reload();
     } catch (err: any) {
       setError(err.message);
@@ -249,11 +275,52 @@ export default function DashboardClient({
     );
   }
 
-  const activeClientName = clients.find(c => c.id === activeClientId)?.name;
+  const activeClient = clients.find(c => c.id === activeClientId);
+  const activeClientName = activeClient?.name;
+
+  if (showSettingsModal && activeClient) {
+    return (
+      <div className="flex items-center justify-center min-h-[70vh]">
+        <div className="w-full max-w-md bg-[#13131A] border border-white/10 p-8 rounded-2xl shadow-xl relative">
+          <button 
+            onClick={() => setShowSettingsModal(false)}
+            className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+          >
+            ✕
+          </button>
+          <TrendingDown className="w-12 h-12 text-cyan-400 mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Client Settings</h2>
+          <p className="text-sm text-slate-400 mb-6">Configure specific parameters for {activeClientName}.</p>
+          
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-slate-400 mb-2">Fiscal Year Starts In</label>
+            <select 
+              value={activeClient.fiscalYearStartMonth || 4}
+              onChange={(e) => handleUpdateSettings(parseInt(e.target.value))}
+              disabled={loading}
+              className="w-full bg-[#0A0A0C] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none disabled:opacity-50"
+            >
+              <option value={1}>January</option>
+              <option value={4}>April</option>
+            </select>
+            <p className="text-xs text-slate-500 mt-2">
+              Changes how Year-To-Date (YTD) and annual periods are calculated in the analytics engine.
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+             <button onClick={() => setShowSettingsModal(false)} className="flex-1 bg-white/5 hover:bg-white/10 text-white py-3 rounded-lg border border-white/10 transition-colors text-sm font-bold">
+               Close
+             </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const TopBar = () => (
     <div className="flex flex-col md:flex-row items-center justify-between mb-8 pb-6 border-b border-white/10 gap-4">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <select 
           value={activeClientId || ""}
           onChange={(e) => router.push(`/dashboard?client=${e.target.value}`)}
@@ -268,6 +335,22 @@ export default function DashboardClient({
         >
           <Plus className="w-5 h-5" />
         </button>
+        <button
+          onClick={() => setShowSettingsModal(true)}
+          className="bg-white/5 p-2 rounded-lg hover:bg-white/10 text-slate-300 transition-colors ml-2"
+          title="Client Settings"
+        >
+          <TrendingDown className="w-5 h-5" />
+        </button>
+        {records.length > 0 && (
+          <select 
+            value={selectedPeriod || ""}
+            onChange={(e) => setSelectedPeriod(e.target.value)}
+            className="bg-[#13131A] border border-cyan-500/30 text-cyan-400 font-bold text-sm px-4 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-cyan-500/10 transition-all ml-4"
+          >
+            {availablePeriods.map(p => <option key={p} value={p}>Period: {p}</option>)}
+          </select>
+        )}
         <select 
           value={displayCurrency}
           onChange={(e) => setDisplayCurrency(e.target.value)}
@@ -527,11 +610,36 @@ export default function DashboardClient({
   }
 
   // Dashboard Rendering if Records Exist
-  const latestRecord = records[records.length - 1];
+  const activeRecord = records.find(r => r.period === selectedPeriod) || records[records.length - 1];
 
-  const profitMargin = latestRecord.revenue ? ((latestRecord.netIncome / latestRecord.revenue) * 100).toFixed(1) : "0";
-  const currentRatio = latestRecord.currentLiabilities ? (latestRecord.currentAssets / latestRecord.currentLiabilities).toFixed(2) : "0";
-  const ebitdaMargin = latestRecord.revenue ? (((latestRecord.revenue - latestRecord.cogs - latestRecord.operatingExpenses) / latestRecord.revenue) * 100).toFixed(1) : "0";
+  // Calculate Fiscal Year Bounds
+  const fiscalStartMonth = activeClient?.fiscalYearStartMonth || 4;
+  const [selYearStr, selMonthStr] = (selectedPeriod || activeRecord.period).split('-');
+  const selYear = parseInt(selYearStr);
+  const selMonth = parseInt(selMonthStr);
+  
+  let fyStartYear = selYear;
+  if (selMonth < fiscalStartMonth) {
+    fyStartYear = selYear - 1;
+  }
+  
+  const fyPeriods: string[] = [];
+  let currYear = fyStartYear;
+  let currMonth = fiscalStartMonth;
+  for(let i=0; i<12; i++) {
+    fyPeriods.push(`${currYear}-${String(currMonth).padStart(2, '0')}`);
+    currMonth++;
+    if (currMonth > 12) {
+      currMonth = 1;
+      currYear++;
+    }
+  }
+
+  const fiscalFilteredRecords = records.filter(r => fyPeriods.includes(r.period));
+
+  const profitMargin = activeRecord.revenue ? ((activeRecord.netIncome / activeRecord.revenue) * 100).toFixed(1) : "0";
+  const currentRatio = activeRecord.currentLiabilities ? (activeRecord.currentAssets / activeRecord.currentLiabilities).toFixed(2) : "0";
+  const ebitdaMargin = activeRecord.revenue ? (((activeRecord.revenue - activeRecord.cogs - activeRecord.operatingExpenses) / activeRecord.revenue) * 100).toFixed(1) : "0";
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -557,7 +665,7 @@ export default function DashboardClient({
           </div>
           <div className="bg-[#13131A] border border-white/10 p-5 rounded-2xl hover:border-cyan-500/30 transition-colors">
             <p className="text-sm text-slate-400 font-medium mb-1">Total Equities</p>
-            <p className="text-3xl font-bold text-white">{formatMoney(latestRecord.totalEquity)}</p>
+            <p className="text-3xl font-bold text-white">{formatMoney(activeRecord.totalEquity)}</p>
           </div>
         </div>
       </section>
@@ -569,11 +677,11 @@ export default function DashboardClient({
         <section className="bg-[#13131A] border border-white/10 p-6 rounded-2xl flex flex-col">
           <div className="flex items-center gap-2 mb-6">
             <TrendingDown className="w-5 h-5 text-purple-400" />
-            <h2 className="text-xl font-bold text-white">Trend Analyzer</h2>
+            <h2 className="text-xl font-bold text-white">Trend Analyzer <span className="text-slate-500 font-normal text-sm ml-2">FY {fyPeriods[0]} to {fyPeriods[11]}</span></h2>
           </div>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <RechartsLineChart data={records} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+              <RechartsLineChart data={fiscalFilteredRecords} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                 <XAxis dataKey="period" stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatMoney(value, true)} />
@@ -594,7 +702,7 @@ export default function DashboardClient({
           </div>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={records.slice(-3)} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+              <BarChart data={fiscalFilteredRecords.slice(-3)} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                 <XAxis dataKey="period" stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis stroke="#ffffff50" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatMoney(value, true)} />
@@ -611,12 +719,12 @@ export default function DashboardClient({
 
       {/* Engine 3: Variance Analyzer */}
       <section className="bg-[#13131A] border border-white/10 p-6 rounded-2xl">
-        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <GitMerge className="w-5 h-5 text-emerald-400" />
             <h2 className="text-xl font-bold text-white">Variance Analyzer <span className="text-slate-500 font-normal text-sm ml-2">Budget vs Actuals</span></h2>
           </div>
-          <span className="bg-slate-800/50 text-slate-400 text-xs px-2 py-1 rounded">Source: {latestRecord.source}</span>
+          <span className="bg-slate-800/50 text-slate-400 text-xs px-2 py-1 rounded">Source: {activeRecord.source}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -629,7 +737,7 @@ export default function DashboardClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {records.slice(-4).reverse().map((record, i) => {
+              {fiscalFilteredRecords.slice(-4).reverse().map((record, i) => {
                 const varianceAmount = record.revenue - record.budgetedRevenue;
                 const variancePercent = record.budgetedRevenue ? ((varianceAmount / record.budgetedRevenue) * 100).toFixed(1) : 0;
                 const isPositive = varianceAmount >= 0;
