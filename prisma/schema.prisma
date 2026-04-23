@@ -24,6 +24,7 @@ model Client {
   userId           String
   apiKey               String            @default(cuid()) @unique
   fiscalYearStartMonth Int               @default(4) // 4 = April, 1 = January
+  baseCurrency         String            @default("USD")
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   financialRecords     FinancialRecord[]
   createdAt            DateTime          @default(now())

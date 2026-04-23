@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { 
@@ -13,7 +13,8 @@ import {
   GitMerge,
   WalletCards,
   Building2,
-  Plus
+  Plus,
+  Search
 } from "lucide-react";
 import {
   LineChart as RechartsLineChart,
@@ -59,6 +60,19 @@ export default function DashboardClient({
   );
   
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [clientSearchTerm, setClientSearchTerm] = useState("");
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
+
+  useEffect(() => {
+    fetch("https://api.exchangerate-api.com/v4/latest/USD")
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.rates) {
+          setExchangeRates(data.rates);
+        }
+      })
+      .catch(err => console.error("Failed to fetch exchange rates:", err));
+  }, []);
 
   const router = useRouter();
 
@@ -81,12 +95,22 @@ export default function DashboardClient({
 
   const formatMoney = (amount: number, compact = false) => {
     const locale = CURRENCY_LOCALES[displayCurrency] || 'en-US';
+    
+    let finalAmount = amount;
+    const activeClient = clients.find(c => c.id === activeClientId);
+    if (activeClient && activeClient.baseCurrency && activeClient.baseCurrency !== displayCurrency) {
+      const baseRate = exchangeRates[activeClient.baseCurrency] || 1;
+      const targetRate = exchangeRates[displayCurrency] || 1;
+      // Convert from base currency to target currency
+      finalAmount = amount * (targetRate / baseRate);
+    }
+
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: displayCurrency,
       maximumFractionDigits: 0,
       notation: compact ? "compact" : "standard"
-    }).format(amount);
+    }).format(finalAmount);
   };
 
   const handleCreateClient = async (e: React.FormEvent) => {
@@ -108,14 +132,14 @@ export default function DashboardClient({
     }
   };
 
-  const handleUpdateSettings = async (fiscalYearStartMonth: number) => {
+  const handleUpdateSettings = async (updates: { fiscalYearStartMonth?: number, baseCurrency?: string }) => {
     if (!activeClientId) return;
     setLoading(true);
     try {
       const res = await fetch("/api/clients", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: activeClientId, fiscalYearStartMonth })
+        body: JSON.stringify({ clientId: activeClientId, ...updates })
       });
       if (!res.ok) throw new Error("Failed to update settings");
       window.location.reload();
@@ -296,7 +320,7 @@ export default function DashboardClient({
             <label className="block text-sm font-medium text-slate-400 mb-2">Fiscal Year Starts In</label>
             <select 
               value={activeClient.fiscalYearStartMonth || 4}
-              onChange={(e) => handleUpdateSettings(parseInt(e.target.value))}
+              onChange={(e) => handleUpdateSettings({ fiscalYearStartMonth: parseInt(e.target.value) })}
               disabled={loading}
               className="w-full bg-[#0A0A0C] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none disabled:opacity-50"
             >
@@ -308,11 +332,82 @@ export default function DashboardClient({
             </p>
           </div>
 
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-slate-400 mb-2">Native Base Currency</label>
+            <select 
+              value={activeClient.baseCurrency || "USD"}
+              onChange={(e) => handleUpdateSettings({ baseCurrency: e.target.value })}
+              disabled={loading}
+              className="w-full bg-[#0A0A0C] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-cyan-500 focus:outline-none disabled:opacity-50"
+            >
+              {Object.keys(CURRENCY_LOCALES).map(currency => (
+                <option key={currency} value={currency}>{currency}</option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500 mt-2">
+              What currency is this client's raw data stored in? This enables live exchange rate conversion when viewing other currencies in the dashboard.
+            </p>
+          </div>
+
           <div className="flex gap-3">
              <button onClick={() => setShowSettingsModal(false)} className="flex-1 bg-white/5 hover:bg-white/10 text-white py-3 rounded-lg border border-white/10 transition-colors text-sm font-bold">
                Close
              </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!activeClientId && !showNewClient) {
+    const filteredClients = clients.filter(c => c.name.toLowerCase().includes(clientSearchTerm.toLowerCase()));
+
+    return (
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">Client Hub</h1>
+            <p className="text-slate-400">Select a client to view their financial analytics dashboard.</p>
+          </div>
+          <button 
+            onClick={() => setShowNewClient(true)}
+            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-2 px-6 rounded-lg transition-colors flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            New Client
+          </button>
+        </div>
+
+        <div className="relative">
+          <Search className="w-5 h-5 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
+          <input 
+            type="text"
+            placeholder="Search clients..."
+            value={clientSearchTerm}
+            onChange={(e) => setClientSearchTerm(e.target.value)}
+            className="w-full bg-[#13131A] border border-white/10 rounded-xl pl-12 pr-4 py-4 text-white focus:outline-none focus:border-cyan-500 transition-colors"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredClients.map(client => (
+            <button
+              key={client.id}
+              onClick={() => router.push(`/dashboard?client=${client.id}`)}
+              className="bg-[#13131A] border border-white/10 p-6 rounded-2xl hover:border-cyan-500/50 hover:bg-white/5 transition-all text-left flex flex-col group"
+            >
+              <div className="w-12 h-12 bg-cyan-500/10 text-cyan-400 rounded-xl flex items-center justify-center font-bold text-xl mb-4 group-hover:scale-110 transition-transform">
+                {client.name.substring(0, 2).toUpperCase()}
+              </div>
+              <h3 className="text-xl font-bold text-white mb-1 truncate w-full">{client.name}</h3>
+              <p className="text-sm text-slate-500 uppercase tracking-widest text-xs">Base: {client.baseCurrency}</p>
+            </button>
+          ))}
+          {filteredClients.length === 0 && (
+            <div className="col-span-full py-12 text-center border-2 border-dashed border-white/10 rounded-2xl">
+              <p className="text-slate-500">No clients found matching "{clientSearchTerm}".</p>
+            </div>
+          )}
         </div>
       </div>
     );

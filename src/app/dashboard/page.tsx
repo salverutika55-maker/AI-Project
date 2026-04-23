@@ -17,7 +17,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     orderBy: { createdAt: "desc" },
   });
 
-  const activeClientId = searchParams.client || (clients.length > 0 ? clients[0].id : null);
+  // Only select a client if it's explicitly in the URL
+  const activeClientId = searchParams.client || null;
 
   let records: any[] = [];
   if (activeClientId) {

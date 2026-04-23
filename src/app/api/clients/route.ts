@@ -46,10 +46,10 @@ export async function PUT(req: Request) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { clientId, fiscalYearStartMonth } = await req.json();
+    const { clientId, fiscalYearStartMonth, baseCurrency } = await req.json();
 
-    if (!clientId || !fiscalYearStartMonth) {
-      return NextResponse.json({ message: "Missing fields" }, { status: 400 });
+    if (!clientId) {
+      return NextResponse.json({ message: "Missing clientId" }, { status: 400 });
     }
 
     // Verify ownership
@@ -62,9 +62,13 @@ export async function PUT(req: Request) {
       return NextResponse.json({ message: "Unauthorized client access" }, { status: 403 });
     }
 
+    const updateData: any = {};
+    if (fiscalYearStartMonth) updateData.fiscalYearStartMonth = parseInt(fiscalYearStartMonth);
+    if (baseCurrency) updateData.baseCurrency = baseCurrency;
+
     const updatedClient = await prisma.client.update({
       where: { id: clientId },
-      data: { fiscalYearStartMonth: parseInt(fiscalYearStartMonth) }
+      data: updateData
     });
 
     return NextResponse.json({ message: "Settings updated", client: updatedClient }, { status: 200 });
