@@ -59,9 +59,12 @@ export async function POST(req: Request) {
     // Generate accurate months array based on selection
     const periods = generatePeriods(startPeriod, endPeriod);
     
-    // Clear old mock data if exists for this client to simulate fresh sync
+    // Clear old data for this client in the selected periods to avoid unique constraint conflicts
     await prisma.financialRecord.deleteMany({
-      where: { clientId: client.id, source },
+      where: { 
+        clientId: client.id, 
+        period: { in: periods }
+      },
     });
 
     // Create realistic trending data scalable by length
