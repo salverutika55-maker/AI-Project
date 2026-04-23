@@ -31,7 +31,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   const [showNewClient, setShowNewClient] = useState(clients.length === 0);
   const [newClientName, setNewClientName] = useState("");
   const [showIntegrations, setShowIntegrations] = useState(false);
-  const [displayCurrency, setDisplayCurrency] = useState("USD");
+  const [displayCurrency, setDisplayCurrency] = useState("INR");
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [showMIS, setShowMIS] = useState(false);
   const [misLoading, setMisLoading] = useState(false);
@@ -242,6 +242,11 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
             <select value={displayCurrency} onChange={(e) => setDisplayCurrency(e.target.value)} className="bg-[#13131A] border border-white/10 text-white font-medium text-sm px-3 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-white/5 transition-all ml-2">
               <option value="USD">USD ($)</option>
               <option value="INR">INR (₹)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="AUD">AUD ($)</option>
+              <option value="CAD">CAD ($)</option>
+              <option value="JPY">JPY (¥)</option>
             </select>
           </div>
           
