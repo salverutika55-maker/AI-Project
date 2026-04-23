@@ -186,6 +186,101 @@ export default async function Home() {
               </ul>
             </div>
 
+            {/* Tool 5 */}
+            <div className="group bg-[#13131A] border border-white/10 hover:border-cyan-500/50 rounded-2xl p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_40px_-15px_rgba(6,182,212,0.3)]">
+              <div className="bg-cyan-500/10 w-14 h-14 rounded-xl flex items-center justify-center mb-6 border border-cyan-500/20 group-hover:scale-110 transition-transform">
+                <BarChart3 className="w-7 h-7 text-cyan-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">KPI Dashboard</h3>
+              <p className="text-slate-400 mb-6 leading-relaxed">
+                Instant snapshot of your core metrics including Revenue, EBITDA, Net Profit, and Cash.
+              </p>
+              <ul className="space-y-3">
+                {['Real-time metrics', 'Conditional formatting', 'EBITDA calculations'].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-slate-300">
+                    <CheckCircle2 className="w-5 h-5 text-cyan-500 shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Tool 6 */}
+            <div className="group bg-[#13131A] border border-white/10 hover:border-amber-500/50 rounded-2xl p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_40px_-15px_rgba(245,158,11,0.3)]">
+              <div className="bg-amber-500/10 w-14 h-14 rounded-xl flex items-center justify-center mb-6 border border-amber-500/20 group-hover:scale-110 transition-transform">
+                <GitMerge className="w-7 h-7 text-amber-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">Working Capital Analyzer</h3>
+              <p className="text-slate-400 mb-6 leading-relaxed">
+                Track liquidity by analyzing Receivables (DSO), Payables (DPO), and Inventory Days.
+              </p>
+              <ul className="space-y-3">
+                {['Receivables Days (DSO)', 'Payables Days (DPO)', 'Inventory Lockup Days'].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-slate-300">
+                    <CheckCircle2 className="w-5 h-5 text-amber-500 shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Tool 7 */}
+            <div className="group bg-[#13131A] border border-white/10 hover:border-indigo-500/50 rounded-2xl p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_40px_-15px_rgba(99,102,241,0.3)]">
+              <div className="bg-indigo-500/10 w-14 h-14 rounded-xl flex items-center justify-center mb-6 border border-indigo-500/20 group-hover:scale-110 transition-transform">
+                <TrendingUp className="w-7 h-7 text-indigo-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">Auto MIS Report Generator</h3>
+              <p className="text-slate-400 mb-6 leading-relaxed">
+                Algorithmic engine that automatically generates management reports and commentary.
+              </p>
+              <ul className="space-y-3">
+                {['Executive Summaries', 'Highlights & Variance', 'One-click generation'].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-slate-300">
+                    <CheckCircle2 className="w-5 h-5 text-indigo-500 shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Tool 8 */}
+            <div className="group bg-[#13131A] border border-white/10 hover:border-pink-500/50 rounded-2xl p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_40px_-15px_rgba(236,72,153,0.3)]">
+              <div className="bg-pink-500/10 w-14 h-14 rounded-xl flex items-center justify-center mb-6 border border-pink-500/20 group-hover:scale-110 transition-transform">
+                <LineChart className="w-7 h-7 text-pink-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">Export & Sharing Tool</h3>
+              <p className="text-slate-400 mb-6 leading-relaxed">
+                Take your analytics offline with high-fidelity PDF and Excel raw data exports.
+              </p>
+              <ul className="space-y-3">
+                {['High-res PDF Snapshots', 'Excel/CSV Raw Data', 'Board-ready formatting'].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-slate-300">
+                    <CheckCircle2 className="w-5 h-5 text-pink-500 shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Tool 9 */}
+            <div className="group bg-[#13131A] border border-white/10 hover:border-rose-500/50 rounded-2xl p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_40px_-15px_rgba(244,63,94,0.3)]">
+              <div className="bg-rose-500/10 w-14 h-14 rounded-xl flex items-center justify-center mb-6 border border-rose-500/20 group-hover:scale-110 transition-transform">
+                <ShieldCheck className="w-7 h-7 text-rose-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">AI Anomaly Detector</h3>
+              <p className="text-slate-400 mb-6 leading-relaxed">
+                Automated scanning that alerts you to unusual spikes, deviations, and financial risks.
+              </p>
+              <ul className="space-y-3">
+                {['Revenue Swings', 'Cash Divergences', 'Unusual Expenses'].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-slate-300">
+                    <CheckCircle2 className="w-5 h-5 text-rose-500 shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
           </div>
         </div>
       </section>
