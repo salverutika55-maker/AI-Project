@@ -136,6 +136,9 @@ async function startBackgroundSync(config) {
             const rawCash = extractTrialBalance(parsedData, ["Cash-in-hand", "Bank Accounts"]);
             const rawCurrentAssets = extractTrialBalance(parsedData, ["Current Assets"]);
             const rawCurrentLiab = extractTrialBalance(parsedData, ["Current Liabilities", "Sundry Creditors", "Duties & Taxes"]);
+            const rawAR = extractTrialBalance(parsedData, ["Sundry Debtors", "Accounts Receivable"]);
+            const rawAP = extractTrialBalance(parsedData, ["Sundry Creditors", "Accounts Payable"]);
+            const rawInventory = extractTrialBalance(parsedData, ["Closing Stock", "Stock-in-hand", "Inventory"]);
 
             const finalRevenue = rawRevenue > 0 ? rawRevenue : 0;
             const finalCOGS = rawCOGS > 0 ? rawCOGS : 0;
@@ -156,7 +159,10 @@ async function startBackgroundSync(config) {
                 totalEquity: rawCurrentAssets - rawCurrentLiab,
                 operatingCashFlow: netIncome * 0.8,
                 cashBalance: rawCash,
-                burnRate: finalOpEx * 1.2
+                burnRate: finalOpEx * 1.2,
+                accountsReceivable: rawAR,
+                accountsPayable: rawAP,
+                inventory: rawInventory
             });
 
             console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue}`);

@@ -56,6 +56,11 @@ model FinancialRecord {
   cashBalance        Float    @default(0)
   burnRate           Float    @default(0)
 
+  // Working Capital
+  accountsReceivable Float    @default(0)
+  accountsPayable    Float    @default(0)
+  inventory          Float    @default(0)
+
   // Budget
   budgetedRevenue    Float    @default(0)
   budgetedExpenses   Float    @default(0)
