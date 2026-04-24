@@ -135,7 +135,7 @@ async function startBackgroundSync(config) {
             const rawOpEx = extractTrialBalance(parsedData, ["Indirect Expenses", "Operating Expenses"]);
             const rawCash = extractTrialBalance(parsedData, ["Cash-in-hand", "Bank Accounts"]);
             const rawCurrentAssets = extractTrialBalance(parsedData, ["Current Assets"]);
-            const rawCurrentLiab = extractTrialBalance(parsedData, ["Current Liabilities", "Sundry Creditors", "Duties & Taxes"]);
+            const rawCurrentLiab = extractTrialBalance(parsedData, ["Current Liabilities"]);
             const rawAR = extractTrialBalance(parsedData, ["Sundry Debtors", "Accounts Receivable"]);
             const rawAP = extractTrialBalance(parsedData, ["Sundry Creditors", "Accounts Payable"]);
             const rawInventory = extractTrialBalance(parsedData, ["Closing Stock", "Stock-in-hand", "Inventory"]);
