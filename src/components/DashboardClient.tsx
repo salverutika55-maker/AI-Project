@@ -467,7 +467,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                       <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10B981" stopOpacity={0}/></linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" interval={0} tick={{fill: '#ffffff50', fontSize: 10}} />
                     <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} tickFormatter={(v) => formatMoney(v, true)} />
                     <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => formatMoney(v)} />
                     <Area type="monotone" name="Sales" dataKey="revenue" stroke="#10B981" fillOpacity={1} fill="url(#colorRev)" />
@@ -486,7 +486,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                       <linearGradient id="colorCogs" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/><stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/></linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" interval={0} tick={{fill: '#ffffff50', fontSize: 10}} />
                     <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} tickFormatter={(v) => formatMoney(v, true)} />
                     <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => formatMoney(v)} />
                     <Area type="monotone" name="COGS" dataKey="cogs" stroke="#F59E0B" fillOpacity={1} fill="url(#colorCogs)" />
@@ -502,7 +502,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsLineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" interval={0} tick={{fill: '#ffffff50', fontSize: 10}} />
                     <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
                     <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => `${v} days`} />
                     <Line type="monotone" name="DSO" dataKey="dsoTrend" stroke="#06B6D4" strokeWidth={3} dot={{r: 3, fill: '#06B6D4'}} />
@@ -518,7 +518,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsLineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" interval={0} tick={{fill: '#ffffff50', fontSize: 10}} />
                     <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
                     <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => `${v} days`} />
                     <Line type="monotone" name="DPO" dataKey="dpoTrend" stroke="#8B5CF6" strokeWidth={3} dot={{r: 3, fill: '#8B5CF6'}} />

@@ -80,6 +80,37 @@ async function startBackgroundSync(config) {
     return total;
   }
 
+  function extractTrialBalanceMovement(parsedData, keywords) {
+    let total = 0;
+    if (!parsedData || !parsedData.ENVELOPE) return 0;
+    const names = parsedData.ENVELOPE.DSPACCNAME || [];
+    const infos = parsedData.ENVELOPE.DSPACCINFO || [];
+    const nameArr = Array.isArray(names) ? names : [names];
+    const infoArr = Array.isArray(infos) ? infos : [infos];
+
+    nameArr.forEach((nameObj, idx) => {
+      if (!nameObj || !nameObj.DSPDISPNAME) return;
+      const name = String(nameObj.DSPDISPNAME).toLowerCase();
+      const match = keywords.some(kw => name.includes(kw.toLowerCase()));
+      if (match) {
+        const info = infoArr[idx];
+        if (info) {
+           let drAmtStr = info.DSPTOTDRAMT && info.DSPTOTDRAMT.DSPTOTDRAMTA ? info.DSPTOTDRAMT.DSPTOTDRAMTA : null;
+           let crAmtStr = info.DSPTOTCRAMT && info.DSPTOTCRAMT.DSPTOTCRAMTA ? info.DSPTOTCRAMT.DSPTOTCRAMTA : null;
+           if (drAmtStr) {
+             const amt = parseFloat(String(drAmtStr).replace(/[^0-9.-]+/g, ""));
+             if (!isNaN(amt)) total += Math.abs(amt);
+           }
+           if (crAmtStr) {
+             const amt = parseFloat(String(crAmtStr).replace(/[^0-9.-]+/g, ""));
+             if (!isNaN(amt)) total += Math.abs(amt);
+           }
+        }
+      }
+    });
+    return total;
+  }
+
   async function performSync() {
     console.log(`[AGENT] Executing Sync at ${new Date().toISOString()}`);
     
@@ -130,9 +161,9 @@ async function startBackgroundSync(config) {
 
             const parsedData = await parser.parseStringPromise(tallyResponse.data);
 
-            const rawRevenue = extractTrialBalance(parsedData, ["Sales Accounts", "Direct Incomes", "Revenue"]);
-            const rawCOGS = extractTrialBalance(parsedData, ["Purchase Accounts", "Direct Expenses", "Cost of Goods", "Opening Stock"]);
-            const rawOpEx = extractTrialBalance(parsedData, ["Indirect Expenses", "Operating Expenses"]);
+            const rawRevenue = extractTrialBalanceMovement(parsedData, ["Sales Accounts", "Direct Incomes", "Revenue"]);
+            const rawCOGS = extractTrialBalanceMovement(parsedData, ["Purchase Accounts", "Direct Expenses", "Cost of Goods", "Opening Stock"]);
+            const rawOpEx = extractTrialBalanceMovement(parsedData, ["Indirect Expenses", "Operating Expenses"]);
             const rawCash = extractTrialBalance(parsedData, ["Cash-in-hand", "Bank Accounts"]);
             const rawCurrentAssets = extractTrialBalance(parsedData, ["Current Assets"]);
             const rawCurrentLiab = extractTrialBalance(parsedData, ["Current Liabilities"]);
