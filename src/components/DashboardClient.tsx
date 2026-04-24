@@ -286,25 +286,34 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   const invDays = (activeRecord.inventory && adjustedCOGS > 0) ? ((activeRecord.inventory / (adjustedCOGS / 365))).toFixed(0) : "N/A";
   const currentRatio = activeRecord.currentLiabilities && activeRecord.currentLiabilities > 0 ? (activeRecord.currentAssets / activeRecord.currentLiabilities).toFixed(2) : "N/A";
 
-  const chartData = records.sort((a: any, b: any) => a.period.localeCompare(b.period)).map((r: any) => {
-    let monthName = r.period;
-    if (r.period && r.period.includes('-')) {
-      const [yearStr, monthStr] = r.period.split("-");
-      const year = parseInt(yearStr);
-      const month = parseInt(monthStr);
-      const date = new Date(year, month - 1, 1);
-      const mName = date.toLocaleString('default', { month: 'short' });
-      
-      if (fyType === "Apr-Mar") {
-        if (month <= 3) {
-          monthName = `${mName} (FY${(year-1).toString().slice(2)}-${year.toString().slice(2)})`;
-        } else {
-          monthName = `${mName} (FY${year.toString().slice(2)}-${(year+1).toString().slice(2)})`;
-        }
-      } else {
-        monthName = `${mName} (FY${year.toString().slice(2)})`;
-      }
+  const selYear = parseInt(selectedYear);
+  const selMonth = parseInt(selectedMonth);
+
+  let startYear = selYear;
+  let endYear = selYear;
+  
+  if (fyType === "Apr-Mar") {
+    if (selMonth < 4) {
+      startYear = selYear - 1;
+    } else {
+      startYear = selYear;
     }
+    endYear = startYear + 1;
+  }
+
+  const expectedPeriods: string[] = [];
+  if (fyType === "Apr-Mar") {
+    for (let m = 4; m <= 12; m++) expectedPeriods.push(`${startYear}-${String(m).padStart(2, '0')}`);
+    for (let m = 1; m <= 3; m++) expectedPeriods.push(`${endYear}-${String(m).padStart(2, '0')}`);
+  } else {
+    for (let m = 1; m <= 12; m++) expectedPeriods.push(`${startYear}-${String(m).padStart(2, '0')}`);
+  }
+
+  const chartData = expectedPeriods.map((period) => {
+    const r = records.find((rec: any) => rec.period === period) || { period };
+    const [yStr, mStr] = period.split("-");
+    const date = new Date(parseInt(yStr), parseInt(mStr) - 1, 1);
+    const monthName = date.toLocaleString('default', { month: 'short' });
 
     const hasRev = r.revenue && r.revenue > 0;
     const recDSO = (r.accountsReceivable && hasRev) ? ((r.accountsReceivable / r.revenue) * 365) : 0;
@@ -315,7 +324,9 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
     return {
       ...r,
       periodLabel: monthName,
-      profitMargin: ((r.netIncome / (r.revenue || 1)) * 100).toFixed(1),
+      revenue: r.revenue || 0,
+      cogs: r.cogs || 0,
+      profitMargin: r.revenue ? ((r.netIncome / r.revenue) * 100).toFixed(1) : "0.0",
       workingCapital: (r.currentAssets || 0) - (r.currentLiabilities || 0),
       dsoTrend: parseFloat(recDSO.toFixed(0)),
       dpoTrend: parseFloat(recDPO.toFixed(0))
