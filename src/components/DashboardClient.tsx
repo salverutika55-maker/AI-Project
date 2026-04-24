@@ -23,7 +23,10 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
     setRecords(initialRecords);
     const newAvailablePeriods = Array.from(new Set(initialRecords.map((r: any) => r.period))).sort();
     if (newAvailablePeriods.length > 0) {
-      setSelectedPeriod(newAvailablePeriods[newAvailablePeriods.length - 1]);
+      const latest = newAvailablePeriods[newAvailablePeriods.length - 1];
+      const [y, m] = latest.split('-');
+      setSelectedYear(y);
+      setSelectedMonth(m);
     }
   }, [initialRecords]);
 
@@ -39,7 +42,9 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   const [misReport, setMisReport] = useState<any>(null);
   
   const availablePeriods = Array.from(new Set(records.map((r: any) => r.period))).sort();
-  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>("04");
+  const [selectedYear, setSelectedYear] = useState<string>("2026");
+  const [fyType, setFyType] = useState<string>("Apr-Mar");
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
 
   useEffect(() => {
@@ -266,7 +271,8 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
     );
   }
 
-  const activeRecord = records.find((r: any) => r.period === selectedPeriod) || records[records.length - 1];
+  const targetPeriod = `${selectedYear}-${selectedMonth}`;
+  const activeRecord = records.find((r: any) => r.period === targetPeriod) || records[records.length - 1] || {};
 
   // Tool 3: Ratio Calculations
   const hasRevenue = activeRecord.revenue && activeRecord.revenue > 0;
@@ -282,10 +288,22 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
 
   const chartData = records.sort((a: any, b: any) => a.period.localeCompare(b.period)).map((r: any) => {
     let monthName = r.period;
-    if (r.period.includes('-')) {
-      const [year, month] = r.period.split("-");
-      const date = new Date(parseInt(year), parseInt(month) - 1, 1);
-      monthName = date.toLocaleString('default', { month: 'short' }) + " '" + year.substring(2);
+    if (r.period && r.period.includes('-')) {
+      const [yearStr, monthStr] = r.period.split("-");
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr);
+      const date = new Date(year, month - 1, 1);
+      const mName = date.toLocaleString('default', { month: 'short' });
+      
+      if (fyType === "Apr-Mar") {
+        if (month <= 3) {
+          monthName = `${mName} (FY${(year-1).toString().slice(2)}-${year.toString().slice(2)})`;
+        } else {
+          monthName = `${mName} (FY${year.toString().slice(2)}-${(year+1).toString().slice(2)})`;
+        }
+      } else {
+        monthName = `${mName} (FY${year.toString().slice(2)})`;
+      }
     }
 
     const hasRev = r.revenue && r.revenue > 0;
@@ -298,7 +316,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
       ...r,
       periodLabel: monthName,
       profitMargin: ((r.netIncome / (r.revenue || 1)) * 100).toFixed(1),
-      workingCapital: r.currentAssets - r.currentLiabilities,
+      workingCapital: (r.currentAssets || 0) - (r.currentLiabilities || 0),
       dsoTrend: parseFloat(recDSO.toFixed(0)),
       dpoTrend: parseFloat(recDPO.toFixed(0))
     };
@@ -317,8 +335,20 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
             <button onClick={() => setShowIntegrations(true)} className="bg-cyan-500/10 p-2 rounded-lg hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all flex items-center gap-2">
               <Zap className="w-4 h-4" /> <span className="text-xs font-bold uppercase tracking-wider">Sync Data</span>
             </button>
-            <select value={selectedPeriod || ""} onChange={(e) => setSelectedPeriod(e.target.value)} className="bg-[#13131A] border border-cyan-500/30 text-cyan-400 font-bold text-sm px-4 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-cyan-500/10 transition-all ml-4">
-              {availablePeriods.map((p: any) => <option key={p} value={p}>Period: {p}</option>)}
+            <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-[#13131A] border border-cyan-500/30 text-cyan-400 font-bold text-sm px-4 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-cyan-500/10 transition-all ml-4">
+              {[
+                { val: "01", label: "Jan" }, { val: "02", label: "Feb" }, { val: "03", label: "Mar" },
+                { val: "04", label: "Apr" }, { val: "05", label: "May" }, { val: "06", label: "Jun" },
+                { val: "07", label: "Jul" }, { val: "08", label: "Aug" }, { val: "09", label: "Sep" },
+                { val: "10", label: "Oct" }, { val: "11", label: "Nov" }, { val: "12", label: "Dec" }
+              ].map((m) => <option key={m.val} value={m.val}>{m.label}</option>)}
+            </select>
+            <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="bg-[#13131A] border border-cyan-500/30 text-cyan-400 font-bold text-sm px-4 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-cyan-500/10 transition-all ml-2">
+              {Array.from({ length: 31 }, (_, i) => 2000 + i).map((y) => <option key={y} value={y.toString()}>{y}</option>)}
+            </select>
+            <select value={fyType} onChange={(e) => setFyType(e.target.value)} className="bg-[#13131A] border border-purple-500/30 text-purple-400 font-bold text-sm px-4 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-purple-500 hover:bg-purple-500/10 transition-all ml-2">
+              <option value="Apr-Mar">FY: Apr - Mar</option>
+              <option value="Jan-Dec">FY: Jan - Dec</option>
             </select>
             <select value={displayCurrency} onChange={(e) => setDisplayCurrency(e.target.value)} className="bg-[#13131A] border border-white/10 text-white font-medium text-sm px-3 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-white/5 transition-all ml-2">
               <option value="USD">USD ($)</option>
@@ -414,46 +444,78 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
 
         {/* TOOL 3: TREND ANALYZER & RATIO ENGINE */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            {/* Sales & COGS Trend */}
+          <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Sales Trend */}
             <div className="bg-[#13131A] border border-white/5 rounded-2xl p-6">
-              <h3 className="text-lg font-bold text-white mb-6">Monthly Sales & COGS Trend</h3>
-              <div className="h-[250px] w-full">
+              <h3 className="text-lg font-bold text-white mb-6">Monthly Sales Trend</h3>
+              <div className="h-[200px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10B981" stopOpacity={0}/></linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
+                    <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} tickFormatter={(v) => formatMoney(v, true)} />
+                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => formatMoney(v)} />
+                    <Area type="monotone" name="Sales" dataKey="revenue" stroke="#10B981" fillOpacity={1} fill="url(#colorRev)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* COGS Trend */}
+            <div className="bg-[#13131A] border border-white/5 rounded-2xl p-6">
+              <h3 className="text-lg font-bold text-white mb-6">Monthly COGS Trend</h3>
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs>
                       <linearGradient id="colorCogs" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/><stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/></linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} />
-                    <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} tickFormatter={(v) => formatMoney(v, true)} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
+                    <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} tickFormatter={(v) => formatMoney(v, true)} />
                     <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => formatMoney(v)} />
-                    <Legend wrapperStyle={{ fontSize: '12px', color: '#ffffff80' }} />
-                    <Area type="monotone" name="Sales (Revenue)" dataKey="revenue" stroke="#10B981" fillOpacity={1} fill="url(#colorRev)" />
                     <Area type="monotone" name="COGS" dataKey="cogs" stroke="#F59E0B" fillOpacity={1} fill="url(#colorCogs)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* DSO & DPO Trend */}
+            {/* DSO Trend */}
             <div className="bg-[#13131A] border border-white/5 rounded-2xl p-6">
-              <h3 className="text-lg font-bold text-white mb-6">Monthly DSO & DPO Trend (Days)</h3>
-              <div className="h-[250px] w-full">
+              <h3 className="text-lg font-bold text-white mb-6">Monthly DSO Trend</h3>
+              <div className="h-[200px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsLineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} />
-                    <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
+                    <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
                     <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => `${v} days`} />
-                    <Legend wrapperStyle={{ fontSize: '12px', color: '#ffffff80' }} />
-                    <Line type="monotone" name="DSO (Receivables)" dataKey="dsoTrend" stroke="#06B6D4" strokeWidth={3} dot={{r: 4, fill: '#06B6D4'}} />
-                    <Line type="monotone" name="DPO (Payables)" dataKey="dpoTrend" stroke="#8B5CF6" strokeWidth={3} dot={{r: 4, fill: '#8B5CF6'}} />
+                    <Line type="monotone" name="DSO" dataKey="dsoTrend" stroke="#06B6D4" strokeWidth={3} dot={{r: 3, fill: '#06B6D4'}} />
                   </RechartsLineChart>
                 </ResponsiveContainer>
               </div>
             </div>
+
+            {/* DPO Trend */}
+            <div className="bg-[#13131A] border border-white/5 rounded-2xl p-6">
+              <h3 className="text-lg font-bold text-white mb-6">Monthly DPO Trend</h3>
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
+                    <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
+                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => `${v} days`} />
+                    <Line type="monotone" name="DPO" dataKey="dpoTrend" stroke="#8B5CF6" strokeWidth={3} dot={{r: 3, fill: '#8B5CF6'}} />
+                  </RechartsLineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
           </div>
 
           <div className="bg-[#13131A] border border-white/5 rounded-2xl p-6">
