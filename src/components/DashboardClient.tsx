@@ -268,12 +268,11 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
 
   const activeRecord = records.find((r: any) => r.period === selectedPeriod) || records[records.length - 1];
 
-  // Tool 3: Working Capital Calculations
-  const avgRevPerDay = (activeRecord.revenue || 1) / 30;
-  const avgCogsPerDay = (activeRecord.cogs || 1) / 30;
-  const dso = activeRecord.accountsReceivable ? (activeRecord.accountsReceivable / avgRevPerDay).toFixed(0) : "N/A";
-  const dpo = activeRecord.accountsPayable ? (activeRecord.accountsPayable / avgCogsPerDay).toFixed(0) : "N/A";
-  const invDays = activeRecord.inventory ? (activeRecord.inventory / avgCogsPerDay).toFixed(0) : "N/A";
+  // Tool 3: Ratio Calculations
+  const dso = activeRecord.accountsReceivable ? ((activeRecord.accountsReceivable / (activeRecord.revenue || 1)) * 365).toFixed(0) : "N/A";
+  const dpo = activeRecord.accountsPayable ? ((activeRecord.accountsPayable / (activeRecord.cogs || 1)) * 365).toFixed(0) : "N/A";
+  const invDays = activeRecord.inventory ? ((activeRecord.inventory / ((activeRecord.cogs || 1) / 365))).toFixed(0) : "N/A";
+  const currentRatio = activeRecord.currentLiabilities ? (activeRecord.currentAssets / activeRecord.currentLiabilities).toFixed(2) : "N/A";
 
   const chartData = records.sort((a: any, b: any) => a.period.localeCompare(b.period)).map((r: any) => ({
     ...r,
@@ -412,7 +411,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
           </div>
 
           <div className="bg-[#13131A] border border-white/5 rounded-2xl p-6">
-            <h3 className="text-lg font-bold text-white mb-6">Working Capital Analyzer</h3>
+            <h3 className="text-lg font-bold text-white mb-6">Financial Ratio Engine</h3>
             <div className="space-y-6">
               <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                 <div className="flex justify-between items-center mb-2">
@@ -441,8 +440,17 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                   <div className="bg-amber-500 h-full" style={{ width: `${Math.min(Number(invDays) || 0, 100)}%` }} />
                 </div>
               </div>
+              <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium text-slate-400">Current Ratio</span>
+                  <span className="text-xl font-black text-emerald-400">{currentRatio} <span className="text-sm font-normal text-slate-500">x</span></span>
+                </div>
+                <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden">
+                  <div className="bg-emerald-500 h-full" style={{ width: `${(Math.min(Number(currentRatio) || 0, 4) / 4) * 100}%` }} />
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-slate-500 mt-6 text-center">Lower DSO and Inventory Days improve cash flow. Higher DPO retains cash longer.</p>
+            <p className="text-xs text-slate-500 mt-6 text-center">Lower DSO and Inventory Days improve cash flow. Target Current Ratio is ~2.0.</p>
           </div>
         </div>
 
