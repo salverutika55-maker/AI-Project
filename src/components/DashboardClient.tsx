@@ -280,11 +280,29 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   const invDays = (activeRecord.inventory && adjustedCOGS > 0) ? ((activeRecord.inventory / (adjustedCOGS / 365))).toFixed(0) : "N/A";
   const currentRatio = activeRecord.currentLiabilities && activeRecord.currentLiabilities > 0 ? (activeRecord.currentAssets / activeRecord.currentLiabilities).toFixed(2) : "N/A";
 
-  const chartData = records.sort((a: any, b: any) => a.period.localeCompare(b.period)).map((r: any) => ({
-    ...r,
-    profitMargin: ((r.netIncome / (r.revenue || 1)) * 100).toFixed(1),
-    workingCapital: r.currentAssets - r.currentLiabilities
-  }));
+  const chartData = records.sort((a: any, b: any) => a.period.localeCompare(b.period)).map((r: any) => {
+    let monthName = r.period;
+    if (r.period.includes('-')) {
+      const [year, month] = r.period.split("-");
+      const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+      monthName = date.toLocaleString('default', { month: 'short' }) + " '" + year.substring(2);
+    }
+
+    const hasRev = r.revenue && r.revenue > 0;
+    const recDSO = (r.accountsReceivable && hasRev) ? ((r.accountsReceivable / r.revenue) * 365) : 0;
+    
+    const adjCOGS = (r.cogs || 0) - (r.inventory || 0);
+    const recDPO = (r.accountsPayable && adjCOGS > 0) ? ((r.accountsPayable / adjCOGS) * 365) : 0;
+
+    return {
+      ...r,
+      periodLabel: monthName,
+      profitMargin: ((r.netIncome / (r.revenue || 1)) * 100).toFixed(1),
+      workingCapital: r.currentAssets - r.currentLiabilities,
+      dsoTrend: parseFloat(recDSO.toFixed(0)),
+      dpoTrend: parseFloat(recDPO.toFixed(0))
+    };
+  });
 
   return (
     <div className="min-h-screen bg-[#0A0A0C] p-6 lg:p-8" ref={dashboardRef}>
@@ -394,25 +412,47 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
           ))}
         </div>
 
-        {/* TOOL 3: WORKING CAPITAL ANALYZER & TRENDS */}
+        {/* TOOL 3: TREND ANALYZER & RATIO ENGINE */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-[#13131A] border border-white/5 rounded-2xl p-6">
-            <h3 className="text-lg font-bold text-white mb-6">Revenue vs Net Profit Trend</h3>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10B981" stopOpacity={0}/></linearGradient>
-                    <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#06B6D4" stopOpacity={0.3}/><stop offset="95%" stopColor="#06B6D4" stopOpacity={0}/></linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                  <XAxis dataKey="period" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} />
-                  <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} tickFormatter={(v) => formatMoney(v, true)} />
-                  <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => formatMoney(v)} />
-                  <Area type="monotone" dataKey="revenue" stroke="#10B981" fillOpacity={1} fill="url(#colorRev)" />
-                  <Area type="monotone" dataKey="netIncome" stroke="#06B6D4" fillOpacity={1} fill="url(#colorInc)" />
-                </AreaChart>
-              </ResponsiveContainer>
+          <div className="lg:col-span-2 space-y-6">
+            {/* Sales & COGS Trend */}
+            <div className="bg-[#13131A] border border-white/5 rounded-2xl p-6">
+              <h3 className="text-lg font-bold text-white mb-6">Monthly Sales & COGS Trend</h3>
+              <div className="h-[250px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10B981" stopOpacity={0}/></linearGradient>
+                      <linearGradient id="colorCogs" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/><stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/></linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} />
+                    <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} tickFormatter={(v) => formatMoney(v, true)} />
+                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => formatMoney(v)} />
+                    <Legend wrapperStyle={{ fontSize: '12px', color: '#ffffff80' }} />
+                    <Area type="monotone" name="Sales (Revenue)" dataKey="revenue" stroke="#10B981" fillOpacity={1} fill="url(#colorRev)" />
+                    <Area type="monotone" name="COGS" dataKey="cogs" stroke="#F59E0B" fillOpacity={1} fill="url(#colorCogs)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* DSO & DPO Trend */}
+            <div className="bg-[#13131A] border border-white/5 rounded-2xl p-6">
+              <h3 className="text-lg font-bold text-white mb-6">Monthly DSO & DPO Trend (Days)</h3>
+              <div className="h-[250px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                    <XAxis dataKey="periodLabel" stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} />
+                    <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 12}} />
+                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => `${v} days`} />
+                    <Legend wrapperStyle={{ fontSize: '12px', color: '#ffffff80' }} />
+                    <Line type="monotone" name="DSO (Receivables)" dataKey="dsoTrend" stroke="#06B6D4" strokeWidth={3} dot={{r: 4, fill: '#06B6D4'}} />
+                    <Line type="monotone" name="DPO (Payables)" dataKey="dpoTrend" stroke="#8B5CF6" strokeWidth={3} dot={{r: 4, fill: '#8B5CF6'}} />
+                  </RechartsLineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
