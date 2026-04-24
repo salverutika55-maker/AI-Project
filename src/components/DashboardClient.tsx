@@ -270,7 +270,12 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
 
   // Tool 3: Ratio Calculations
   const dso = activeRecord.accountsReceivable ? ((activeRecord.accountsReceivable / (activeRecord.revenue || 1)) * 365).toFixed(0) : "N/A";
-  const dpo = activeRecord.accountsPayable ? ((activeRecord.accountsPayable / (activeRecord.cogs || 1)) * 365).toFixed(0) : "N/A";
+  
+  // DPO = [Sundry Creditors / (Opening Stock + Purchase - Closing Stock)] * 365
+  // In our DB: accountsPayable = Sundry Creditors, cogs = Opening Stock + Purchase, inventory = Closing Stock
+  const adjustedCOGS = (activeRecord.cogs || 0) - (activeRecord.inventory || 0);
+  const dpo = activeRecord.accountsPayable ? ((activeRecord.accountsPayable / (adjustedCOGS || 1)) * 365).toFixed(0) : "N/A";
+  
   const invDays = activeRecord.inventory ? ((activeRecord.inventory / ((activeRecord.cogs || 1) / 365))).toFixed(0) : "N/A";
   const currentRatio = activeRecord.currentLiabilities ? (activeRecord.currentAssets / activeRecord.currentLiabilities).toFixed(2) : "N/A";
 
