@@ -4,19 +4,21 @@ import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
 
 export async function GET(
   req: Request,
-  { params }: { params: { provider: string } }
+  { params }: { params: Promise<{ provider: string }> }
 ) {
-  const { searchParams } = new URL(req.url);
+  const { provider: providerParam } = await params;
+  const { searchParams, host, protocol } = new URL(req.url);
   const code = searchParams.get("code");
   const internalClientId = searchParams.get("state");
-  const provider = params.provider.toUpperCase();
+  const provider = providerParam.toUpperCase();
 
   if (!code || !internalClientId) {
     return NextResponse.json({ error: "Authorization failed" }, { status: 400 });
   }
 
   const config = OAUTH_CONFIGS[provider];
-  const redirectUri = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/oauth/${params.provider}/callback`;
+  const baseUrl = process.env.NEXTAUTH_URL || `${protocol}//${host}`;
+  const redirectUri = `${baseUrl}/api/oauth/${providerParam}/callback`;
 
   try {
     // Exchange code for tokens
@@ -48,10 +50,11 @@ export async function GET(
     });
 
     // Redirect back to dashboard with success
-    return NextResponse.redirect(`${process.env.NEXTAUTH_URL || "http://localhost:3000"}/dashboard?client=${internalClientId}&sync=success`);
+    return NextResponse.redirect(`${baseUrl}/dashboard?client=${internalClientId}&sync=success`);
 
   } catch (error: any) {
     console.error(`OAuth Callback Error (${provider}):`, error);
-    return NextResponse.redirect(`${process.env.NEXTAUTH_URL || "http://localhost:3000"}/dashboard?error=${encodeURIComponent(error.message)}`);
+    const baseUrl = process.env.NEXTAUTH_URL || `${protocol}//${host}`;
+    return NextResponse.redirect(`${baseUrl}/dashboard?error=${encodeURIComponent(error.message)}`);
   }
 }

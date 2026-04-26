@@ -3,12 +3,13 @@ import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
 
 export async function GET(
   req: Request,
-  { params }: { params: { provider: string } }
+  { params }: { params: Promise<{ provider: string }> }
 ) {
   try {
+    const { provider: providerParam } = await params;
     const { searchParams, host, protocol } = new URL(req.url);
     const internalClientId = searchParams.get("clientId");
-    const provider = params.provider.toUpperCase();
+    const provider = providerParam.toUpperCase();
 
     const config = OAUTH_CONFIGS[provider];
 
