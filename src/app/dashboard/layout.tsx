@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LineChart, LayoutDashboard, LogOut, FilePlus } from "lucide-react";
+import { LineChart, LayoutDashboard, LogOut, FilePlus, Factory, Briefcase, ArrowRightLeft } from "lucide-react";
 
 export default async function DashboardLayout({
   children,
@@ -37,6 +37,22 @@ export default async function DashboardLayout({
                 Admin Panel
               </Link>
             )}
+            
+            <div className="pt-4 mt-2 mb-2">
+              <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">P&L Sectors</p>
+              <Link href="#" className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors font-medium">
+                <Factory className="w-5 h-5" />
+                Manufacturing P&L
+              </Link>
+              <Link href="#" className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors font-medium">
+                <Briefcase className="w-5 h-5" />
+                Service P&L
+              </Link>
+              <Link href="#" className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors font-medium">
+                <ArrowRightLeft className="w-5 h-5" />
+                Trading P&L
+              </Link>
+            </div>
           </nav>
         </div>
         <div className="p-4 border-t border-white/5">
