@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { name } = await req.json();
+    const { name, software } = await req.json();
 
     if (!name || name.trim() === "") {
       return NextResponse.json({ message: "Client Name is required" }, { status: 400 });
@@ -27,6 +27,7 @@ export async function POST(req: Request) {
     const newClient = await prisma.client.create({
       data: {
         name: name.trim(),
+        software: software || "TALLY",
         userId: user.id,
       },
     });
