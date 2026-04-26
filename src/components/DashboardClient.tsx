@@ -269,7 +269,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                   <span className="text-sm text-slate-500 text-center px-4">Download .exe to connect Tally Prime</span>
                 </a>
               ) : (
-                <button onClick={() => { setLoading(true); setTimeout(() => { setLoading(false); alert("OAuth Connection Successful! FinAnalyzer is now linked to " + activeClient?.software); setShowIntegrations(false); }, 1500) }} className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all text-white group cursor-pointer md:col-span-2">
+                <button onClick={() => { setLoading(true); window.location.href = `/api/oauth/${activeClient?.software?.toLowerCase()}?clientId=${activeClientId}`; }} className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all text-white group cursor-pointer md:col-span-2">
                   <div className="w-12 h-12 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-xl"><Link2 className="w-6 h-6" /></div>
                   <span className="font-semibold tracking-wide text-lg">Connect to {activeClient?.software}</span>
                   <span className="text-sm text-cyan-400/80 text-center px-4">Click to authenticate securely via OAuth2</span>
