@@ -76,7 +76,7 @@ export default async function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
             </span>
-            FinAnalyzer Engine 2.0 is Live
+            FinAnalyzer Engine 2.0 is Live • Created by Rutika Salve
           </div>
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-white mb-8 max-w-4xl mx-auto leading-[1.1]">
             Master your metrics. <br className="hidden md:block"/> Elevate your enterprise.
@@ -405,7 +405,7 @@ export default async function Home() {
           </div>
           <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-slate-500 text-sm">
-              © {new Date().getFullYear()} FinAnalyzer. All rights reserved.
+              © {new Date().getFullYear()} FinAnalyzer. All rights reserved. | <span className="text-cyan-400/80">Created by Rutika Salve</span>
             </p>
             <div className="flex gap-4">
               <div className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 transition-colors cursor-pointer" />
