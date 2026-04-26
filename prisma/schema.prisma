@@ -18,6 +18,15 @@ model User {
   createdAt        DateTime          @default(now())
 }
 
+enum AccountingSoftware {
+  TALLY
+  ZOHO
+  ODOO
+  SAP
+  QUICKBOOKS
+  XERO
+}
+
 model Client {
   id               String            @id @default(cuid())
   name             String
@@ -25,6 +34,8 @@ model Client {
   apiKey               String            @default(cuid()) @unique
   fiscalYearStartMonth Int               @default(4) // 4 = April, 1 = January
   baseCurrency         String            @default("USD")
+  software             AccountingSoftware @default(TALLY)
+  oauthToken           String?
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   financialRecords     FinancialRecord[]
   handshakeCodes       HandshakeCode[]

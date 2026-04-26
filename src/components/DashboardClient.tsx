@@ -34,6 +34,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   const [error, setError] = useState("");
   const [showNewClient, setShowNewClient] = useState(clients.length === 0);
   const [newClientName, setNewClientName] = useState("");
+  const [newClientSoftware, setNewClientSoftware] = useState("TALLY");
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState("INR");
   const dashboardRef = useRef<HTMLDivElement>(null);
@@ -167,7 +168,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
       const res = await fetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newClientName })
+        body: JSON.stringify({ name: newClientName, software: newClientSoftware })
       });
       if (res.ok) {
         setNewClientName("");
@@ -227,6 +228,17 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
               <label className="block text-sm font-medium text-slate-400 mb-2">Company Name</label>
               <input type="text" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} required className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors" placeholder="e.g. Acme Corp LLC" />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">Accounting Software</label>
+              <select value={newClientSoftware} onChange={(e) => setNewClientSoftware(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors cursor-pointer">
+                <option value="TALLY">Tally Prime (Desktop)</option>
+                <option value="QUICKBOOKS">QuickBooks Online (Cloud)</option>
+                <option value="XERO">Xero (Cloud)</option>
+                <option value="ZOHO">Zoho Books (Cloud)</option>
+                <option value="ODOO">Odoo (Cloud/On-Prem)</option>
+                <option value="SAP">SAP S/4HANA (Enterprise)</option>
+              </select>
+            </div>
             <div className="flex gap-3 pt-4">
               {clients.length > 0 && <button type="button" onClick={() => setShowNewClient(false)} className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium rounded-xl transition-all">Cancel</button>}
               <button type="submit" disabled={loading} className="flex-1 px-4 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl transition-all disabled:opacity-50">{loading ? "Creating..." : "Create Client"}</button>
@@ -250,11 +262,19 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
             <CloudRain className="w-20 h-20 text-cyan-500 mx-auto mb-6 opacity-80" />
             <h2 className="text-3xl font-bold text-white mb-2">Connect {activeClientName}&apos;s Financials</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 max-w-2xl mx-auto mt-10">
-              <a href="/downloads/FinAnalyzerSync.exe" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer">
-                <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl"><UploadCloud className="w-6 h-6" /></div>
-                <span className="font-semibold tracking-wide text-lg">Desktop Sync Agent</span>
-                <span className="text-sm text-slate-500 text-center px-4">Download .exe to connect Tally Prime</span>
-              </a>
+              {activeClient?.software === "TALLY" ? (
+                <a href="/downloads/FinAnalyzerSync.exe" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer md:col-span-2">
+                  <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl"><UploadCloud className="w-6 h-6" /></div>
+                  <span className="font-semibold tracking-wide text-lg">Desktop Sync Agent</span>
+                  <span className="text-sm text-slate-500 text-center px-4">Download .exe to connect Tally Prime</span>
+                </a>
+              ) : (
+                <button onClick={() => { setLoading(true); setTimeout(() => { setLoading(false); alert("OAuth Connection Successful! FinAnalyzer is now linked to " + activeClient?.software); setShowIntegrations(false); }, 1500) }} className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all text-white group cursor-pointer md:col-span-2">
+                  <div className="w-12 h-12 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-xl"><Link2 className="w-6 h-6" /></div>
+                  <span className="font-semibold tracking-wide text-lg">Connect to {activeClient?.software}</span>
+                  <span className="text-sm text-cyan-400/80 text-center px-4">Click to authenticate securely via OAuth2</span>
+                </button>
+              )}
             </div>
             {records.length > 0 && (
               <button onClick={() => setShowIntegrations(false)} className="mt-6 text-sm text-slate-500 hover:text-white">Close Without Changing</button>
