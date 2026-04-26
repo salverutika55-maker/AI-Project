@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ provider: string }> }
 ) {
   const { provider: providerParam } = await params;
-  const { searchParams, host, protocol } = new URL(req.url);
+  const { searchParams, origin } = new URL(req.url);
   const code = searchParams.get("code");
   const internalClientId = searchParams.get("state");
   const provider = providerParam.toUpperCase();
@@ -17,7 +17,7 @@ export async function GET(
   }
 
   const config = OAUTH_CONFIGS[provider];
-  const baseUrl = process.env.NEXTAUTH_URL || `${protocol}//${host}`;
+  const baseUrl = process.env.NEXTAUTH_URL || origin;
   const redirectUri = `${baseUrl}/api/oauth/${providerParam}/callback`;
 
   try {
@@ -54,7 +54,8 @@ export async function GET(
 
   } catch (error: any) {
     console.error(`OAuth Callback Error (${provider}):`, error);
-    const baseUrl = process.env.NEXTAUTH_URL || `${protocol}//${host}`;
+    const { origin } = new URL(req.url);
+    const baseUrl = process.env.NEXTAUTH_URL || origin;
     return NextResponse.redirect(`${baseUrl}/dashboard?error=${encodeURIComponent(error.message)}`);
   }
 }

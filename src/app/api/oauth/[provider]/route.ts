@@ -30,8 +30,9 @@ export async function GET(
     }
 
     // Dynamically determine the base URL (handles Vercel and local)
-    const baseUrl = process.env.NEXTAUTH_URL || `${protocol}//${host}`;
-    const redirectUri = `${baseUrl}/api/oauth/${params.provider}/callback`;
+    const { origin } = new URL(req.url);
+    const baseUrl = process.env.NEXTAUTH_URL || origin;
+    const redirectUri = `${baseUrl}/api/oauth/${providerParam}/callback`;
     
     const authUrl = new URL(config.authUrl);
     authUrl.searchParams.append("client_id", config.clientId);
