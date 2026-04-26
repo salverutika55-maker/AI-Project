@@ -40,15 +40,15 @@ export default async function DashboardLayout({
             
             <div className="pt-4 mt-2 mb-2">
               <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">P&L Sectors</p>
-              <Link href="#" className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors font-medium">
+              <Link href="/dashboard/manufacturing" className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors font-medium">
                 <Factory className="w-5 h-5" />
                 Manufacturing P&L
               </Link>
-              <Link href="#" className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors font-medium">
+              <Link href="/dashboard/service" className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors font-medium">
                 <Briefcase className="w-5 h-5" />
                 Service P&L
               </Link>
-              <Link href="#" className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors font-medium">
+              <Link href="/dashboard/trading" className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors font-medium">
                 <ArrowRightLeft className="w-5 h-5" />
                 Trading P&L
               </Link>
