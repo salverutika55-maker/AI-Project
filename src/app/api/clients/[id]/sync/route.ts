@@ -55,34 +55,34 @@ export async function POST(
     const orgId = orgsData.organizations?.[0]?.organization_id;
 
     if (!orgId) throw new Error("No Zoho organization found");
+    const orgName = orgsData.organizations?.[0]?.name;
 
-    // 3. Fetch Trial Balance for the current year
-    // We'll fetch the last 12 months of data
+    // 3. Fetch Profit and Loss for the current month
     const now = new Date();
-    const records = [];
-
-    // Simple implementation: Fetch one Trial Balance report
-    // For a more complex dashboard, we would fetch monthly movements
-    const tbRes = await fetch(`https://books.zoho.in/api/v3/reports/trialbalance?organization_id=${orgId}`, {
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    
+    const plRes = await fetch(`https://books.zoho.in/api/v3/reports/profitandloss?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
     });
-    const tbData = await tbRes.json();
+    const plData = await plRes.json();
 
-    // Map Zoho account types to our schema
-    // This is a simplified mapping for demonstration
-    let revenue = 0;
-    let cogs = 0;
-    let expenses = 0;
-    let assets = 0;
-    let liabilities = 0;
-
-    tbData.trialbalance?.trialbalance_details?.forEach((acc: any) => {
-      if (acc.account_type === "income") revenue += acc.net_credit_total - acc.net_debit_total;
-      if (acc.account_type === "expense") expenses += acc.net_debit_total - acc.net_credit_total;
-      if (acc.account_type === "cost_of_goods_sold") cogs += acc.net_debit_total - acc.net_credit_total;
-      if (["fixed_asset", "other_asset", "bank", "cash"].includes(acc.account_type)) assets += acc.net_debit_total - acc.net_credit_total;
-      if (["other_current_liability", "long_term_liability"].includes(acc.account_type)) liabilities += acc.net_credit_total - acc.net_debit_total;
+    // Fetch Balance Sheet for Assets/Liabilities
+    const bsRes = await fetch(`https://books.zoho.in/api/v3/reports/balancesheet?organization_id=${orgId}&date=${lastDay}`, {
+      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
     });
+    const bsData = await bsRes.json();
+
+    // Map Zoho Report Data
+    // Note: Zoho P&L returns income/expense groups
+    const revenue = plData.profitandloss?.income_accounts?.total_income || 0;
+    const cogs = plData.profitandloss?.cost_of_goods_sold_accounts?.total_cost_of_goods_sold || 0;
+    const expenses = plData.profitandloss?.expense_accounts?.total_expense || 0;
+    const netIncome = plData.profitandloss?.net_profit || 0;
+
+    const assets = bsData.balancesheet?.asset_accounts?.total_assets || 0;
+    const liabilities = bsData.balancesheet?.liability_accounts?.total_liabilities || 0;
+    const cash = bsData.balancesheet?.asset_accounts?.total_cash_and_bank || 0;
 
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
@@ -95,10 +95,11 @@ export async function POST(
         revenue,
         cogs,
         operatingExpenses: expenses,
-        netIncome: revenue - cogs - expenses,
+        netIncome,
         totalAssets: assets,
         currentLiabilities: liabilities,
-        source: "Zoho Books"
+        cashBalance: cash,
+        source: `Zoho: ${orgName}`
       },
       create: {
         clientId: id,
@@ -106,14 +107,19 @@ export async function POST(
         revenue,
         cogs,
         operatingExpenses: expenses,
-        netIncome: revenue - cogs - expenses,
+        netIncome,
         totalAssets: assets,
         currentLiabilities: liabilities,
-        source: "Zoho Books"
+        cashBalance: cash,
+        source: `Zoho: ${orgName}`
       }
     });
 
-    return NextResponse.json({ success: true, message: "Data synced from Zoho Books" });
+    return NextResponse.json({ 
+      success: true, 
+      message: `Synced ${orgName} for ${period}`,
+      details: { revenue, expenses, netIncome }
+    });
 
   } catch (error: any) {
     console.error("Sync Error:", error);
