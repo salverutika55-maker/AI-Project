@@ -48,7 +48,7 @@ export async function POST(
     }
 
     // 2. Fetch Organizations (to get org_id)
-    const orgsRes = await fetch("https://www.zoho.in/books/api/v3/organizations", {
+    const orgsRes = await fetch("https://books.zoho.in/api/v3/organizations", {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
     });
     const orgsData = await orgsRes.json();
@@ -63,7 +63,7 @@ export async function POST(
 
     // Simple implementation: Fetch one Trial Balance report
     // For a more complex dashboard, we would fetch monthly movements
-    const tbRes = await fetch(`https://www.zoho.in/books/api/v3/reports/trialbalance?organization_id=${orgId}`, {
+    const tbRes = await fetch(`https://books.zoho.in/api/v3/reports/trialbalance?organization_id=${orgId}`, {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
     });
     const tbData = await tbRes.json();
