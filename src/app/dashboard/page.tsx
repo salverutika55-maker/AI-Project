@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import DashboardClient from "@/components/DashboardClient";
 
@@ -10,7 +11,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const session = await getServerSession(authOptions);
 
   if (!session || !session.user?.email) {
-    return null; // NextAuth will handle the redirect if configured, but let's be safe
+    redirect("/login");
   }
 
   const user = await prisma.user.findUnique({
