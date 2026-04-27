@@ -47,15 +47,22 @@ export async function POST(
       });
     }
 
-    // 2. Fetch Organizations (to get org_id)
+    // 2. Fetch Organizations
     const orgsRes = await fetch("https://books.zoho.in/api/v3/organizations", {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
     });
     const orgsData = await orgsRes.json();
-    const orgId = orgsData.organizations?.[0]?.organization_id;
+    
+    // Find the org that matches our client name, or fallback to first one
+    const matchingOrg = orgsData.organizations?.find((o: any) => 
+      o.name.toLowerCase().includes(client.name.toLowerCase()) || 
+      client.name.toLowerCase().includes(o.name.toLowerCase())
+    ) || orgsData.organizations?.[0];
 
-    if (!orgId) throw new Error("No Zoho organization found");
-    const orgName = orgsData.organizations?.[0]?.name;
+    const orgId = matchingOrg?.organization_id;
+    const orgName = matchingOrg?.name;
+
+    if (!orgId) throw new Error("No Zoho organization found. Checked: " + JSON.stringify(orgsData.organizations?.map((o:any)=>o.name)));
 
     // 3. Fetch Profit and Loss for the current month
     const now = new Date();
@@ -75,14 +82,16 @@ export async function POST(
 
     // Map Zoho Report Data
     // Note: Zoho P&L returns income/expense groups
-    const revenue = plData.profitandloss?.income_accounts?.total_income || 0;
-    const cogs = plData.profitandloss?.cost_of_goods_sold_accounts?.total_cost_of_goods_sold || 0;
-    const expenses = plData.profitandloss?.expense_accounts?.total_expense || 0;
-    const netIncome = plData.profitandloss?.net_profit || 0;
+    const pl = plData.profitandloss || {};
+    const revenue = (pl.income_accounts?.total_income || 0) + (pl.operating_income_accounts?.total_operating_income || 0);
+    const cogs = (pl.cost_of_goods_sold_accounts?.total_cost_of_goods_sold || 0);
+    const expenses = (pl.expense_accounts?.total_expense || 0) + (pl.operating_expense_accounts?.total_operating_expense || 0);
+    const netIncome = pl.net_profit || 0;
 
-    const assets = bsData.balancesheet?.asset_accounts?.total_assets || 0;
-    const liabilities = bsData.balancesheet?.liability_accounts?.total_liabilities || 0;
-    const cash = bsData.balancesheet?.asset_accounts?.total_cash_and_bank || 0;
+    const bs = bsData.balancesheet || {};
+    const assets = bs.asset_accounts?.total_assets || 0;
+    const liabilities = bs.liability_accounts?.total_liabilities || 0;
+    const cash = bs.asset_accounts?.total_cash_and_bank || 0;
 
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
