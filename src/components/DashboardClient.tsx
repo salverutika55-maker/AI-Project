@@ -18,21 +18,16 @@ import jsPDF from "jspdf";
 
 export default function DashboardClient({ initialRecords, clients, activeClientId }: any) {
   const [records, setRecords] = useState(initialRecords);
+  const [syncSuccess, setSyncSuccess] = useState(false);
   
   useEffect(() => {
     // Handle success/error messages from OAuth
     const params = new URLSearchParams(window.location.search);
     if (params.get("sync") === "success") {
-      setShowIntegrations(true); // Show the modal automatically so they see the "Success" state
-      alert("FinAnalyzer connected successfully! You can now sync your live data.");
-      // Clean up URL
-      router.replace('/dashboard?client=' + activeClientId);
+      setShowIntegrations(true); 
+      setSyncSuccess(true);
     }
-    if (params.get("error")) {
-      alert("Connection failed: " + params.get("error"));
-      router.replace('/dashboard?client=' + activeClientId);
-    }
-  }, [activeClientId, router]);
+  }, []);
 
   useEffect(() => {
     setRecords(initialRecords);
@@ -289,6 +284,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                     <div className="p-8 rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-center">
                       <div className="w-12 h-12 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-bold text-xl mx-auto mb-4"><Zap className="w-6 h-6" /></div>
                       <h3 className="text-xl font-bold text-white mb-2">{activeClient?.software} Linked Successfully!</h3>
+                      {syncSuccess && <div className="bg-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm mb-4">Connection established! You can now sync.</div>}
                       <p className="text-sm text-emerald-400/80 mb-6">FinAnalyzer is securely connected to your live {activeClient?.software} account.</p>
                       
                       <button 
