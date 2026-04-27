@@ -15,8 +15,8 @@ export const OAUTH_CONFIGS: Record<string, any> = {
     clientSecret: process.env.XERO_CLIENT_SECRET,
   },
   ZOHO: {
-    authUrl: "https://accounts.zoho.com/oauth/v2/auth",
-    tokenUrl: "https://accounts.zoho.com/oauth/v2/token",
+    authUrl: "https://accounts.zoho.in/oauth/v2/auth",
+    tokenUrl: "https://accounts.zoho.in/oauth/v2/token",
     scopes: ["ZohoBooks.fullaccess.READ"],
     clientId: process.env.ZOHO_CLIENT_ID,
     clientSecret: process.env.ZOHO_CLIENT_SECRET,

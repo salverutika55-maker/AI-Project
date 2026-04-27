@@ -56,6 +56,7 @@ export async function GET(
     console.error(`OAuth Callback Error (${provider}):`, error);
     const { origin } = new URL(req.url);
     const baseUrl = process.env.NEXTAUTH_URL || origin;
-    return NextResponse.redirect(`${baseUrl}/dashboard?error=${encodeURIComponent(error.message)}`);
+    const clientParam = internalClientId ? `&client=${internalClientId}` : '';
+    return NextResponse.redirect(`${baseUrl}/dashboard?error=${encodeURIComponent(error.message)}${clientParam}`);
   }
 }

@@ -19,6 +19,7 @@ import jsPDF from "jspdf";
 export default function DashboardClient({ initialRecords, clients, activeClientId }: any) {
   const [records, setRecords] = useState(initialRecords);
   const [syncSuccess, setSyncSuccess] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   
   useEffect(() => {
     // Handle success/error messages from OAuth
@@ -26,6 +27,10 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
     if (params.get("sync") === "success") {
       setShowIntegrations(true); 
       setSyncSuccess(true);
+    }
+    if (params.get("error")) {
+      setSyncError(params.get("error"));
+      setShowIntegrations(true);
     }
   }, []);
 
@@ -217,6 +222,12 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center border border-white/10 group-hover:border-cyan-500/30 transition-colors">
                   <span className="text-xl font-bold text-white">{client.name.charAt(0)}</span>
                 </div>
+                {client.oauthToken && (
+                  <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Linked</span>
+                  </div>
+                )}
               </div>
               <h3 className="text-xl font-bold text-white mb-2">{client.name}</h3>
               <p className="text-slate-500 text-sm">Access Financial Dashboard &rarr;</p>
@@ -285,6 +296,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                       <div className="w-12 h-12 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-bold text-xl mx-auto mb-4"><Zap className="w-6 h-6" /></div>
                       <h3 className="text-xl font-bold text-white mb-2">{activeClient?.software} Linked Successfully!</h3>
                       {syncSuccess && <div className="bg-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm mb-4">Connection established! You can now sync.</div>}
+                      {syncError && <div className="bg-red-500/20 text-red-400 p-3 rounded-lg text-sm mb-4 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {syncError}</div>}
                       <p className="text-sm text-emerald-400/80 mb-6">FinAnalyzer is securely connected to your live {activeClient?.software} account.</p>
                       
                       <button 
