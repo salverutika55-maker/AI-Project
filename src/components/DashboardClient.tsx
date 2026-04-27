@@ -20,6 +20,21 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   const [records, setRecords] = useState(initialRecords);
   
   useEffect(() => {
+    // Handle success/error messages from OAuth
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("sync") === "success") {
+      setShowIntegrations(true); // Show the modal automatically so they see the "Success" state
+      alert("FinAnalyzer connected successfully! You can now sync your live data.");
+      // Clean up URL
+      router.replace('/dashboard?client=' + activeClientId);
+    }
+    if (params.get("error")) {
+      alert("Connection failed: " + params.get("error"));
+      router.replace('/dashboard?client=' + activeClientId);
+    }
+  }, [activeClientId, router]);
+
+  useEffect(() => {
     setRecords(initialRecords);
     const newAvailablePeriods = Array.from(new Set(initialRecords.map((r: any) => r.period))).sort();
     if (newAvailablePeriods.length > 0) {
@@ -269,11 +284,41 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                   <span className="text-sm text-slate-500 text-center px-4">Download .exe to connect Tally Prime</span>
                 </a>
               ) : (
-                <button onClick={() => { setLoading(true); window.location.href = `/api/oauth/${activeClient?.software?.toLowerCase()}?clientId=${activeClientId}`; }} className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all text-white group cursor-pointer md:col-span-2">
-                  <div className="w-12 h-12 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-xl"><Link2 className="w-6 h-6" /></div>
-                  <span className="font-semibold tracking-wide text-lg">Connect to {activeClient?.software}</span>
-                  <span className="text-sm text-cyan-400/80 text-center px-4">Click to authenticate securely via OAuth2</span>
-                </button>
+                <div className="md:col-span-2 space-y-4">
+                  {activeClient?.oauthToken ? (
+                    <div className="p-8 rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-center">
+                      <div className="w-12 h-12 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-bold text-xl mx-auto mb-4"><Zap className="w-6 h-6" /></div>
+                      <h3 className="text-xl font-bold text-white mb-2">{activeClient?.software} Linked Successfully!</h3>
+                      <p className="text-sm text-emerald-400/80 mb-6">FinAnalyzer is securely connected to your live {activeClient?.software} account.</p>
+                      
+                      <button 
+                        onClick={() => {
+                          setLoading(true);
+                          // This will call the actual sync API we'll build next
+                          alert("Syncing live data from " + activeClient?.software + "... This may take a minute.");
+                          setTimeout(() => { setLoading(false); setShowIntegrations(false); }, 3000);
+                        }}
+                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <RefreshCw className="w-5 h-5" />
+                        Sync Live Actual Data
+                      </button>
+                      
+                      <button 
+                        onClick={() => { window.location.href = `/api/oauth/${activeClient?.software?.toLowerCase()}?clientId=${activeClientId}`; }}
+                        className="mt-4 text-xs text-slate-500 hover:text-white underline"
+                      >
+                        Reconnect or change account
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setLoading(true); window.location.href = `/api/oauth/${activeClient?.software?.toLowerCase()}?clientId=${activeClientId}`; }} className="w-full flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all text-white group cursor-pointer">
+                      <div className="w-12 h-12 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-xl"><Link2 className="w-6 h-6" /></div>
+                      <span className="font-semibold tracking-wide text-lg">Connect to {activeClient?.software}</span>
+                      <span className="text-sm text-cyan-400/80 text-center px-4">Click to authenticate securely via OAuth2</span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
             {records.length > 0 && (
