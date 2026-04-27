@@ -9,8 +9,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const params = await searchParams;
   const session = await getServerSession(authOptions);
 
+  if (!session || !session.user?.email) {
+    return null; // NextAuth will handle the redirect if configured, but let's be safe
+  }
+
   const user = await prisma.user.findUnique({
-    where: { email: session?.user?.email as string },
+    where: { email: session.user.email },
   });
 
   let whereClause = {};
