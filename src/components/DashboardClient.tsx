@@ -300,16 +300,28 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                       <p className="text-sm text-emerald-400/80 mb-6">FinAnalyzer is securely connected to your live {activeClient?.software} account.</p>
                       
                       <button 
-                        onClick={() => {
+                        onClick={async () => {
                           setLoading(true);
-                          // This will call the actual sync API we'll build next
-                          alert("Syncing live data from " + activeClient?.software + "... This may take a minute.");
-                          setTimeout(() => { setLoading(false); setShowIntegrations(false); }, 3000);
+                          try {
+                            const res = await fetch(`/api/clients/${activeClientId}/sync`, { method: "POST" });
+                            const data = await res.json();
+                            if (res.ok) {
+                              setSyncSuccess(true);
+                              alert("Sync Complete! Your Zoho data has been updated.");
+                              window.location.reload(); // Refresh to show new data
+                            } else {
+                              alert("Sync failed: " + data.error);
+                            }
+                          } catch (err) {
+                            alert("An error occurred during sync.");
+                          }
+                          setLoading(false);
                         }}
-                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                        disabled={loading}
+                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                       >
-                        <RefreshCw className="w-5 h-5" />
-                        Sync Live Actual Data
+                        <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                        {loading ? "Syncing..." : "Sync Live Actual Data"}
                       </button>
                       
                       <button 
