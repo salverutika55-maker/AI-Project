@@ -15,10 +15,6 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const { searchParams } = new URL(req.url, "http://localhost"); // Fallback for origin
-  // Wait, Next.js Layouts don't have access to searchParams directly in 15+?
-  // Actually, they don't. I need to use the headers to get the URL.
-
 
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-slate-200 flex flex-col md:flex-row">
