@@ -1,16 +1,88 @@
-import React from 'react';
-import { Briefcase } from 'lucide-react';
+import { prisma } from "@/lib/prisma";
+import SectorDashboard from "@/components/SectorDashboard";
+import { Briefcase } from "lucide-react";
 
-export default function ServicePage() {
+export default async function ServicePage({ searchParams }: { searchParams: Promise<{ client?: string }> }) {
+  const params = await searchParams;
+  const clients = await prisma.client.findMany({
+    orderBy: { name: "asc" }
+  });
+
+  const activeClientId = params.client || null;
+
+  const sections = [
+    {
+      name: "Revenue from Operation",
+      items: [
+        "Service Revenue (Primary income)", 
+        "Consulting / Professional Fees", 
+        "Maintenance / AMC Income", 
+        "Commission Income", 
+        "Other Operating Income", 
+        "Less : Commission",
+        "Total Revenue"
+      ],
+      isBold: true
+    },
+    {
+      name: "Direct Expenses",
+      items: [
+        "Salaries - Service Staff / Engineers / Consultants", 
+        "Freelance / Contract Charges", 
+        "Project Expenses", 
+        "Travel & Conveyance (Service-related)", 
+        "Consumables / Tools Used", 
+        "Site Expenses", 
+        "Subcontracting Charges", 
+        "Other Direct Expense"
+      ]
+    },
+    {
+      name: "Gross Profit",
+      items: ["Gross Profit"],
+      isBold: true,
+      isSubtotal: true
+    },
+    {
+      name: "Indirect Income",
+      items: ["Interest on Fixed Deposit"]
+    },
+    {
+      name: "Indirect Expenses",
+      items: [
+        "Administrative Expenses", "Sales & Advertisement Expenses", 
+        "Director Remuneration", "Office Staff Salary", 
+        "Repairs & Maintenance - Office", "Travelling Expenses", 
+        "Legal & Professional Fees", "Other Exp",
+        "Total Indirect Expenses"
+      ],
+      isBold: true
+    },
+    {
+      name: "EBITDA",
+      items: ["Earnings Before Interest Taxes & Amortization"],
+      isBold: true,
+      isSubtotal: true
+    },
+    {
+      name: "Financials",
+      items: ["Interest Expense", "Depreciation"]
+    },
+    {
+      name: "Final Result",
+      items: ["Net Profit Before Tax"],
+      isBold: true,
+      isTotal: true
+    }
+  ];
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-      <div className="w-20 h-20 bg-cyan-500/10 border border-cyan-500/20 rounded-full flex items-center justify-center mb-6">
-        <Briefcase className="w-10 h-10 text-cyan-400" />
-      </div>
-      <h1 className="text-3xl font-bold text-white mb-4">Service P&L</h1>
-      <p className="text-slate-400 max-w-lg mx-auto">
-        This section will contain the specialized Profit & Loss formats and analytics specifically tailored for the Service sector. It is currently under development.
-      </p>
-    </div>
+    <SectorDashboard 
+      title="Service" 
+      icon={Briefcase} 
+      sections={sections} 
+      activeClientId={activeClientId || undefined}
+      clients={clients}
+    />
   );
 }
