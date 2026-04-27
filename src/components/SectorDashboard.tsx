@@ -1,15 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { 
-  Factory, Briefcase, ArrowRightLeft, Download, FileText, FileSpreadsheet, 
-  ChevronRight, ChevronLeft, Calendar, LayoutDashboard, Calculator
+  Factory, Briefcase, ArrowRightLeft, Download, LayoutDashboard 
 } from "lucide-react";
-import Link from "next/link";
 
 interface SectorDashboardProps {
   title: string;
-  icon: any;
+  type: "manufacturing" | "trading" | "service";
   sections: {
     name: string;
     items: string[];
@@ -21,11 +20,13 @@ interface SectorDashboardProps {
   clients: any[];
 }
 
-export default function SectorDashboard({ title, icon: Icon, sections, activeClientId, clients }: SectorDashboardProps) {
+export default function SectorDashboard({ title, type, sections, activeClientId, clients }: SectorDashboardProps) {
+  const router = useRouter();
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
 
   const activeClient = clients.find(c => c.id === activeClientId);
+  const Icon = type === "manufacturing" ? Factory : type === "trading" ? ArrowRightLeft : Briefcase;
 
   const getMonths = () => {
     if (fyType === "APR_MAR") {
@@ -48,9 +49,22 @@ export default function SectorDashboard({ title, icon: Icon, sections, activeCli
             </div>
             <div>
               <h1 className="text-3xl font-black text-white">{title} Sector P&L</h1>
-              <p className="text-slate-500 text-sm font-medium flex items-center gap-2">
-                <LayoutDashboard className="w-3 h-3" /> {activeClient?.name || "Select a client to view actuals"}
-              </p>
+              <div className="flex items-center gap-2">
+                <select 
+                  value={activeClientId || ""} 
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    const path = window.location.pathname;
+                    router.push(`${path}?client=${id}`);
+                  }}
+                  className="bg-transparent text-cyan-400 text-sm font-bold border-none focus:ring-0 p-0 cursor-pointer hover:text-cyan-300 transition-colors"
+                >
+                  <option value="" disabled className="bg-[#13131A]">Select Client</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id} className="bg-[#13131A] text-white">{c.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
