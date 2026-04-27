@@ -80,7 +80,7 @@ export default async function ManufacturingPage({ searchParams }: { searchParams
   return (
     <SectorDashboard 
       title="Manufacturing" 
-      icon={Factory} 
+      type="manufacturing" 
       sections={sections} 
       activeClientId={activeClientId || undefined}
       clients={clients}

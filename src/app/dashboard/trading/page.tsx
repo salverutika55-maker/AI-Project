@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import SectorDashboard from "@/components/SectorDashboard";
-import { ArrowRightLeft } from "lucide-react";
 
 export default async function TradingPage({ searchParams }: { searchParams: Promise<{ client?: string }> }) {
   const params = await searchParams;
@@ -73,7 +72,7 @@ export default async function TradingPage({ searchParams }: { searchParams: Prom
   return (
     <SectorDashboard 
       title="Trading" 
-      icon={ArrowRightLeft} 
+      type="trading" 
       sections={sections} 
       activeClientId={activeClientId || undefined}
       clients={clients}

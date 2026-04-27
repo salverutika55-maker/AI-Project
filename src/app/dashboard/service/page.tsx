@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import SectorDashboard from "@/components/SectorDashboard";
-import { Briefcase } from "lucide-react";
 
 export default async function ServicePage({ searchParams }: { searchParams: Promise<{ client?: string }> }) {
   const params = await searchParams;
@@ -79,7 +78,7 @@ export default async function ServicePage({ searchParams }: { searchParams: Prom
   return (
     <SectorDashboard 
       title="Service" 
-      icon={Briefcase} 
+      type="service" 
       sections={sections} 
       activeClientId={activeClientId || undefined}
       clients={clients}
