@@ -370,10 +370,19 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                         onClick={async () => {
                           setLoading(true);
                           try {
+                            const baseUrl = window.location.origin;
                             // Step 1: Fetch Data
-                            const dataRes = await fetch(`/api/clients/${activeClientId}/sync/data`, { method: "POST" });
+                            console.log("Starting Sync for client:", activeClientId);
+                            const dataRes = await fetch(`${baseUrl}/api/clients/${activeClientId}/sync/data`, { 
+                              method: "POST",
+                              headers: { "Cache-Control": "no-cache" }
+                            }).catch(e => {
+                              console.error("Network Error:", e);
+                              throw new Error("Network connection lost or blocked. Please check your internet.");
+                            });
+
                             if (!dataRes.ok) {
-                              const errData = await dataRes.json().catch(() => ({ error: "Failed to fetch data from Zoho" }));
+                              const errData = await dataRes.json().catch(() => ({ error: "Server responded with an error" }));
                               throw new Error(errData.error || "Failed to fetch data from Zoho");
                             }
                             const { accounts, mappings } = await dataRes.json();
