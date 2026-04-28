@@ -56,15 +56,24 @@ export async function POST(
       });
     }
 
-    // 2. Fetch Zoho Organization
-    const orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
-      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
-    });
-    const orgsData = await orgsRes.json();
-    const orgId = orgsData.organizations?.[0]?.organization_id;
-    if (!orgId) throw new Error("No Zoho organization found");
+    // 2. Fetch Zoho Organization (Cache it in tokens to save time next sync)
+    let orgId = tokens.organization_id;
+    if (!orgId) {
+      const orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
+        headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+      });
+      const orgsData = await orgsRes.json();
+      orgId = orgsData.organizations?.[0]?.organization_id;
+      if (!orgId) throw new Error("No Zoho organization found");
+      
+      // Update tokens with orgId for future use
+      await prisma.client.update({
+        where: { id },
+        data: { oauthToken: JSON.stringify({ ...tokens, ...newTokens, organization_id: orgId }) },
+      });
+    }
 
-    // 3. Fetch Trial Balance (Current Month for now)
+    // 3. Fetch Trial Balance (Current Month)
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
