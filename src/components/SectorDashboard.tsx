@@ -3,8 +3,9 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { 
-  Factory, Briefcase, ArrowRightLeft, Download 
+  Factory, Briefcase, ArrowRightLeft, Download, Settings2, Link2 
 } from "lucide-react";
+import PNLMappingModal from "./PNLMappingModal";
 
 interface SectorDashboardProps {
   title: string;
@@ -25,8 +26,42 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
   const router = useRouter();
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
+  const [isMappingOpen, setIsMappingOpen] = useState(false);
   
   const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
+
+  useEffect(() => {
+    if (activeClientId) {
+      fetchPNLValues();
+    }
+  }, [activeClientId, selectedYear]);
+
+  const fetchPNLValues = async () => {
+    try {
+      const res = await fetch(`/api/clients/${activeClientId}/values?year=${selectedYear}`);
+      const data = await res.json();
+      
+      // Convert flat array from DB to grid structure
+      const grid: Record<string, Record<string, number>> = {};
+      data.values?.forEach((v: any) => {
+        if (!grid[v.month]) grid[v.month] = {};
+        grid[v.month][v.headName] = v.amount;
+      });
+      setGridData(grid);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const allSectorHeads = useMemo(() => {
+    const heads: string[] = [];
+    sections.forEach(s => {
+      s.items.forEach(item => {
+        if (!s.isCalculated) heads.push(item);
+      });
+    });
+    return heads;
+  }, [sections]);
 
   const Icon = type === "manufacturing" ? Factory : type === "trading" ? ArrowRightLeft : Briefcase;
 
@@ -200,9 +235,27 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
               <button onClick={() => setFyType("JAN_DEC")} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${fyType === "JAN_DEC" ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>FY: JAN - DEC</button>
             </div>
             <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-[#13131A] border border-white/10 rounded-xl px-4 py-2 text-sm font-bold text-white focus:outline-none cursor-pointer"><option value={2026}>2026-27</option><option value={2025}>2025-26</option></select>
+            <button 
+              onClick={() => setIsMappingOpen(true)}
+              disabled={!activeClientId}
+              className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/50 transition-all disabled:opacity-50"
+            >
+              <Link2 className="w-4 h-4" />
+              Smart Map Data
+            </button>
             <button className="p-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-colors"><Download className="w-5 h-5" /></button>
           </div>
         </div>
+
+        {/* Modal */}
+        {activeClientId && (
+          <PNLMappingModal 
+            isOpen={isMappingOpen}
+            onClose={() => setIsMappingOpen(false)}
+            clientId={activeClientId}
+            sectorHeads={allSectorHeads}
+          />
+        )}
 
         <div className="bg-[#13131A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
           <div className="overflow-x-auto">

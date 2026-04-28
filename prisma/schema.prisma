@@ -45,6 +45,8 @@ model Client {
   oauthToken           String?
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   financialRecords     FinancialRecord[]
+  pnlMappings          PNLMapping[]
+  pnlValues            PNLValue[]
   handshakeCodes       HandshakeCode[]
   createdAt            DateTime          @default(now())
 }
@@ -87,6 +89,28 @@ model FinancialRecord {
   updatedAt          DateTime @updatedAt
 
   @@unique([clientId, period])
+}
+
+model PNLMapping {
+  id                 String   @id @default(cuid())
+  clientId           String
+  client             Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sectorHead         String   // e.g. "Domestic", "Power Bill"
+  softwareLedgerName String   // Name from Zoho/Tally
+  createdAt          DateTime @default(now())
+}
+
+model PNLValue {
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  headName   String   // The P&L head name
+  month      String   // e.g. "Apr", "May"
+  year       Int
+  amount     Float    @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([clientId, headName, month, year])
 }
 
 model HandshakeCode {
