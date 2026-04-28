@@ -371,23 +371,27 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                           setLoading(true);
                           try {
                             const baseUrl = window.location.origin;
-                            // Step 1: Fetch Data
-                            console.log("Starting Sync for client:", activeClientId);
+                            if (!activeClientId) throw new Error("No active client selected. Please refresh the page.");
+
+                            // Step 1: Diagnostic Fetch
+                            console.log("🚀 Starting Diagnostic Sync for:", activeClientId);
+                            
                             const dataRes = await fetch(`${baseUrl}/api/clients/${activeClientId}/sync/data`, { 
                               method: "POST",
-                              headers: { "Cache-Control": "no-cache" }
+                              headers: { "Content-Type": "application/json" }
                             }).catch(e => {
-                              console.error("Network Error:", e);
-                              throw new Error("Network connection lost or blocked. Please check your internet.");
+                              throw new Error(`[Network Error] Could not reach server: ${e.message}`);
                             });
 
                             if (!dataRes.ok) {
-                              const errData = await dataRes.json().catch(() => ({ error: "Server responded with an error" }));
-                              throw new Error(errData.error || "Failed to fetch data from Zoho");
+                              const errData = await dataRes.json().catch(() => ({}));
+                              throw new Error(errData.error || `Server Error ${dataRes.status}`);
                             }
-                            const { accounts, mappings } = await dataRes.json();
                             
-                            // Step 2: Map Data (Client-side)
+                            const { accounts, mappings } = await dataRes.json();
+                            if (!accounts || !mappings) throw new Error("Invalid data received from Zoho API.");
+                            
+                            // Step 2: Map Data
                             const results: Record<string, number> = {};
                             const now = new Date();
                             const month = now.toLocaleString('default', { month: 'short' });
@@ -401,23 +405,26 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                               }
                             });
 
-                            // Step 3: Save Data
-                            const saveRes = await fetch(`/api/clients/${activeClientId}/sync/save`, {
+                            // Step 3: Save Data with absolute path and error catching
+                            const saveRes = await fetch(`${baseUrl}/api/clients/${activeClientId}/sync/save`, {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ results, month, year })
+                            }).catch(e => {
+                              throw new Error(`[Save Error] Network failed during save: ${e.message}`);
                             });
 
                             if (saveRes.ok) {
                               setSyncSuccess(true);
-                              alert("Sync Complete! Your Zoho data has been updated.");
+                              alert("✅ Sync Successful! Data is now live.");
                               window.location.reload();
                             } else {
-                              const errData = await saveRes.json().catch(() => ({ error: "Failed to save data" }));
-                              throw new Error(errData.error || "Failed to save data");
+                              const errData = await saveRes.json().catch(() => ({}));
+                              throw new Error(errData.error || `Failed to save (Error ${saveRes.status})`);
                             }
                           } catch (err: any) {
-                            alert("Sync failed: " + err.message);
+                            console.error("🏁 Sync Final Failure:", err);
+                            alert("Sync Error Detail: " + err.message);
                           }
                           setLoading(false);
                         }}
