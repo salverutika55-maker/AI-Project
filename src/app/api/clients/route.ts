@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { name, software } = await req.json();
+    const { name, software, sector } = await req.json();
 
     if (!name || name.trim() === "") {
       return NextResponse.json({ message: "Client Name is required" }, { status: 400 });
@@ -28,6 +28,7 @@ export async function POST(req: Request) {
       data: {
         name: name.trim(),
         software: software || "TALLY",
+        sector: sector || "TRADING",
         userId: user.id,
       },
     });
@@ -47,7 +48,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { clientId, fiscalYearStartMonth, baseCurrency } = await req.json();
+    const { clientId, fiscalYearStartMonth, baseCurrency, sector } = await req.json();
 
     if (!clientId) {
       return NextResponse.json({ message: "Missing clientId" }, { status: 400 });
@@ -66,6 +67,7 @@ export async function PUT(req: Request) {
     const updateData: any = {};
     if (fiscalYearStartMonth) updateData.fiscalYearStartMonth = parseInt(fiscalYearStartMonth);
     if (baseCurrency) updateData.baseCurrency = baseCurrency;
+    if (sector) updateData.sector = sector;
 
     const updatedClient = await prisma.client.update({
       where: { id: clientId },

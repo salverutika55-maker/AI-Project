@@ -27,6 +27,12 @@ enum AccountingSoftware {
   XERO
 }
 
+enum Sector {
+  MANUFACTURING
+  TRADING
+  SERVICE
+}
+
 model Client {
   id               String            @id @default(cuid())
   name             String
@@ -35,6 +41,7 @@ model Client {
   fiscalYearStartMonth Int               @default(4) // 4 = April, 1 = January
   baseCurrency         String            @default("USD")
   software             AccountingSoftware @default(TALLY)
+  sector               Sector            @default(TRADING)
   oauthToken           String?
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   financialRecords     FinancialRecord[]
