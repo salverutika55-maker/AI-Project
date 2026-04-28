@@ -15,6 +15,7 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
   const [mappings, setMappings] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
@@ -25,9 +26,15 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
 
   const fetchMappings = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/clients/${clientId}/mapping`);
       const data = await res.json();
+      
+      if (data.error) {
+        setError(data.error);
+      }
+      
       setCoa(data.chartOfAccounts || []);
       
       // Convert flat array to grouped Record
@@ -95,6 +102,15 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
           <div className="flex-1 flex flex-col items-center justify-center p-20">
             <Loader2 className="w-12 h-12 text-cyan-500 animate-spin mb-4" />
             <p className="text-slate-400 font-bold animate-pulse">Fetching Chart of Accounts...</p>
+          </div>
+        ) : error ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-20 text-center">
+            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
+              <X className="w-8 h-8 text-red-500" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Connection Issue</h3>
+            <p className="text-slate-400 max-w-sm mb-8 font-medium">{error}</p>
+            <button onClick={fetchMappings} className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold rounded-xl transition-all">Try Again</button>
           </div>
         ) : (
           <div className="flex-1 flex overflow-hidden">

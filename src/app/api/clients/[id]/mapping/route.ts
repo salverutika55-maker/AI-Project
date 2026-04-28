@@ -47,28 +47,49 @@ export async function GET(
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
     let chartOfAccounts: any[] = [];
+    let error: string | null = null;
 
     // If Zoho, fetch real COA
-    if (client.software === "ZOHO" && client.oauthToken) {
-      const accessToken = await getZohoAccessToken(id);
-      
-      // Fetch Orgs first
-      const orgsRes = await fetch("https://books.zoho.in/api/v3/organizations", {
-        headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
-      });
-      const orgsData = await orgsRes.json();
-      const orgId = orgsData.organizations?.[0]?.organization_id;
+    if (client.software === "ZOHO") {
+      if (!client.oauthToken) {
+        error = "Zoho account not linked. Please link your account in the Client Hub first.";
+      } else {
+        try {
+          const accessToken = await getZohoAccessToken(id);
+          
+          // Try .in first (common in India), fallback to .com
+          let coaData: any = null;
+          const domains = ["https://books.zoho.in", "https://books.zoho.com"];
+          
+          for (const domain of domains) {
+            const orgsRes = await fetch(`${domain}/api/v3/organizations`, {
+              headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+            });
+            const orgsData = await orgsRes.json();
+            const orgId = orgsData.organizations?.[0]?.organization_id;
 
-      if (orgId) {
-        const coaRes = await fetch(`https://books.zoho.in/api/v3/chartofaccounts?organization_id=${orgId}`, {
-          headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
-        });
-        const coaData = await coaRes.json();
-        chartOfAccounts = coaData.chartofaccounts || [];
+            if (orgId) {
+              const coaRes = await fetch(`${domain}/api/v3/chartofaccounts?organization_id=${orgId}`, {
+                headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+              });
+              coaData = await coaRes.json();
+              if (coaData.chartofaccounts) break;
+            }
+          }
+
+          if (coaData?.chartofaccounts) {
+            chartOfAccounts = coaData.chartofaccounts;
+          } else {
+            error = "Could not fetch data from Zoho. Please check your connection.";
+          }
+        } catch (e: any) {
+          error = "Zoho Error: " + e.message;
+        }
       }
     }
 
     return NextResponse.json({
+      error,
       mappings: client.pnlMappings,
       chartOfAccounts: chartOfAccounts.map(a => ({
         name: a.account_name,
