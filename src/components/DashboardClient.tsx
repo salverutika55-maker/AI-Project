@@ -50,6 +50,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   const [showNewClient, setShowNewClient] = useState(clients.length === 0);
   const [newClientName, setNewClientName] = useState("");
   const [newClientSoftware, setNewClientSoftware] = useState("TALLY");
+  const [newClientSector, setNewClientSector] = useState("TRADING");
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState("INR");
   const dashboardRef = useRef<HTMLDivElement>(null);
@@ -183,7 +184,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
       const res = await fetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newClientName, software: newClientSoftware })
+        body: JSON.stringify({ name: newClientName, software: newClientSoftware, sector: newClientSector })
       });
       if (res.ok) {
         setNewClientName("");
@@ -214,25 +215,45 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
             <Plus className="w-5 h-5" /> Add New Client
           </button>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto w-full">
-          {clients.map((client: any) => (
-            <button key={client.id} onClick={() => router.push(`/dashboard?client=${client.id}`)} className="bg-[#13131A] border border-white/5 hover:border-cyan-500/50 p-8 rounded-2xl text-left transition-all hover:bg-[#1a1a24] group relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center border border-white/10 group-hover:border-cyan-500/30 transition-colors">
-                  <span className="text-xl font-bold text-white">{client.name.charAt(0)}</span>
+        <div className="space-y-12 max-w-7xl mx-auto w-full pb-20">
+          {["MANUFACTURING", "TRADING", "SERVICE"].map((sector) => {
+            const sectorClients = clients.filter((c: any) => (c.sector || "TRADING") === sector);
+            if (sectorClients.length === 0) return null;
+            
+            return (
+              <div key={sector} className="space-y-6">
+                <div className="flex items-center gap-4">
+                  <h2 className="text-sm font-black text-cyan-500/50 uppercase tracking-[0.2em]">{sector} SECTOR</h2>
+                  <div className="h-[1px] flex-1 bg-white/5"></div>
+                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">{sectorClients.length} {sectorClients.length === 1 ? 'Client' : 'Clients'}</span>
                 </div>
-                {client.oauthToken && (
-                  <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Linked</span>
-                  </div>
-                )}
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {sectorClients.map((client: any) => (
+                    <button key={client.id} onClick={() => router.push(`/dashboard?client=${client.id}`)} className="bg-[#13131A] border border-white/5 hover:border-cyan-500/50 p-8 rounded-2xl text-left transition-all hover:bg-[#1a1a24] group relative overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="flex justify-between items-start mb-6">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center border border-white/10 group-hover:border-cyan-500/30 transition-colors">
+                          <span className="text-xl font-bold text-white">{client.name.charAt(0)}</span>
+                        </div>
+                        {client.oauthToken && (
+                          <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Linked</span>
+                          </div>
+                        )}
+                      </div>
+                      <h3 className="text-xl font-bold text-white mb-2">{client.name}</h3>
+                      <div className="flex items-center justify-between mt-4">
+                        <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">View Dashboard &rarr;</p>
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">{client.software}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">{client.name}</h3>
-              <p className="text-slate-500 text-sm">Access Financial Dashboard &rarr;</p>
-            </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -259,6 +280,15 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                 <option value="ODOO">Odoo (Cloud/On-Prem)</option>
                 <option value="SAP">SAP S/4HANA (Enterprise)</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">Business Sector</label>
+              <select value={newClientSector} onChange={(e) => setNewClientSector(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors cursor-pointer font-bold">
+                <option value="MANUFACTURING">Manufacturing Sector</option>
+                <option value="TRADING">Trading Sector</option>
+                <option value="SERVICE">Service Sector</option>
+              </select>
+              <p className="text-[10px] text-slate-500 mt-2 ml-1 uppercase tracking-widest font-bold">This determines the P&L headings and format.</p>
             </div>
             <div className="flex gap-3 pt-4">
               {clients.length > 0 && <button type="button" onClick={() => setShowNewClient(false)} className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium rounded-xl transition-all">Cancel</button>}
