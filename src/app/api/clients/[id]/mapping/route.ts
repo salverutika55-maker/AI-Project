@@ -5,36 +5,46 @@ import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
 // Helper to get Zoho Access Token
 async function getZohoAccessToken(clientId: string) {
   const client = await prisma.client.findUnique({ where: { id: clientId } });
-  if (!client || !client.oauthToken) return null;
+  if (!client || !client.oauthToken) throw new Error("No Zoho account linked.");
 
   const tokens = JSON.parse(client.oauthToken);
   
-  // Use the accounts server from the token if available, otherwise fallback to .in
+  // Use the accounts server from the token if available
   const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
   const tokenUrl = `${accountsUrl}/oauth/v2/token`;
   
   const config = OAUTH_CONFIGS[client.software];
 
-  const refreshResponse = await fetch(tokenUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: tokens.refresh_token,
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-    }),
-  });
-
-  const newTokens = await refreshResponse.json();
-  if (newTokens.access_token) {
-    await prisma.client.update({
-      where: { id: clientId },
-      data: { oauthToken: JSON.stringify({ ...tokens, ...newTokens }) },
+  try {
+    const refreshResponse = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: tokens.refresh_token,
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+      }),
     });
-    return newTokens.access_token;
+
+    const newTokens = await refreshResponse.json();
+    if (newTokens.access_token) {
+      const updatedTokens = { ...tokens, ...newTokens };
+      await prisma.client.update({
+        where: { id: clientId },
+        data: { oauthToken: JSON.stringify(updatedTokens) },
+      });
+      return { token: newTokens.access_token, tokens: updatedTokens };
+    }
+    
+    if (newTokens.error === "invalid_token" || newTokens.error === "invalid_grant") {
+      throw new Error("Zoho session expired. Please re-link your account in the Client Hub.");
+    }
+    
+    return { token: tokens.access_token, tokens };
+  } catch (e: any) {
+    throw new Error(`Token Refresh Failed: ${e.message}`);
   }
-  return tokens.access_token;
 }
 
 export async function GET(
@@ -53,42 +63,37 @@ export async function GET(
 
     let chartOfAccounts: any[] = [];
     let error: string | null = null;
+    let debug: any = {};
 
     if (client.software === "ZOHO") {
       if (!client.oauthToken) {
         error = "Zoho account not linked. Please link your account in the Client Hub first.";
       } else {
         try {
-          const accessToken = await getZohoAccessToken(id);
-          const tokens = JSON.parse(client.oauthToken);
+          const { token: accessToken, tokens } = await getZohoAccessToken(id);
           
-          // Zoho Books specifically uses books.zoho.in/com/eu
-          // Sometimes api_domain is generic (zohoapis.com), so we must ensure 'books' prefix
           const baseDomains = [
             "https://books.zoho.in", 
             "https://books.zoho.com", 
             "https://books.zoho.eu", 
-            "https://books.zoho.com.au",
-            "https://books.zoho.ca",
-            "https://books.zoho.jp"
+            "https://books.zoho.com.au"
           ];
 
-          // If tokens has an api_domain, add its 'books' version to the top of the list
           if (tokens.api_domain) {
             const domainUrl = new URL(tokens.api_domain);
-            const host = domainUrl.hostname;
-            // If host doesn't start with books, try adding it
+            let host = domainUrl.hostname;
             if (!host.startsWith("books.")) {
-              const booksHost = host.replace(/^www\.|^api\.|^/, "books.");
-              baseDomains.unshift(`https://${booksHost}`);
+              host = host.replace(/^www\.|^api\.|^/, "books.");
             }
-            baseDomains.unshift(tokens.api_domain);
+            baseDomains.unshift(`https://${host}`);
           }
           
-          const domains = [...new Set(baseDomains)]; // Unique domains
+          const domains = [...new Set(baseDomains)];
+          debug.attemptedDomains = domains;
           
           let coaData: any = null;
           let lastError = "";
+          
           for (const domain of domains) {
             try {
               const orgsRes = await fetch(`${domain}/api/v3/organizations`, {
@@ -97,7 +102,10 @@ export async function GET(
               });
               
               if (!orgsRes.ok) {
-                lastError = `Zoho ${domain} responded with ${orgsRes.status}`;
+                lastError = `${domain} returned ${orgsRes.status}`;
+                if (orgsRes.status === 401) {
+                  lastError = `Unauthorized (401) on ${domain}. Your session might have expired.`;
+                }
                 continue;
               }
 
@@ -109,7 +117,10 @@ export async function GET(
                   headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
                 });
                 coaData = await coaRes.json();
-                if (coaData.chartofaccounts) break;
+                if (coaData.chartofaccounts) {
+                  debug.successDomain = domain;
+                  break;
+                }
               }
             } catch (err: any) {
               lastError = err.message;
@@ -120,16 +131,17 @@ export async function GET(
           if (coaData?.chartofaccounts) {
             chartOfAccounts = coaData.chartofaccounts;
           } else {
-            error = `Connection failed. ${lastError || "Check your Zoho credentials."}`;
+            error = `Failed to connect to Zoho Books. ${lastError}`;
           }
         } catch (e: any) {
-          error = "Zoho Error: " + e.message;
+          error = e.message;
         }
       }
     }
 
     return NextResponse.json({
       error,
+      debug,
       mappings: client.pnlMappings,
       chartOfAccounts: chartOfAccounts.map(a => ({
         name: a.account_name,
@@ -148,12 +160,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { mappings } = await req.json(); // Array of { sectorHead: string, softwareLedgerName: string }
+  const { mappings } = await req.json();
 
   try {
-    // Delete old mappings and insert new ones
     await prisma.pnlMapping.deleteMany({ where: { clientId: id } });
-    
     await prisma.pnlMapping.createMany({
       data: mappings.map((m: any) => ({
         clientId: id,
@@ -161,7 +171,6 @@ export async function POST(
         softwareLedgerName: m.softwareLedgerName
       }))
     });
-
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
