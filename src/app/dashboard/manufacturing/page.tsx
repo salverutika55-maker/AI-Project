@@ -38,7 +38,6 @@ export default async function ManufacturingPage({ searchParams }: { searchParams
       items: ["Total Revenue"],
       isBold: true,
       isCalculated: true,
-      formula: (v: any) => (v["Domestic"] || 0) + (v["Export"] || 0) - (v["Less : Commission"] || 0)
     },
     {
       name: "Cost of Goods Sold",
@@ -49,7 +48,6 @@ export default async function ManufacturingPage({ searchParams }: { searchParams
       items: ["COGS"],
       isBold: true,
       isCalculated: true,
-      formula: (v: any) => (v["Opening Stock"] || 0) + (v["Purchase"] || 0) + (v["Transport on Purchases"] || 0) - (v["Closing Stock"] || 0)
     },
     {
       name: "Contribution Calculation",
@@ -57,7 +55,6 @@ export default async function ManufacturingPage({ searchParams }: { searchParams
       isBold: true,
       isSubtotal: true,
       isCalculated: true,
-      formula: (v: any) => (v["Total Revenue"] || 0) - (v["COGS"] || 0)
     },
     {
       name: "Direct Expenses",
@@ -76,17 +73,6 @@ export default async function ManufacturingPage({ searchParams }: { searchParams
       isBold: true,
       isSubtotal: true,
       isCalculated: true,
-      formula: (v: any) => {
-        const directExp = [
-          "Coal Charges", "Power Bill", "Other Mfg. Expenses", 
-          "Repairs & Maintenance - Factory", "Depreciation - Factory", 
-          "Clearing & Forwarding Charges", "Consumables", "Factory Expenses", 
-          "Security Charges", "Factory Staff", "Factory Workers", 
-          "Hiring Charges", "Jobwork Charges", "Payment to Contractor", 
-          "Transport on Sales"
-        ].reduce((sum, item) => sum + (v[item] || 0), 0);
-        return (v["Contribution"] || 0) - directExp;
-      }
     },
     {
       name: "Indirect Income",
@@ -106,12 +92,6 @@ export default async function ManufacturingPage({ searchParams }: { searchParams
       items: ["Total Indirect Expenses"],
       isBold: true,
       isCalculated: true,
-      formula: (v: any) => [
-        "Administrative Expenses", "Sales & Advertisement Expenses", 
-        "Director Remuneration", "Office Staff Salary", 
-        "Repairs & Maintenance - Office", "Travelling Expenses", 
-        "Legal & Professional Fees", "Rent Expenses", "Other Exp"
-      ].reduce((sum, item) => sum + (v[item] || 0), 0)
     },
     {
       name: "EBITDA Calculation",
@@ -119,10 +99,6 @@ export default async function ManufacturingPage({ searchParams }: { searchParams
       isBold: true,
       isSubtotal: true,
       isCalculated: true,
-      formula: (v: any) => {
-        const indirectIncome = (v["Interest on Fixed Deposit"] || 0) + (v["Gain/ Loss on (Export/Import)"] || 0) + (v["Duty Drawback"] || 0);
-        return (v["Gross Profit"] || 0) + indirectIncome - (v["Total Indirect Expenses"] || 0);
-      }
     },
     {
       name: "Financials",
@@ -134,7 +110,6 @@ export default async function ManufacturingPage({ searchParams }: { searchParams
       isBold: true,
       isTotal: true,
       isCalculated: true,
-      formula: (v: any) => (v["Earnings Before Interest Taxes & Amortization"] || 0) - (v["Interest Expense"] || 0) - (v["Depreciation"] || 0)
     }
   ];
 
