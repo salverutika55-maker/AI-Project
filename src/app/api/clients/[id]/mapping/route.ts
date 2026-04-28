@@ -59,28 +59,48 @@ export async function GET(
           
           // Try .in first (common in India), fallback to .com
           let coaData: any = null;
-          const domains = ["https://books.zoho.in", "https://books.zoho.com"];
+          const domains = [
+            "https://books.zoho.in", 
+            "https://books.zoho.com", 
+            "https://books.zoho.eu", 
+            "https://books.zoho.com.au",
+            "https://books.zoho.ca",
+            "https://books.zoho.jp"
+          ];
           
+          let lastError = "";
           for (const domain of domains) {
-            const orgsRes = await fetch(`${domain}/api/v3/organizations`, {
-              headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
-            });
-            const orgsData = await orgsRes.json();
-            const orgId = orgsData.organizations?.[0]?.organization_id;
-
-            if (orgId) {
-              const coaRes = await fetch(`${domain}/api/v3/chartofaccounts?organization_id=${orgId}`, {
-                headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+            try {
+              const orgsRes = await fetch(`${domain}/api/v3/organizations`, {
+                headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
+                signal: AbortSignal.timeout(5000) // 5s timeout
               });
-              coaData = await coaRes.json();
-              if (coaData.chartofaccounts) break;
+              
+              if (!orgsRes.ok) {
+                lastError = `Zoho ${domain} responded with ${orgsRes.status}`;
+                continue;
+              }
+
+              const orgsData = await orgsRes.json();
+              const orgId = orgsData.organizations?.[0]?.organization_id;
+
+              if (orgId) {
+                const coaRes = await fetch(`${domain}/api/v3/chartofaccounts?organization_id=${orgId}`, {
+                  headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+                });
+                coaData = await coaRes.json();
+                if (coaData.chartofaccounts) break;
+              }
+            } catch (err: any) {
+              lastError = err.message;
+              continue;
             }
           }
 
           if (coaData?.chartofaccounts) {
             chartOfAccounts = coaData.chartofaccounts;
           } else {
-            error = "Could not fetch data from Zoho. Please check your connection.";
+            error = `Connection failed. ${lastError || "Check your Zoho credentials."}`;
           }
         } catch (e: any) {
           error = "Zoho Error: " + e.message;
