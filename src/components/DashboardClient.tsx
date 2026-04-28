@@ -372,7 +372,10 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                           try {
                             // Step 1: Fetch Data
                             const dataRes = await fetch(`/api/clients/${activeClientId}/sync/data`, { method: "POST" });
-                            if (!dataRes.ok) throw new Error("Failed to fetch data from Zoho");
+                            if (!dataRes.ok) {
+                              const errData = await dataRes.json().catch(() => ({ error: "Failed to fetch data from Zoho" }));
+                              throw new Error(errData.error || "Failed to fetch data from Zoho");
+                            }
                             const { accounts, mappings } = await dataRes.json();
                             
                             // Step 2: Map Data (Client-side)
@@ -401,8 +404,8 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                               alert("Sync Complete! Your Zoho data has been updated.");
                               window.location.reload();
                             } else {
-                              const err = await saveRes.json();
-                              throw new Error(err.error || "Failed to save data");
+                              const errData = await saveRes.json().catch(() => ({ error: "Failed to save data" }));
+                              throw new Error(errData.error || "Failed to save data");
                             }
                           } catch (err: any) {
                             alert("Sync failed: " + err.message);

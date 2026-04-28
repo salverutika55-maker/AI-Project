@@ -62,21 +62,35 @@ export async function POST(
       if (!orgId) throw new Error("No organization found");
     }
 
-    // 3. Fetch Data
+    // 3. Fetch Data with a timeout to avoid hanging
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
     const tbRes = await fetch(`${apiDomain}/api/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
-      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
+      signal: AbortSignal.timeout(15000) // 15s timeout
     });
+
+    if (!tbRes.ok) {
+      const errorData = await tbRes.json().catch(() => ({}));
+      throw new Error(`Zoho API Error (${tbRes.status}): ${errorData.message || tbRes.statusText}`);
+    }
+
     const tbData = await tbRes.json();
+    if (!tbData.trialbalance) {
+      throw new Error(tbData.message || "Trial Balance data missing from Zoho response.");
+    }
+
     const accounts = tbData.trialbalance?.trial_balance_details || [];
 
     // Return the data for processing on frontend
     return NextResponse.json({ accounts, mappings: client.pnlMappings });
 
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Sync Data Fetch Error:", error);
+    let message = error.message;
+    if (error.name === "TimeoutError") message = "Zoho took too long to respond. This often happens on limited hosting plans.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
