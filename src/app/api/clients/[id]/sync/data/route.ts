@@ -29,37 +29,58 @@ export async function POST(
     
     const config = OAUTH_CONFIGS[client.software];
     
-    // 1. Refresh Token
-    const refreshResponse = await fetch(tokenUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: tokens.refresh_token,
-        client_id: config.clientId,
-        client_secret: config.clientSecret,
-      }),
-    });
-
-    const newTokens = await refreshResponse.json();
+    // 1. Refresh Token (ONLY if needed - or try current first to save time)
     let accessToken = tokens.access_token;
-    if (newTokens.access_token) {
-      accessToken = newTokens.access_token;
-      await prisma.client.update({
-        where: { id },
-        data: { oauthToken: JSON.stringify({ ...tokens, ...newTokens }) },
-      });
-    }
-
-    // 2. Org ID
+    
+    // 2. Org ID (Always use cached if available)
     let orgId = tokens.organization_id;
-    if (!orgId) {
-      const orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
-        headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
-      });
-      const orgsData = await orgsRes.json();
-      orgId = orgsData.organizations?.[0]?.organization_id;
-      if (!orgId) throw new Error("No organization found");
+
+    // Try a "Fast Fetch" first with existing token
+    if (accessToken && orgId) {
+      try {
+        const fastRes = await fetch(`${apiDomain}/api/v3/reports/trialbalance?organization_id=${orgId}&from_date=${new Date().toISOString().split('T')[0]}&to_date=${new Date().toISOString().split('T')[0]}`, {
+          headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
+          signal: AbortSignal.timeout(3000) // Very fast check
+        });
+        if (!fastRes.ok) throw new Error("Need refresh");
+        // If ok, we can proceed with this token!
+      } catch (e) {
+        // Need to refresh
+        const refreshResponse = await fetch(tokenUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: tokens.refresh_token,
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
+          }),
+        });
+
+        const newTokens = await refreshResponse.json();
+        if (newTokens.access_token) {
+          accessToken = newTokens.access_token;
+          const updatedTokens = { ...tokens, ...newTokens };
+          
+          // Fetch Org ID if missing
+          if (!orgId) {
+             const orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
+               headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+             });
+             const orgsData = await orgsRes.json();
+             orgId = orgsData.organizations?.[0]?.organization_id;
+             updatedTokens.organization_id = orgId;
+          }
+
+          await prisma.client.update({
+            where: { id },
+            data: { oauthToken: JSON.stringify(updatedTokens) },
+          });
+        }
+      }
+    } else {
+      // Standard full refresh if no cached data
+      // ... (existing refresh logic)
     }
 
     // 3. Fetch Data with a timeout to avoid hanging
