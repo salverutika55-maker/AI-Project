@@ -23,7 +23,12 @@ export async function POST(
     // Use the accounts server from the token if available, otherwise fallback to .in
     const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
     const tokenUrl = `${accountsUrl}/oauth/v2/token`;
-    const apiDomain = tokens.api_domain || "https://books.zoho.in";
+    
+    // Ensure we use the 'books' domain for Books API
+    let apiDomain = tokens.api_domain || "https://books.zoho.in";
+    if (!apiDomain.includes("books.")) {
+      apiDomain = apiDomain.replace(/^https:\/\/(www\.|api\.|)/, "https://books.");
+    }
     
     const config = OAUTH_CONFIGS[client.software];
     
