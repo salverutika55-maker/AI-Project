@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { 
-  Factory, Briefcase, ArrowRightLeft, Download, LayoutDashboard 
+  Factory, Briefcase, ArrowRightLeft, Download 
 } from "lucide-react";
 
 interface SectorDashboardProps {
@@ -15,27 +15,74 @@ interface SectorDashboardProps {
     isTotal?: boolean;
     isBold?: boolean;
     isSubtotal?: boolean;
+    isCalculated?: boolean;
+    formula?: (values: Record<string, number>) => number;
   }[];
   activeClientId?: string;
   clients: any[];
+  initialData?: any; // To be implemented later for DB sync
 }
 
 export default function SectorDashboard({ title, type, sections, activeClientId, clients }: SectorDashboardProps) {
   const router = useRouter();
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
+  
+  // State for P&L values: [Month][Particular]
+  const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
 
   const activeClient = clients.find(c => c.id === activeClientId);
   const Icon = type === "manufacturing" ? Factory : type === "trading" ? ArrowRightLeft : Briefcase;
 
-  const getMonths = () => {
+  const months = useMemo(() => {
     if (fyType === "APR_MAR") {
       return ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
     }
     return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  }, [fyType]);
+
+  // Calculation Engine
+  const calculatedData = useMemo(() => {
+    const newData: Record<string, Record<string, number>> = {};
+    
+    months.forEach(month => {
+      newData[month] = { ...(gridData[month] || {}) };
+      
+      // We process sections in order to handle dependent calculations
+      sections.forEach(section => {
+        section.items.forEach(item => {
+          if (section.isCalculated && section.formula) {
+            newData[month][item] = section.formula(newData[month]);
+          }
+        });
+      });
+    });
+
+    return newData;
+  }, [gridData, sections, months]);
+
+  const handleValueChange = (month: string, item: string, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    setGridData(prev => ({
+      ...prev,
+      [month]: {
+        ...(prev[month] || {}),
+        [item]: numValue
+      }
+    }));
   };
 
-  const months = getMonths();
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0
+    }).format(val);
+  };
+
+  const getRowTotal = (item: string) => {
+    return months.reduce((sum, m) => sum + (calculatedData[m][item] || 0), 0);
+  };
 
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-slate-200 p-4 md:p-8">
@@ -105,11 +152,11 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-white/10">
-                  <th className="sticky left-0 z-20 bg-[#13131A] p-6 text-left text-xs font-black text-slate-500 uppercase tracking-widest min-w-[300px]">Particulars</th>
+                  <th className="sticky left-0 z-30 bg-[#13131A] p-6 text-left text-xs font-black text-slate-500 uppercase tracking-widest min-w-[300px]">Particulars</th>
                   {months.map(month => (
-                    <th key={month} className="p-4 text-center text-xs font-black text-slate-500 uppercase tracking-widest min-w-[100px] border-l border-white/5">{month}</th>
+                    <th key={month} className="p-4 text-center text-xs font-black text-slate-500 uppercase tracking-widest min-w-[120px] border-l border-white/5">{month}</th>
                   ))}
-                  <th className="p-4 text-center text-xs font-black text-cyan-500 uppercase tracking-widest min-w-[120px] border-l border-white/10 bg-cyan-500/5">Total</th>
+                  <th className="p-4 text-center text-xs font-black text-cyan-500 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -117,7 +164,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                   <div key={sIdx} className="contents">
                     {/* Section Header */}
                     <tr className="bg-white/[0.02]">
-                      <td className="sticky left-0 z-20 bg-[#181821] p-4 text-sm font-black text-cyan-400 uppercase tracking-wide border-b border-white/5" colSpan={months.length + 2}>
+                      <td className="sticky left-0 z-30 bg-[#181821] p-4 text-sm font-black text-cyan-400 uppercase tracking-wide border-b border-white/5" colSpan={months.length + 2}>
                         {section.name}
                       </td>
                     </tr>
@@ -125,16 +172,28 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                     {/* Items */}
                     {section.items.map((item, iIdx) => (
                       <tr key={iIdx} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${section.isBold ? 'font-bold text-white bg-white/[0.01]' : ''} ${section.isSubtotal ? 'bg-cyan-500/5' : ''}`}>
-                        <td className={`sticky left-0 z-20 p-4 text-sm border-r border-white/5 ${section.isBold || section.isTotal ? 'bg-[#181821]' : 'bg-[#13131A] text-slate-400'}`}>
+                        <td className={`sticky left-0 z-30 p-4 text-sm border-r border-white/5 ${section.isBold || section.isTotal ? 'bg-[#181821]' : 'bg-[#13131A] text-slate-400'}`}>
                           {item}
                         </td>
                         {months.map(m => (
-                          <td key={m} className="p-4 text-center text-sm font-mono text-slate-300 border-l border-white/5">
-                            ₹0.00
+                          <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px]">
+                            {section.isCalculated ? (
+                              <span className="text-sm font-mono font-bold text-white">
+                                {formatCurrency(calculatedData[m][item] || 0)}
+                              </span>
+                            ) : (
+                              <input 
+                                type="number"
+                                value={gridData[m]?.[item] || ""}
+                                onChange={(e) => handleValueChange(m, item, e.target.value)}
+                                className="w-full bg-transparent border-none text-center text-sm font-mono text-slate-300 focus:ring-1 focus:ring-cyan-500/50 rounded p-1"
+                                placeholder="0"
+                              />
+                            )}
                           </td>
                         ))}
                         <td className="p-4 text-center text-sm font-mono font-bold text-white border-l border-white/10 bg-white/[0.02]">
-                          ₹0.00
+                          {formatCurrency(getRowTotal(item))}
                         </td>
                       </tr>
                     ))}
@@ -149,18 +208,22 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         </div>
 
         {/* Quick Insights Footer */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6 pb-20">
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6">
-            <h4 className="text-emerald-400 text-xs font-bold uppercase tracking-wider mb-2">Profitability Check</h4>
-            <p className="text-sm text-slate-300">Net Profit margin is currently tracking at 0% based on imported Zoho data.</p>
+            <h4 className="text-emerald-400 text-xs font-bold uppercase tracking-wider mb-2">Manufacturing GP Margin</h4>
+            <p className="text-2xl font-black text-white">
+              {getRowTotal("Total Revenue") > 0 
+                ? ((getRowTotal("Gross Profit") / getRowTotal("Total Revenue")) * 100).toFixed(1)
+                : "0.0"}%
+            </p>
           </div>
           <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-2xl p-6">
-            <h4 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mb-2">Sync Status</h4>
-            <p className="text-sm text-slate-300">Live data mapping for {title} sector is ready for account head matching.</p>
+            <h4 className="text-cyan-400 text-xs font-bold uppercase tracking-wider mb-2">Net Profit Before Tax</h4>
+            <p className="text-2xl font-black text-white">{formatCurrency(getRowTotal("Net Profit Before Tax"))}</p>
           </div>
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6">
-            <h4 className="text-amber-400 text-xs font-bold uppercase tracking-wider mb-2">Action Required</h4>
-            <p className="text-sm text-slate-300">Please provide GP/NP logic to enable automatic calculations across sectors.</p>
+            <h4 className="text-amber-400 text-xs font-bold uppercase tracking-wider mb-2">Formula Mode</h4>
+            <p className="text-sm text-slate-300 italic">Auto-calculating all Contribution, GP, and NP fields based on your provided P&L logic.</p>
           </div>
         </div>
       </div>
