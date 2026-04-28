@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Factory, Briefcase, ArrowRightLeft, Download, Settings2, Link2 
@@ -269,7 +269,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
               </thead>
               <tbody>
                 {sections.map((section, sIdx) => (
-                  <div key={sIdx} className="contents">
+                  <Fragment key={sIdx}>
                     <tr className="bg-white/[0.02]">
                       <td className="sticky left-0 z-30 bg-[#181821] p-4 text-sm font-black text-cyan-400 uppercase tracking-wide border-b border-white/5" colSpan={months.length + 2}>{section.name}</td>
                     </tr>
@@ -279,7 +279,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                         {months.map(m => (
                           <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px]">
                             {section.isCalculated ? (
-                              <span className="text-sm font-mono font-bold text-white">{formatCurrency(calculatedData[m][item] || 0)}</span>
+                              <span className="text-sm font-mono font-bold text-white">{formatCurrency(calculatedData[m]?.[item] || 0)}</span>
                             ) : (
                               <input type="number" value={gridData[m]?.[item] || ""} onChange={(e) => handleValueChange(m, item, e.target.value)} className="w-full bg-transparent border-none text-center text-sm font-mono text-slate-300 focus:ring-1 focus:ring-cyan-500/50 rounded p-1" placeholder="0" />
                             )}
@@ -289,7 +289,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                       </tr>
                     ))}
                     <tr className="h-4"></tr>
-                  </div>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
