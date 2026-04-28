@@ -370,17 +370,42 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                         onClick={async () => {
                           setLoading(true);
                           try {
-                            const res = await fetch(`/api/clients/${activeClientId}/sync`, { method: "POST" });
-                            const data = await res.json();
-                            if (res.ok) {
+                            // Step 1: Fetch Data
+                            const dataRes = await fetch(`/api/clients/${activeClientId}/sync/data`, { method: "POST" });
+                            if (!dataRes.ok) throw new Error("Failed to fetch data from Zoho");
+                            const { accounts, mappings } = await dataRes.json();
+                            
+                            // Step 2: Map Data (Client-side)
+                            const results: Record<string, number> = {};
+                            const now = new Date();
+                            const month = now.toLocaleString('default', { month: 'short' });
+                            const year = now.getFullYear();
+
+                            mappings.forEach((m: any) => {
+                              const account = accounts.find((a: any) => a.account_name === m.softwareLedgerName);
+                              if (account) {
+                                const balance = (account.credit_amount || 0) - (account.debit_amount || 0);
+                                results[m.sectorHead] = (results[m.sectorHead] || 0) + Math.abs(balance);
+                              }
+                            });
+
+                            // Step 3: Save Data
+                            const saveRes = await fetch(`/api/clients/${activeClientId}/sync/save`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ results, month, year })
+                            });
+
+                            if (saveRes.ok) {
                               setSyncSuccess(true);
                               alert("Sync Complete! Your Zoho data has been updated.");
-                              window.location.reload(); // Refresh to show new data
+                              window.location.reload();
                             } else {
-                              alert("Sync failed: " + data.error);
+                              const err = await saveRes.json();
+                              throw new Error(err.error || "Failed to save data");
                             }
-                          } catch (err) {
-                            alert("An error occurred during sync.");
+                          } catch (err: any) {
+                            alert("Sync failed: " + err.message);
                           }
                           setLoading(false);
                         }}
