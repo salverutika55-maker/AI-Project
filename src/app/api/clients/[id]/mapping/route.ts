@@ -8,9 +8,14 @@ async function getZohoAccessToken(clientId: string) {
   if (!client || !client.oauthToken) return null;
 
   const tokens = JSON.parse(client.oauthToken);
+  
+  // Use the accounts server from the token if available, otherwise fallback to .in
+  const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
+  const tokenUrl = `${accountsUrl}/oauth/v2/token`;
+  
   const config = OAUTH_CONFIGS[client.software];
 
-  const refreshResponse = await fetch(config.tokenUrl, {
+  const refreshResponse = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -49,23 +54,21 @@ export async function GET(
     let chartOfAccounts: any[] = [];
     let error: string | null = null;
 
-    // If Zoho, fetch real COA
     if (client.software === "ZOHO") {
       if (!client.oauthToken) {
         error = "Zoho account not linked. Please link your account in the Client Hub first.";
       } else {
         try {
           const accessToken = await getZohoAccessToken(id);
+          const tokens = JSON.parse(client.oauthToken);
           
-          // Try .in first (common in India), fallback to .com
+          // Use the api_domain from the token if available, otherwise try common ones
           let coaData: any = null;
-          const domains = [
+          const domains = tokens.api_domain ? [tokens.api_domain] : [
             "https://books.zoho.in", 
             "https://books.zoho.com", 
             "https://books.zoho.eu", 
-            "https://books.zoho.com.au",
-            "https://books.zoho.ca",
-            "https://books.zoho.jp"
+            "https://books.zoho.com.au"
           ];
           
           let lastError = "";
@@ -73,7 +76,7 @@ export async function GET(
             try {
               const orgsRes = await fetch(`${domain}/api/v3/organizations`, {
                 headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
-                signal: AbortSignal.timeout(5000) // 5s timeout
+                signal: AbortSignal.timeout(5000)
               });
               
               if (!orgsRes.ok) {

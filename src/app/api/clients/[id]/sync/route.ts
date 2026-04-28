@@ -19,10 +19,16 @@ export async function POST(
     }
 
     const tokens = JSON.parse(client.oauthToken);
+    
+    // Use the accounts server from the token if available, otherwise fallback to .in
+    const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
+    const tokenUrl = `${accountsUrl}/oauth/v2/token`;
+    const apiDomain = tokens.api_domain || "https://books.zoho.in";
+    
     const config = OAUTH_CONFIGS[client.software];
     
     // 1. Refresh Token
-    const refreshResponse = await fetch(config.tokenUrl, {
+    const refreshResponse = await fetch(tokenUrl, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -44,7 +50,7 @@ export async function POST(
     }
 
     // 2. Fetch Zoho Organization
-    const orgsRes = await fetch("https://books.zoho.in/api/v3/organizations", {
+    const orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
     });
     const orgsData = await orgsRes.json();
@@ -58,7 +64,7 @@ export async function POST(
     const monthName = now.toLocaleString('default', { month: 'short' });
     const year = now.getFullYear();
 
-    const tbRes = await fetch(`https://books.zoho.in/api/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
+    const tbRes = await fetch(`${apiDomain}/api/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
     });
     const tbData = await tbRes.json();
