@@ -200,6 +200,23 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
     setLoading(false);
   };
 
+  const updateClientSector = async (clientId: string, newSector: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/clients", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, sector: newSector })
+      });
+      if (res.ok) {
+        router.refresh();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
   if (!activeClientId && !showNewClient) {
     // Client Hub
     return (
@@ -246,7 +263,16 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                       <h3 className="text-xl font-bold text-white mb-2">{client.name}</h3>
                       <div className="flex items-center justify-between mt-4">
                         <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">View Dashboard &rarr;</p>
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">{client.software}</span>
+                        <select 
+                          value={client.sector || "TRADING"} 
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => updateClientSector(client.id, e.target.value)}
+                          className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-[10px] font-bold text-cyan-400 hover:bg-white/10 transition-colors focus:outline-none focus:border-cyan-500"
+                        >
+                          <option value="MANUFACTURING" className="bg-[#13131A] text-white">Manufacturing</option>
+                          <option value="TRADING" className="bg-[#13131A] text-white">Trading</option>
+                          <option value="SERVICE" className="bg-[#13131A] text-white">Service</option>
+                        </select>
                       </div>
                     </button>
                   ))}
