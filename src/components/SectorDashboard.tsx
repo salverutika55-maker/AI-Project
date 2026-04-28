@@ -82,6 +82,28 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         
         // Step 7: Final
         v["Net Profit Before Tax"] = v["Earnings Before Interest Taxes & Amortization"] - (v["Interest Expense"] || 0) - (v["Depreciation"] || 0);
+      } else if (type === "trading") {
+        // Trading Logic
+        v["Total Revenue"] = (v["Domestic"] || 0) + (v["Export"] || 0) - (v["Less : Commission"] || 0);
+        v["COGS"] = (v["Opening Stock"] || 0) + (v["Purchase"] || 0) + (v["Transport on Purchases"] || 0) - (v["Closing Stock"] || 0);
+        v["Contribution"] = v["Total Revenue"] - v["COGS"];
+        
+        const directExpList = ["Clearing & Forwarding Charges", "Transport on Sales", "Other Direct Expense"];
+        const directExp = directExpList.reduce((sum, item) => sum + (v[item] || 0), 0);
+        v["Gross Profit"] = v["Contribution"] - directExp;
+        
+        const indirectIncome = (v["Interest on Fixed Deposit"] || 0) + (v["Gain/ Loss on (Export/Import)"] || 0) + (v["Duty Drawback"] || 0);
+        const indirectExpList = [
+          "Administrative Expenses", "Sales & Advertisement Expenses", 
+          "Director Remuneration", "Office Staff Salary", 
+          "Repairs & Maintenance - Office", "Travelling Expenses", 
+          "Legal & Professional Fees", "Rent Expenses", "Other Exp"
+        ];
+        const totalIndirectExp = indirectExpList.reduce((sum, item) => sum + (v[item] || 0), 0);
+        v["Total Indirect Expenses"] = totalIndirectExp;
+        
+        v["Earnings Before Interest Taxes & Amortization"] = v["Gross Profit"] + indirectIncome - totalIndirectExp;
+        v["Net Profit Before Tax"] = v["Earnings Before Interest Taxes & Amortization"] - (v["Interest Expense"] || 0) - (v["Depreciation"] || 0);
       }
 
       newData[month] = v;
