@@ -62,15 +62,32 @@ export async function GET(
           const accessToken = await getZohoAccessToken(id);
           const tokens = JSON.parse(client.oauthToken);
           
-          // Use the api_domain from the token if available, otherwise try common ones
-          let coaData: any = null;
-          const domains = tokens.api_domain ? [tokens.api_domain] : [
+          // Zoho Books specifically uses books.zoho.in/com/eu
+          // Sometimes api_domain is generic (zohoapis.com), so we must ensure 'books' prefix
+          const baseDomains = [
             "https://books.zoho.in", 
             "https://books.zoho.com", 
             "https://books.zoho.eu", 
-            "https://books.zoho.com.au"
+            "https://books.zoho.com.au",
+            "https://books.zoho.ca",
+            "https://books.zoho.jp"
           ];
+
+          // If tokens has an api_domain, add its 'books' version to the top of the list
+          if (tokens.api_domain) {
+            const domainUrl = new URL(tokens.api_domain);
+            const host = domainUrl.hostname;
+            // If host doesn't start with books, try adding it
+            if (!host.startsWith("books.")) {
+              const booksHost = host.replace(/^www\.|^api\.|^/, "books.");
+              baseDomains.unshift(`https://${booksHost}`);
+            }
+            baseDomains.unshift(tokens.api_domain);
+          }
           
+          const domains = [...new Set(baseDomains)]; // Unique domains
+          
+          let coaData: any = null;
           let lastError = "";
           for (const domain of domains) {
             try {
