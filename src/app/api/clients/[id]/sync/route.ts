@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
 
+export const maxDuration = 60; // Extend to 60s for Zoho Sync
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -91,9 +93,9 @@ export async function POST(
       }
     });
 
-    // 5. Save to PNLValue
-    for (const [head, amount] of Object.entries(results)) {
-      await prisma.pNLValue.upsert({
+    // 5. Save to PNLValue in parallel for speed
+    await Promise.all(Object.entries(results).map(([head, amount]) => 
+      prisma.pNLValue.upsert({
         where: {
           clientId_headName_month_year: {
             clientId: id,
@@ -110,8 +112,8 @@ export async function POST(
           year: year,
           amount
         }
-      });
-    }
+      })
+    ));
 
     return NextResponse.json({ 
       success: true, 
