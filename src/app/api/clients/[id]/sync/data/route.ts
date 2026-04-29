@@ -66,9 +66,10 @@ export async function POST(
     const tokenUrl = `${accountsUrl}/oauth/v2/token`;
     
     let apiDomain = tokens.api_domain || "https://books.zoho.in";
-    if (!apiDomain.includes("books.")) {
-      apiDomain = apiDomain.replace(/^https:\/\/(www\.|api\.|)/, "https://books.");
-    }
+    // Fix: Zoho sends 'www.zohoapis.in' or similar, we need 'books.zoho.in'
+    const tldMatch = apiDomain.match(/\.(in|com|eu|com\.au|jp|sa|ca|uk)$/);
+    const tld = tldMatch ? tldMatch[1] : "in";
+    apiDomain = `https://books.zoho.${tld}`;
     
     const config = OAUTH_CONFIGS[client.software];
     let accessToken = tokens.access_token;
@@ -127,7 +128,7 @@ export async function POST(
     });
 
   } catch (error: any) {
-    console.error("Sync Error Full Stack:", error.stack);
-    return NextResponse.json({ error: String(error.stack) }, { status: 500 });
+    console.error("Sync Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -60,7 +60,7 @@ export async function POST(
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("Save Error Full Stack:", error.stack);
-    return NextResponse.json({ error: String(error.stack) }, { status: 500 });
+    console.error("Save Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
