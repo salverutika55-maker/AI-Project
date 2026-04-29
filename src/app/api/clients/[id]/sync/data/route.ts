@@ -66,16 +66,13 @@ export async function POST(
     const tokenUrl = `${accountsUrl}/oauth/v2/token`;
     
     let apiDomain = tokens.api_domain || "https://books.zoho.in";
-    // Fix: Zoho sends 'www.zohoapis.in' or similar, we need 'books.zoho.in'
-    const tldMatch = apiDomain.match(/\.(in|com|eu|com\.au|jp|sa|ca|uk)$/);
-    const tld = tldMatch ? tldMatch[1] : "in";
-    apiDomain = `https://books.zoho.${tld}`;
+    const apiDomain = tokens.api_domain || "https://www.zohoapis.in";
     
     const config = OAUTH_CONFIGS[client.software];
     let accessToken = tokens.access_token;
     
     // Fetch Organization ID first
-    const orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
+    const orgsRes = await fetch(`${apiDomain}/books/v3/organizations`, {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
       signal: AbortSignal.timeout(5000)
     });
@@ -84,7 +81,8 @@ export async function POST(
       if (orgsRes.status === 401) {
         // We will handle refresh token logic below
       } else {
-        throw new Error(`Failed to fetch organizations (Zoho ${orgsRes.status})`);
+        const errorText = await orgsRes.text().catch(() => "");
+        throw new Error(`Failed to fetch organizations (Zoho ${orgsRes.status}): ${errorText}`);
       }
     }
     
@@ -99,7 +97,7 @@ export async function POST(
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
-    let tbRes = await fetch(`${apiDomain}/api/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
+    let tbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
       signal: AbortSignal.timeout(8000)
     });
@@ -128,7 +126,7 @@ export async function POST(
 
         // Retry Organization Fetch if it failed
         if (!orgId) {
-          const retryOrgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
+          const retryOrgsRes = await fetch(`${apiDomain}/books/v3/organizations`, {
             headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
           });
           if (retryOrgsRes.ok) {
@@ -139,7 +137,7 @@ export async function POST(
 
         // Retry Trial Balance Fetch
         if (orgId) {
-          tbRes = await fetch(`${apiDomain}/api/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
+          tbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
             headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
             signal: AbortSignal.timeout(8000)
           });
@@ -152,7 +150,7 @@ export async function POST(
     }
 
     if (!tbRes.ok) {
-      const errorText = await tbRes.text();
+      const errorText = await tbRes.text().catch(() => "");
       throw new Error(`Zoho error ${tbRes.status}: ${errorText}`);
     }
 
