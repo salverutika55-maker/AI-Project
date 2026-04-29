@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { decrypt, encrypt } from "@/lib/encryption";
 
-// Helper to get Zoho Access Token
+// Helper to get Zoho Access Token (Secured and Encrypted)
 async function getZohoAccessToken(clientId: string) {
   const client = await prisma.client.findUnique({ where: { id: clientId } });
   if (!client || !client.oauthToken) throw new Error("No Zoho account linked.");
 
-  const tokens = JSON.parse(client.oauthToken);
+  const decryptedTokenString = decrypt(client.oauthToken);
+  const tokens = JSON.parse(decryptedTokenString);
   
-  // Use the accounts server from the token if available
   const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
   const tokenUrl = `${accountsUrl}/oauth/v2/token`;
   
@@ -30,9 +33,10 @@ async function getZohoAccessToken(clientId: string) {
     const newTokens = await refreshResponse.json();
     if (newTokens.access_token) {
       const updatedTokens = { ...tokens, ...newTokens };
+      const newlyEncrypted = encrypt(JSON.stringify(updatedTokens));
       await prisma.client.update({
         where: { id: clientId },
-        data: { oauthToken: JSON.stringify(updatedTokens) },
+        data: { oauthToken: newlyEncrypted },
       });
       return { token: newTokens.access_token, tokens: updatedTokens };
     }
@@ -53,7 +57,14 @@ export async function GET(
 ) {
   const { id } = await params;
 
+  // 1. Secure Session Check
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user?.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
+    // 2. Authorization & Ownership Check
     const client = await prisma.client.findUnique({
       where: { id },
       include: { pnlMappings: true }
@@ -61,36 +72,32 @@ export async function GET(
 
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (user?.role !== "ADMIN" && client.userId !== user?.id) {
+      return NextResponse.json({ error: "Access Denied" }, { status: 403 });
+    }
+
     let chartOfAccounts: any[] = [];
     let error: string | null = null;
     let debug: any = {};
 
     if (client.software === "ZOHO") {
       if (!client.oauthToken) {
-        error = "Zoho account not linked. Please link your account in the Client Hub first.";
+        error = "Zoho account not linked.";
       } else {
         try {
           const { token: accessToken, tokens } = await getZohoAccessToken(id);
           
-          const baseDomains = [
-            "https://books.zoho.in", 
-            "https://books.zoho.com", 
-            "https://books.zoho.eu", 
-            "https://books.zoho.com.au"
-          ];
+          const baseDomains = ["https://books.zoho.in", "https://books.zoho.com", "https://books.zoho.eu"];
 
           if (tokens.api_domain) {
             const domainUrl = new URL(tokens.api_domain);
             let host = domainUrl.hostname;
-            if (!host.startsWith("books.")) {
-              host = host.replace(/^www\.|^api\.|^/, "books.");
-            }
+            if (!host.startsWith("books.")) host = host.replace(/^www\.|^api\.|^/, "books.");
             baseDomains.unshift(`https://${host}`);
           }
           
           const domains = [...new Set(baseDomains)];
-          debug.attemptedDomains = domains;
-          
           let coaData: any = null;
           let lastError = "";
           
@@ -100,48 +107,27 @@ export async function GET(
                 headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
                 signal: AbortSignal.timeout(5000)
               });
-              
-              if (!orgsRes.ok) {
-                lastError = `${domain} returned ${orgsRes.status}`;
-                if (orgsRes.status === 401) {
-                  lastError = `Unauthorized (401) on ${domain}. Your session might have expired.`;
-                }
-                continue;
-              }
-
+              if (!orgsRes.ok) continue;
               const orgsData = await orgsRes.json();
               const orgId = orgsData.organizations?.[0]?.organization_id;
-
               if (orgId) {
                 const coaRes = await fetch(`${domain}/api/v3/chartofaccounts?organization_id=${orgId}`, {
                   headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
                 });
                 coaData = await coaRes.json();
-                if (coaData.chartofaccounts) {
-                  debug.successDomain = domain;
-                  break;
-                }
+                if (coaData.chartofaccounts) break;
               }
-            } catch (err: any) {
-              lastError = err.message;
-              continue;
-            }
+            } catch (err: any) { continue; }
           }
 
-          if (coaData?.chartofaccounts) {
-            chartOfAccounts = coaData.chartofaccounts;
-          } else {
-            error = `Failed to connect to Zoho Books. ${lastError}`;
-          }
-        } catch (e: any) {
-          error = e.message;
-        }
+          if (coaData?.chartofaccounts) chartOfAccounts = coaData.chartofaccounts;
+          else error = "Failed to connect to Zoho Books.";
+        } catch (e: any) { error = e.message; }
       }
     }
 
     return NextResponse.json({
       error,
-      debug,
       mappings: client.pnlMappings,
       chartOfAccounts: chartOfAccounts.map(a => ({
         name: a.account_name,
@@ -149,7 +135,6 @@ export async function GET(
         id: a.account_id
       }))
     });
-
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -162,7 +147,17 @@ export async function POST(
   const { id } = await params;
   const { mappings } = await req.json();
 
+  // 1. Secure Session Check
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
+    const client = await prisma.client.findUnique({ where: { id } });
+    if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
+
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (user?.role !== "ADMIN" && client.userId !== user?.id) return NextResponse.json({ error: "Access Denied" }, { status: 403 });
+
     await prisma.pnlMapping.deleteMany({ where: { clientId: id } });
     await prisma.pnlMapping.createMany({
       data: mappings.map((m: any) => ({

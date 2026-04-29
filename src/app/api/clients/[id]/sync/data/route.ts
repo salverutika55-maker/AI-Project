@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { decrypt, encrypt } from "@/lib/encryption";
 
 export const dynamic = "force-dynamic";
 
@@ -9,17 +12,37 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  
+  // 1. Secure Session Check
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user?.email) {
+    return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
+  }
 
   try {
+    // 2. Authorization & Ownership Check
     const client = await prisma.client.findUnique({
       where: { id },
+      include: { user: true }
     });
 
-    if (!client || !client.oauthToken) {
-      return NextResponse.json({ error: "Client not linked" }, { status: 400 });
+    if (!client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
-    const tokens = JSON.parse(client.oauthToken);
+    // Verify the logged-in user owns this client (unless they are an ADMIN)
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (user?.role !== "ADMIN" && client.userId !== user?.id) {
+      return NextResponse.json({ error: "Access Denied. You do not own this client." }, { status: 403 });
+    }
+
+    if (!client.oauthToken) {
+      return NextResponse.json({ error: "Zoho account not linked for this client" }, { status: 400 });
+    }
+
+    // DECRYPT Tokens before use
+    const decryptedTokens = decrypt(client.oauthToken);
+    const tokens = JSON.parse(decryptedTokens);
     const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
     const tokenUrl = `${accountsUrl}/oauth/v2/token`;
     
@@ -68,9 +91,10 @@ export async function POST(
         });
 
         // Save new token in background (don't await to save time)
+        const newlyEncrypted = encrypt(JSON.stringify(updatedTokens));
         prisma.client.update({
           where: { id },
-          data: { oauthToken: JSON.stringify(updatedTokens) },
+          data: { oauthToken: newlyEncrypted },
         }).catch(console.error);
       }
     }

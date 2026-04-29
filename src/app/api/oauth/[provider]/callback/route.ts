@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
+import { encrypt } from "@/lib/encryption";
 
 export async function GET(
   req: Request,
@@ -41,11 +42,14 @@ export async function GET(
       throw new Error(tokens.error_description || tokens.error);
     }
 
+    // ENCRYPT Tokens before saving to database
+    const encryptedTokenString = encrypt(JSON.stringify(tokens));
+
     // Save tokens to database
     await prisma.client.update({
       where: { id: internalClientId },
       data: {
-        oauthToken: JSON.stringify(tokens),
+        oauthToken: encryptedTokenString,
       },
     });
 
