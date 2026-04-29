@@ -127,7 +127,7 @@ export async function POST(
     });
 
   } catch (error: any) {
-    console.error("Sync Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Sync Error Full Stack:", error.stack);
+    return NextResponse.json({ error: String(error.stack) }, { status: 500 });
   }
 }
