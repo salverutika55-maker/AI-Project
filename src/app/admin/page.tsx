@@ -27,6 +27,17 @@ export default async function AdminDashboard() {
     }
   });
 
+  // Fetch security audit logs
+  const auditLogs = await prisma.auditLog.findMany({
+    take: 100,
+    orderBy: { createdAt: 'desc' },
+    include: {
+      user: {
+        select: { email: true }
+      }
+    }
+  });
+
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-slate-200 p-8">
       <div className="max-w-6xl mx-auto">
@@ -71,7 +82,7 @@ export default async function AdminDashboard() {
           </div>
         </div>
 
-        <div className="bg-[#13131A] border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+        <div className="bg-[#13131A] border border-white/10 rounded-2xl overflow-hidden shadow-2xl mb-12">
           <div className="p-6 border-b border-white/10 bg-white/5">
             <h2 className="text-lg font-bold text-white">Recent Logins</h2>
             <p className="text-sm text-slate-400">Track all users currently interacting with the platform.</p>
@@ -96,13 +107,13 @@ export default async function AdminDashboard() {
                       </span>
                     </td>
                     <td className="p-4 text-slate-400">
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {new Date(user.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                     </td>
                     <td className="p-4 pr-6 text-slate-400">
                       {user.lastLogin ? (
                         <span className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-                          {new Date(user.lastLogin).toLocaleString()}
+                          {new Date(user.lastLogin).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
                         </span>
                       ) : (
                         <span className="text-slate-500">Never logged in</span>
@@ -114,6 +125,63 @@ export default async function AdminDashboard() {
                   <tr>
                     <td colSpan={4} className="p-8 text-center text-slate-500">
                       No users found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Security Audit Log Section */}
+        <div className="bg-[#13131A] border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+          <div className="p-6 border-b border-white/10 bg-white/5 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-emerald-500"/> Security Activity Log</h2>
+              <p className="text-sm text-slate-400">Comprehensive audit trail of all sensitive platform actions.</p>
+            </div>
+            <span className="text-xs px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded border border-emerald-500/20">AES-256 Secured</span>
+          </div>
+          <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+            <table className="w-full text-left">
+              <thead className="sticky top-0 bg-[#13131A] shadow-md z-10">
+                <tr className="border-b border-white/5 text-sm font-medium text-slate-400 bg-black/20">
+                  <th className="p-4 pl-6">Timestamp (IST)</th>
+                  <th className="p-4">User</th>
+                  <th className="p-4">Action</th>
+                  <th className="p-4">Entity ID</th>
+                  <th className="p-4 pr-6">Details</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-sm">
+                {auditLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                    <td className="p-4 pl-6 text-slate-400 whitespace-nowrap">
+                      {new Date(log.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })}
+                    </td>
+                    <td className="p-4 font-medium text-white">
+                      {log.user?.email || <span className="text-slate-500 italic">System</span>}
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 text-xs rounded font-medium border 
+                        ${log.action.includes('SUCCESS') ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+                          log.action.includes('FAIL') || log.action.includes('UNAUTHORIZED') ? 'bg-red-500/10 text-red-400 border-red-500/20' : 
+                          'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'}`}>
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="p-4 text-slate-400 text-xs font-mono">
+                      {log.entityId || '-'}
+                    </td>
+                    <td className="p-4 pr-6 text-slate-400">
+                      {log.details || '-'}
+                    </td>
+                  </tr>
+                ))}
+                {auditLogs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-slate-500">
+                      No security logs recorded yet.
                     </td>
                   </tr>
                 )}
