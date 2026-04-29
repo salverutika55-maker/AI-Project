@@ -65,8 +65,7 @@ export async function POST(
     const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
     const tokenUrl = `${accountsUrl}/oauth/v2/token`;
     
-    let apiDomain = tokens.api_domain || "https://books.zoho.in";
-    const apiDomain = tokens.api_domain || "https://www.zohoapis.in";
+    let apiDomain = tokens.api_domain || "https://www.zohoapis.in";
     
     const config = OAUTH_CONFIGS[client.software];
     let accessToken = tokens.access_token;
