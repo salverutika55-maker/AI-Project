@@ -51,16 +51,15 @@ export async function POST(
     }
 
     // 4. DECRYPT Tokens before use
-    const decryptedTokens = decrypt(client.oauthToken);
-    const tokens = JSON.parse(decryptedTokenString(decryptedTokens));
+    const decryptedTokenString = decrypt(client.oauthToken);
     
-    // ... rest of the sync logic ...
-    // (I will keep the rest of the file logic intact but secured)
-    
-    // Decrypt and parse tokens correctly
-    function decryptedTokenString(text: string) {
-       // Support for old unencrypted tokens during transition
-       try { return JSON.parse(text); } catch { return text; }
+    // Safety check: Attempt to parse, fallback to original if it's already an object string
+    let tokens;
+    try {
+      tokens = JSON.parse(decryptedTokenString);
+    } catch (e) {
+      // If parsing fails, it might already be an object from a previous partial sync
+      tokens = typeof decryptedTokenString === 'object' ? decryptedTokenString : JSON.parse(client.oauthToken);
     }
     
     const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
