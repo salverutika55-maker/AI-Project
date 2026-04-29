@@ -73,7 +73,27 @@ export async function POST(
     
     const config = OAUTH_CONFIGS[client.software];
     let accessToken = tokens.access_token;
-    let orgId = tokens.organization_id;
+    
+    // Fetch Organization ID first
+    const orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
+      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
+      signal: AbortSignal.timeout(5000)
+    });
+    
+    if (!orgsRes.ok) {
+      if (orgsRes.status === 401) {
+        // We will handle refresh token logic below
+      } else {
+        throw new Error(`Failed to fetch organizations (Zoho ${orgsRes.status})`);
+      }
+    }
+    
+    let orgId = "";
+    if (orgsRes.ok) {
+      const orgsData = await orgsRes.json();
+      orgId = orgsData.organizations?.[0]?.organization_id;
+      if (!orgId) throw new Error("No organizations found in your Zoho account.");
+    }
 
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
@@ -84,7 +104,7 @@ export async function POST(
       signal: AbortSignal.timeout(8000)
     });
 
-    if (tbRes.status === 401) {
+    if (tbRes.status === 401 || orgsRes.status === 401) {
       const refreshResponse = await fetch(tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -101,10 +121,33 @@ export async function POST(
         accessToken = newTokens.access_token;
         const updatedTokens = { ...tokens, ...newTokens };
         const newlyEncrypted = encrypt(JSON.stringify(updatedTokens));
-        prisma.client.update({
+        await prisma.client.update({
           where: { id },
           data: { oauthToken: newlyEncrypted },
         }).catch(console.error);
+
+        // Retry Organization Fetch if it failed
+        if (!orgId) {
+          const retryOrgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
+            headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+          });
+          if (retryOrgsRes.ok) {
+            const orgsData = await retryOrgsRes.json();
+            orgId = orgsData.organizations?.[0]?.organization_id;
+          }
+        }
+
+        // Retry Trial Balance Fetch
+        if (orgId) {
+          tbRes = await fetch(`${apiDomain}/api/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
+            headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
+            signal: AbortSignal.timeout(8000)
+          });
+        } else {
+          throw new Error("No organizations found after token refresh.");
+        }
+      } else {
+        throw new Error("Token refresh failed. Please re-link your Zoho account.");
       }
     }
 
