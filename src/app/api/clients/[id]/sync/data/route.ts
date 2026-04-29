@@ -152,7 +152,8 @@ export async function POST(
     }
 
     if (!tbRes.ok) {
-      throw new Error(`Zoho error: ${tbRes.status}`);
+      const errorText = await tbRes.text();
+      throw new Error(`Zoho error ${tbRes.status}: ${errorText}`);
     }
 
     const tbData = await tbRes.json();
