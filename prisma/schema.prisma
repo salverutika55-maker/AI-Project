@@ -15,6 +15,7 @@ model User {
   role             String            @default("USER") // 'USER' or 'ADMIN'
   lastLogin        DateTime?
   clients          Client[]
+  auditLogs        AuditLog[]
   createdAt        DateTime          @default(now())
 }
 
@@ -107,10 +108,29 @@ model PNLValue {
   headName   String   // The P&L head name
   month      String   // e.g. "Apr", "May"
   year       Int
-  amount     Float    @default(0)
+  amount     String   // Changed to String to store ENCRYPTED values
   updatedAt  DateTime @updatedAt
 
   @@unique([clientId, headName, month, year])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // e.g., "SYNC_DATA", "UPDATE_MAPPING", "LOGIN"
+  entityId  String?  // The ID of the client or record affected
+  details   String?  @db.Text
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+}
+
+model RateLimit {
+  id        String   @id @default(cuid())
+  key       String   @unique // e.g., "USER_ID:ACTION" or "IP:ACTION"
+  count     Int      @default(0)
+  resetAt   DateTime
 }
 
 model HandshakeCode {

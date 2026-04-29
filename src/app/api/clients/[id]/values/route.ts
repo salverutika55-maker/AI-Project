@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { decrypt } from "@/lib/encryption";
+import { logSecurityEvent } from "@/lib/logger";
 
 export async function GET(
   req: Request,
@@ -14,32 +16,50 @@ export async function GET(
   // 1. Secure Session Check
   const session = await getServerSession(authOptions);
   if (!session || !session.user?.email) {
-    return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    // 2. Authorization & Ownership Check
-    const client = await prisma.client.findUnique({
-      where: { id }
-    });
-
-    if (!client) {
-      return NextResponse.json({ error: "Client not found" }, { status: 404 });
-    }
-
     const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-    if (user?.role !== "ADMIN" && client.userId !== user?.id) {
-      return NextResponse.json({ error: "Access Denied. You do not own this client." }, { status: 403 });
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    // 2. Authorization & Ownership Check
+    const client = await prisma.client.findUnique({ where: { id } });
+    if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
+
+    if (user.role !== "ADMIN" && client.userId !== user.id) {
+      await logSecurityEvent(user.id, "UNAUTHORIZED_READ_ATTEMPT", id, `Attempted to read values for client ${id}`, req);
+      return NextResponse.json({ error: "Access Denied" }, { status: 403 });
     }
-    const values = await prisma.pNLValue.findMany({
+
+    // 3. Fetch and DECRYPT values
+    const encryptedValues = await prisma.pNLValue.findMany({
       where: { 
         clientId: id,
         year: year
       }
     });
 
+    const values = encryptedValues.map(v => {
+      let decryptedAmount = 0;
+      try {
+        // Attempt decryption
+        const decrypted = decrypt(v.amount);
+        decryptedAmount = parseFloat(decrypted);
+      } catch (e) {
+        // Fallback for transition
+        decryptedAmount = parseFloat(v.amount);
+      }
+      
+      return {
+        ...v,
+        amount: isNaN(decryptedAmount) ? 0 : decryptedAmount
+      };
+    });
+
     return NextResponse.json({ values });
   } catch (error: any) {
+    console.error("Values Fetch Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
