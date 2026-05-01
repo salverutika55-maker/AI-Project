@@ -101,7 +101,13 @@ export async function POST(
       signal: AbortSignal.timeout(8000)
     });
 
-    if (tbRes.status === 401 || orgsRes.status === 401) {
+    // Fetch Cumulative Trial Balance (for Balance Sheet items)
+    let cumulativeTbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&to_date=${lastDay}`, {
+      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
+      signal: AbortSignal.timeout(8000)
+    });
+
+    if (tbRes.status === 401 || orgsRes.status === 401 || cumulativeTbRes.status === 401) {
       const refreshResponse = await fetch(tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -140,6 +146,10 @@ export async function POST(
             headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
             signal: AbortSignal.timeout(8000)
           });
+          cumulativeTbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&to_date=${lastDay}`, {
+            headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
+            signal: AbortSignal.timeout(8000)
+          });
         } else {
           throw new Error("No organizations found after token refresh.");
         }
@@ -148,23 +158,27 @@ export async function POST(
       }
     }
 
-    if (!tbRes.ok) {
+    if (!tbRes.ok || !cumulativeTbRes.ok) {
       const errorText = await tbRes.text().catch(() => "");
       throw new Error(`Zoho error ${tbRes.status}: ${errorText}`);
     }
 
     const tbData = await tbRes.json();
+    const cumulativeTbData = await cumulativeTbRes.json();
+    
     const accounts = tbData.trialbalance?.trial_balance_details || [];
+    const cumulativeAccounts = cumulativeTbData.trialbalance?.trial_balance_details || [];
 
     const clientWithMappings = await prisma.client.findUnique({
       where: { id },
       include: { pnlMappings: true }
     });
 
-    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Fetched ${accounts.length} accounts from Zoho`, req);
+    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Fetched ${accounts.length} monthly and ${cumulativeAccounts.length} cumulative accounts from Zoho`, req);
 
     return NextResponse.json({ 
       accounts, 
+      cumulativeAccounts,
       mappings: clientWithMappings?.pnlMappings || [] 
     });
 
