@@ -82,6 +82,11 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
       }
       
       const { monthlyData, mappings } = data;
+      
+      if (!mappings || mappings.length === 0) {
+        throw new Error("No mappings found! Please click 'Smart Map Data' to map your Zoho ledgers to P&L heads first.");
+      }
+
       if (!monthlyData || Object.keys(monthlyData).length === 0) {
         throw new Error(`Zoho returned the report, but no monthly breakdown columns were found for the period ${selectedYear}-${selectedYear+1}. Please verify that your Zoho books has transactions in this date range.`);
       }

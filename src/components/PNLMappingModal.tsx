@@ -68,13 +68,19 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
     );
 
     try {
-      await fetch(`/api/clients/${clientId}/mapping`, {
+      const res = await fetch(`/api/clients/${clientId}/mapping`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mappings: flatMappings })
       });
+      
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to save mapping");
+      
+      alert("✅ Mapping Saved Successfully!");
       onClose();
-    } catch (err) {
+    } catch (err: any) {
+      alert("Error Saving Mapping: " + err.message);
       console.error(err);
     }
     setSaving(false);
