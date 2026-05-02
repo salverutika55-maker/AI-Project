@@ -293,6 +293,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                       <Fragment key={month}>
                         <th className="p-4 text-center text-xs font-black text-cyan-400 uppercase tracking-widest min-w-[120px] border-l border-white/5 bg-cyan-500/5">{month} (Act)</th>
                         <th className="p-4 text-center text-xs font-black text-purple-400 uppercase tracking-widest min-w-[120px] border-l border-white/5 bg-purple-500/5">{month} (Bgt)</th>
+                        <th className="p-4 text-center text-xs font-black text-emerald-400 uppercase tracking-widest min-w-[120px] border-l border-white/5 bg-emerald-500/5">{month} (Var)</th>
                       </Fragment>
                     )
                   ))}
@@ -305,7 +306,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                 {sections.map((section, sIdx) => (
                   <Fragment key={sIdx}>
                     <tr className="bg-white/[0.02]">
-                      <td className="sticky left-0 z-30 bg-[#181821] p-4 text-sm font-black text-cyan-400 uppercase tracking-wide border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? months.length * 2 : months.length) + 4}>{section.name}</td>
+                      <td className="sticky left-0 z-30 bg-[#181821] p-4 text-sm font-black text-cyan-400 uppercase tracking-wide border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? months.length * 3 : months.length) + 4}>{section.name}</td>
                     </tr>
                     {section.items.map((item, iIdx) => {
                       const totalAct = getRowTotal(item);
@@ -318,6 +319,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                           {months.map(m => {
                             const actualVal = section.isCalculated ? (calculatedData[m]?.[item] || 0) : (gridData[m]?.[item] || 0);
                             const budgetVal = section.isCalculated ? (calculatedBudgetData[m]?.[item] || 0) : (budgetData[m]?.[item] || 0);
+                            const monthVar = budgetVal > 0 ? ((actualVal - budgetVal) / budgetVal) * 100 : 0;
                             
                             return viewMode === "STANDARD" ? (
                               <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px]">
@@ -338,6 +340,9 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                                 </td>
                                 <td className="p-2 text-center border-l border-white/5 min-w-[120px] bg-purple-500/5">
                                   <span className="text-sm font-mono font-bold text-purple-300">{budgetVal > 0 ? formatCurrency(budgetVal) : "-"}</span>
+                                </td>
+                                <td className={`p-2 text-center border-l border-white/5 min-w-[120px] bg-emerald-500/5 ${monthVar > 0 ? 'text-emerald-400' : monthVar < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                  <span className="text-sm font-mono font-bold">{budgetVal > 0 ? `${monthVar > 0 ? '+' : ''}${monthVar.toFixed(1)}%` : "-"}</span>
                                 </td>
                               </Fragment>
                             );
