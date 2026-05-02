@@ -93,92 +93,80 @@ export async function POST(
     }
 
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    const searchParams = new URL(req.url).searchParams;
+    const targetYear = parseInt(searchParams.get("year") || String(now.getFullYear()));
+    const fyType = searchParams.get("fyType") || "APR_MAR";
 
-    let tbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
-      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
-      signal: AbortSignal.timeout(8000)
-    });
-
-    // Fetch Cumulative Trial Balance (for Balance Sheet items)
-    let cumulativeTbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&to_date=${lastDay}`, {
-      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
-      signal: AbortSignal.timeout(8000)
-    });
-
-    if (tbRes.status === 401 || orgsRes.status === 401 || cumulativeTbRes.status === 401) {
-      const refreshResponse = await fetch(tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          refresh_token: tokens.refresh_token,
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-        }),
-      });
-
-      const newTokens = await refreshResponse.json();
-      if (newTokens.access_token) {
-        accessToken = newTokens.access_token;
-        const updatedTokens = { ...tokens, ...newTokens };
-        const newlyEncrypted = encrypt(JSON.stringify(updatedTokens));
-        await prisma.client.update({
-          where: { id },
-          data: { oauthToken: newlyEncrypted },
-        }).catch(console.error);
-
-        // Retry Organization Fetch if it failed
-        if (!orgId) {
-          const retryOrgsRes = await fetch(`${apiDomain}/books/v3/organizations`, {
-            headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
-          });
-          if (retryOrgsRes.ok) {
-            const orgsData = await retryOrgsRes.json();
-            orgId = orgsData.organizations?.[0]?.organization_id;
-          }
-        }
-
-        // Retry Trial Balance Fetch
-        if (orgId) {
-          tbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
-            headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
-            signal: AbortSignal.timeout(8000)
-          });
-          cumulativeTbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&to_date=${lastDay}`, {
-            headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
-            signal: AbortSignal.timeout(8000)
-          });
-        } else {
-          throw new Error("No organizations found after token refresh.");
-        }
-      } else {
-        throw new Error("Token refresh failed. Please re-link your Zoho account.");
-      }
-    }
-
-    if (!tbRes.ok || !cumulativeTbRes.ok) {
-      const errorText = await tbRes.text().catch(() => "");
-      throw new Error(`Zoho error ${tbRes.status}: ${errorText}`);
-    }
-
-    const tbData = await tbRes.json();
-    const cumulativeTbData = await cumulativeTbRes.json();
+    // Determine date range for the full fiscal year
+    let fromDate = `${targetYear}-04-01`;
+    let toDate = `${targetYear + 1}-03-31`;
     
-    const accounts = tbData.trialbalance?.trial_balance_details || [];
-    const cumulativeAccounts = cumulativeTbData.trialbalance?.trial_balance_details || [];
+    if (fyType === "JAN_DEC") {
+      fromDate = `${targetYear}-01-01`;
+      toDate = `${targetYear}-12-31`;
+    }
+
+    // Fetch Profit and Loss with monthly breakdown
+    const plUrl = `${apiDomain}/books/v3/reports/profitandloss?organization_id=${orgId}&from_date=${fromDate}&to_date=${toDate}&breakdown=month`;
+    
+    const plRes = await fetch(plUrl, {
+      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!plRes.ok) {
+      const errorText = await plRes.text().catch(() => "");
+      throw new Error(`Zoho P&L Error ${plRes.status}: ${errorText}`);
+    }
+
+    const plData = await plRes.json();
+    
+    // Zoho P&L breakdown returns an array of columns (months) and rows (accounts)
+    // We need to extract the data per month
+    const monthlyData: Record<string, Record<string, number>> = {};
+    const columns = plData.profit_and_loss?.columns || [];
+    const sections = plData.profit_and_loss?.sections || [];
+
+    // Map month names from columns (e.g., "April 2026") to short names ("Apr")
+    const columnMap = columns.map((col: any) => {
+      const date = new Date(col.label);
+      return {
+        id: col.column_id,
+        shortMonth: date.toLocaleString('default', { month: 'short' }),
+        year: date.getFullYear()
+      };
+    });
+
+    const extractRows = (rows: any[]) => {
+      rows.forEach((row: any) => {
+        if (row.account_name && row.values) {
+          row.values.forEach((val: any) => {
+            const colInfo = columnMap.find((c: any) => c.id === val.column_id);
+            if (colInfo) {
+              const m = colInfo.shortMonth;
+              if (!monthlyData[m]) monthlyData[m] = { year: colInfo.year };
+              monthlyData[m][row.account_name] = (monthlyData[m][row.account_name] || 0) + (val.value || 0);
+            }
+          });
+        }
+        if (row.sub_sections) {
+          row.sub_sections.forEach((sub: any) => extractRows(sub.rows || []));
+        }
+        if (row.rows) extractRows(row.rows);
+      });
+    };
+
+    sections.forEach((sec: any) => extractRows(sec.rows || []));
 
     const clientWithMappings = await prisma.client.findUnique({
       where: { id },
       include: { pnlMappings: true }
     });
 
-    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Fetched ${accounts.length} monthly and ${cumulativeAccounts.length} cumulative accounts from Zoho`, req);
+    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Fetched full FY monthly breakdown from Zoho P&L`, req);
 
     return NextResponse.json({ 
-      accounts, 
-      cumulativeAccounts,
+      monthlyData,
       mappings: clientWithMappings?.pnlMappings || [] 
     });
 

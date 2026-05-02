@@ -70,40 +70,52 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
     if (!activeClientId) return;
     setIsSyncing(true);
     try {
-      // 1. Fetch raw data from Zoho
-      const dataRes = await fetch(`/api/clients/${activeClientId}/sync/data`, { method: "POST" });
+      // 1. Fetch raw data from Zoho (Full FY Breakdown)
+      // We pass the selectedYear and fyType to get the correct range
+      const dataRes = await fetch(`/api/clients/${activeClientId}/sync/data?year=${selectedYear}&fyType=${fyType}`, { 
+        method: "POST" 
+      });
       const data = await dataRes.json();
-      if (!dataRes.ok || data.error) throw new Error(data.error || "Failed to fetch Zoho data");
       
-      const { accounts, mappings } = data;
+      if (!dataRes.ok || data.error) {
+        throw new Error(data.error || "Failed to fetch Zoho data. Please check your connection.");
+      }
       
-      // 2. Map data
-      const results: Record<string, number> = {};
-      const now = new Date();
-      const month = now.toLocaleString('default', { month: 'short' });
-      const year = now.getFullYear();
+      const { monthlyData, mappings } = data;
+      if (!monthlyData || Object.keys(monthlyData).length === 0) {
+        throw new Error("No transactions found in Zoho for the selected period.");
+      }
 
-      mappings.forEach((m: any) => {
-        const account = accounts.find((a: any) => a.account_name === m.softwareLedgerName);
-        if (account) {
-          const balance = (account.credit_amount || 0) - (account.debit_amount || 0);
+      const monthKeys = Object.keys(monthlyData); // ["Apr", "May", ...]
+      let processedCount = 0;
+
+      for (const mShort of monthKeys) {
+        const accounts = monthlyData[mShort];
+        const actualYear = accounts.year;
+        
+        // 2. Map data for this specific month using current mappings
+        const results: Record<string, number> = {};
+        mappings.forEach((m: any) => {
+          const balance = accounts[m.softwareLedgerName] || 0;
+          // We add to the head (multiple ledgers can map to one head)
           results[m.sectorHead] = (results[m.sectorHead] || 0) + Math.abs(balance);
-        }
-      });
+        });
 
-      // 3. Save mapped data to DB
-      const saveRes = await fetch(`/api/clients/${activeClientId}/sync/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ results, month, year })
-      });
+        // 3. Save mapped data to DB for this month
+        const saveRes = await fetch(`/api/clients/${activeClientId}/sync/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ results, month: mShort, year: actualYear })
+        });
+        
+        if (saveRes.ok) processedCount++;
+      }
       
-      if (!saveRes.ok) throw new Error("Failed to save synced data");
-      
-      // 4. Refresh grid
+      // 4. Refresh grid with the new data
       await fetchPNLValues();
-      alert("✅ Zoho Actuals Synced Successfully!");
+      alert(`✅ Sync Complete! Successfully updated ${processedCount} months for FY ${selectedYear}-${(selectedYear+1).toString().slice(-2)}.`);
     } catch (err: any) {
+      console.error("Sync Failure:", err);
       alert("Sync Error: " + err.message);
     } finally {
       setIsSyncing(false);
