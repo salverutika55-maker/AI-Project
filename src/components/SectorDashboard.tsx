@@ -29,6 +29,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
   const [selectedYear, setSelectedYear] = useState(2026);
   const [isMappingOpen, setIsMappingOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"STANDARD" | "MONTHLY_BUDGET">("STANDARD");
   
   const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
   const [budgetData, setBudgetData] = useState<Record<string, Record<string, number>>>({});
@@ -37,11 +38,11 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
     if (activeClientId) {
       fetchPNLValues();
     }
-  }, [activeClientId, selectedYear]);
+  }, [activeClientId, selectedYear, fyType]);
 
   const fetchPNLValues = async () => {
     try {
-      const res = await fetch(`/api/clients/${activeClientId}/values?year=${selectedYear}`);
+      const res = await fetch(`/api/clients/${activeClientId}/values?year=${selectedYear}&fyType=${fyType}`);
       const data = await res.json();
       
       // Convert actuals
@@ -249,6 +250,10 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
 
           <div className="flex flex-wrap items-center gap-3">
             <div className="bg-[#13131A] border border-white/10 rounded-xl p-1 flex">
+              <button onClick={() => setViewMode("STANDARD")} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "STANDARD" ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Standard P&L</button>
+              <button onClick={() => setViewMode("MONTHLY_BUDGET")} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "MONTHLY_BUDGET" ? 'bg-purple-500 text-white' : 'text-slate-400 hover:text-white'}`}>Monthly vs Budget</button>
+            </div>
+            <div className="bg-[#13131A] border border-white/10 rounded-xl p-1 flex">
               <button onClick={() => setFyType("APR_MAR")} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${fyType === "APR_MAR" ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>FY: APR - MAR</button>
               <button onClick={() => setFyType("JAN_DEC")} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${fyType === "JAN_DEC" ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>FY: JAN - DEC</button>
             </div>
@@ -281,7 +286,16 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
               <thead>
                 <tr className="border-b border-white/10">
                   <th className="sticky left-0 z-30 bg-[#13131A] p-6 text-left text-xs font-black text-slate-500 uppercase tracking-widest min-w-[300px]">Particulars</th>
-                  {months.map(month => (<th key={month} className="p-4 text-center text-xs font-black text-slate-500 uppercase tracking-widest min-w-[120px] border-l border-white/5">{month}</th>))}
+                  {months.map(month => (
+                    viewMode === "STANDARD" ? (
+                      <th key={month} className="p-4 text-center text-xs font-black text-slate-500 uppercase tracking-widest min-w-[120px] border-l border-white/5">{month}</th>
+                    ) : (
+                      <Fragment key={month}>
+                        <th className="p-4 text-center text-xs font-black text-cyan-400 uppercase tracking-widest min-w-[120px] border-l border-white/5 bg-cyan-500/5">{month} (Act)</th>
+                        <th className="p-4 text-center text-xs font-black text-purple-400 uppercase tracking-widest min-w-[120px] border-l border-white/5 bg-purple-500/5">{month} (Bgt)</th>
+                      </Fragment>
+                    )
+                  ))}
                   <th className="p-4 text-center text-xs font-black text-cyan-500 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">Total Actuals</th>
                   <th className="p-4 text-center text-xs font-black text-purple-400 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-purple-500/5">Total Budget</th>
                   <th className="p-4 text-center text-xs font-black text-emerald-400 uppercase tracking-widest min-w-[120px] border-l border-white/10 bg-emerald-500/5">Variance</th>
@@ -291,7 +305,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                 {sections.map((section, sIdx) => (
                   <Fragment key={sIdx}>
                     <tr className="bg-white/[0.02]">
-                      <td className="sticky left-0 z-30 bg-[#181821] p-4 text-sm font-black text-cyan-400 uppercase tracking-wide border-b border-white/5" colSpan={months.length + 4}>{section.name}</td>
+                      <td className="sticky left-0 z-30 bg-[#181821] p-4 text-sm font-black text-cyan-400 uppercase tracking-wide border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? months.length * 2 : months.length) + 4}>{section.name}</td>
                     </tr>
                     {section.items.map((item, iIdx) => {
                       const totalAct = getRowTotal(item);
@@ -301,15 +315,33 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                       return (
                         <tr key={iIdx} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${section.isBold ? 'font-bold text-white bg-white/[0.01]' : ''} ${section.isSubtotal ? 'bg-cyan-500/5' : ''}`}>
                           <td className={`sticky left-0 z-30 p-4 text-sm border-r border-white/5 ${section.isBold || section.isTotal ? 'bg-[#181821]' : 'bg-[#13131A] text-slate-400'}`}>{item}</td>
-                          {months.map(m => (
-                            <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px]">
-                              {section.isCalculated ? (
-                                <span className="text-sm font-mono font-bold text-white">{formatCurrency(calculatedData[m]?.[item] || 0)}</span>
-                              ) : (
-                                <input type="number" value={gridData[m]?.[item] || ""} onChange={(e) => handleValueChange(m, item, e.target.value)} className="w-full bg-transparent border-none text-center text-sm font-mono text-slate-300 focus:ring-1 focus:ring-cyan-500/50 rounded p-1" placeholder="0" />
-                              )}
-                            </td>
-                          ))}
+                          {months.map(m => {
+                            const actualVal = section.isCalculated ? (calculatedData[m]?.[item] || 0) : (gridData[m]?.[item] || 0);
+                            const budgetVal = section.isCalculated ? (calculatedBudgetData[m]?.[item] || 0) : (budgetData[m]?.[item] || 0);
+                            
+                            return viewMode === "STANDARD" ? (
+                              <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px]">
+                                {section.isCalculated ? (
+                                  <span className="text-sm font-mono font-bold text-white">{formatCurrency(actualVal)}</span>
+                                ) : (
+                                  <input type="number" value={actualVal || ""} onChange={(e) => handleValueChange(m, item, e.target.value)} className="w-full bg-transparent border-none text-center text-sm font-mono text-slate-300 focus:ring-1 focus:ring-cyan-500/50 rounded p-1" placeholder="0" />
+                                )}
+                              </td>
+                            ) : (
+                              <Fragment key={m}>
+                                <td className="p-2 text-center border-l border-white/5 min-w-[120px] bg-cyan-500/5">
+                                  {section.isCalculated ? (
+                                    <span className="text-sm font-mono font-bold text-cyan-300">{formatCurrency(actualVal)}</span>
+                                  ) : (
+                                    <input type="number" value={actualVal || ""} onChange={(e) => handleValueChange(m, item, e.target.value)} className="w-full bg-transparent border-none text-center text-sm font-mono text-cyan-300 focus:ring-1 focus:ring-cyan-500/50 rounded p-1" placeholder="0" />
+                                  )}
+                                </td>
+                                <td className="p-2 text-center border-l border-white/5 min-w-[120px] bg-purple-500/5">
+                                  <span className="text-sm font-mono font-bold text-purple-300">{budgetVal > 0 ? formatCurrency(budgetVal) : "-"}</span>
+                                </td>
+                              </Fragment>
+                            );
+                          })}
                           <td className="p-4 text-center text-sm font-mono font-bold text-cyan-400 border-l border-white/10 bg-cyan-500/5">{formatCurrency(totalAct)}</td>
                           <td className="p-4 text-center text-sm font-mono font-bold text-purple-400 border-l border-white/10 bg-purple-500/5">{totalBgt > 0 ? formatCurrency(totalBgt) : "-"}</td>
                           <td className={`p-4 text-center text-sm font-mono font-bold border-l border-white/10 bg-white/[0.02] ${variance > 0 ? 'text-emerald-400' : variance < 0 ? 'text-red-400' : 'text-slate-500'}`}>

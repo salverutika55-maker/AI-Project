@@ -12,6 +12,7 @@ export async function GET(
   const { id } = await params;
   const { searchParams } = new URL(req.url);
   const year = parseInt(searchParams.get("year") || "2026");
+  const fyType = searchParams.get("fyType") || "APR_MAR";
 
   // 1. Secure Session Check
   const session = await getServerSession(authOptions);
@@ -32,14 +33,17 @@ export async function GET(
       return NextResponse.json({ error: "Access Denied" }, { status: 403 });
     }
 
+    // Determine the exact years to query based on Fiscal Year type
+    const queryYears = fyType === "APR_MAR" ? [year, year + 1] : [year];
+
     // 3. Fetch and DECRYPT actual values
     const encryptedValues = await prisma.pNLValue.findMany({
-      where: { clientId: id, year: year }
+      where: { clientId: id, year: { in: queryYears } }
     });
 
     // 4. Fetch and DECRYPT budget values
     const encryptedBudgets = await prisma.budgetValue.findMany({
-      where: { clientId: id, year: year }
+      where: { clientId: id, year: { in: queryYears } }
     });
 
     const decryptValue = (amountStr: string) => {
@@ -53,12 +57,21 @@ export async function GET(
       return isNaN(decryptedAmount) ? 0 : decryptedAmount;
     };
 
-    const values = encryptedValues.map(v => ({
+    // Filter values strictly to the selected Fiscal Year
+    const filterByFy = (v: any) => {
+      if (fyType === "APR_MAR") {
+        if (["Jan", "Feb", "Mar"].includes(v.month)) return v.year === year + 1;
+        return v.year === year;
+      }
+      return v.year === year;
+    };
+
+    const values = encryptedValues.filter(filterByFy).map(v => ({
       ...v,
       amount: decryptValue(v.amount)
     }));
 
-    const budgetValues = encryptedBudgets.map(v => ({
+    const budgetValues = encryptedBudgets.filter(filterByFy).map(v => ({
       ...v,
       amount: decryptValue(v.amount)
     }));
