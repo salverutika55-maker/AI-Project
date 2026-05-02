@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { 
-  Factory, Briefcase, ArrowRightLeft, Download, Settings2, Link2, UploadCloud
+  Factory, Briefcase, ArrowRightLeft, Download, Settings2, Link2, UploadCloud, RefreshCw
 } from "lucide-react";
 import PNLMappingModal from "./PNLMappingModal";
 import BudgetUploadModal from "./BudgetUploadModal";
@@ -30,6 +30,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
   const [isMappingOpen, setIsMappingOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"STANDARD" | "MONTHLY_BUDGET">("STANDARD");
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
   const [budgetData, setBudgetData] = useState<Record<string, Record<string, number>>>({});
@@ -62,6 +63,50 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
       setBudgetData(bGrid);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleZohoSync = async () => {
+    if (!activeClientId) return;
+    setIsSyncing(true);
+    try {
+      // 1. Fetch raw data from Zoho
+      const dataRes = await fetch(`/api/clients/${activeClientId}/sync/data`, { method: "POST" });
+      const data = await dataRes.json();
+      if (!dataRes.ok || data.error) throw new Error(data.error || "Failed to fetch Zoho data");
+      
+      const { accounts, mappings } = data;
+      
+      // 2. Map data
+      const results: Record<string, number> = {};
+      const now = new Date();
+      const month = now.toLocaleString('default', { month: 'short' });
+      const year = now.getFullYear();
+
+      mappings.forEach((m: any) => {
+        const account = accounts.find((a: any) => a.account_name === m.softwareLedgerName);
+        if (account) {
+          const balance = (account.credit_amount || 0) - (account.debit_amount || 0);
+          results[m.sectorHead] = (results[m.sectorHead] || 0) + Math.abs(balance);
+        }
+      });
+
+      // 3. Save mapped data to DB
+      const saveRes = await fetch(`/api/clients/${activeClientId}/sync/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ results, month, year })
+      });
+      
+      if (!saveRes.ok) throw new Error("Failed to save synced data");
+      
+      // 4. Refresh grid
+      await fetchPNLValues();
+      alert("✅ Zoho Actuals Synced Successfully!");
+    } catch (err: any) {
+      alert("Sync Error: " + err.message);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -273,6 +318,14 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
             >
               <Link2 className="w-4 h-4" />
               Smart Map Data
+            </button>
+            <button 
+              onClick={handleZohoSync}
+              disabled={!activeClientId || isSyncing}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs font-black text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all disabled:opacity-50"
+            >
+              {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              {isSyncing ? "Syncing..." : "Sync Zoho"}
             </button>
             <button className="p-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-colors"><Download className="w-5 h-5" /></button>
           </div>
