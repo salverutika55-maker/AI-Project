@@ -48,6 +48,8 @@ model Client {
   financialRecords     FinancialRecord[]
   pnlMappings          PNLMapping[]
   pnlValues            PNLValue[]
+  budgetMappings       BudgetMapping[]
+  budgetValues         BudgetValue[]
   handshakeCodes       HandshakeCode[]
   createdAt            DateTime          @default(now())
 }
@@ -109,6 +111,28 @@ model PNLValue {
   month      String   // e.g. "Apr", "May"
   year       Int
   amount     String   // Changed to String to store ENCRYPTED values
+  updatedAt  DateTime @updatedAt
+
+  @@unique([clientId, headName, month, year])
+}
+
+model BudgetMapping {
+  id                 String   @id @default(cuid())
+  clientId           String
+  client             Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sectorHead         String   // Standard Head
+  csvLedgerName      String   // Name from uploaded CSV
+  createdAt          DateTime @default(now())
+}
+
+model BudgetValue {
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  headName   String   // The P&L or BS head name
+  month      String   // e.g. "Apr", "May"
+  year       Int
+  amount     String   // ENCRYPTED values
   updatedAt  DateTime @updatedAt
 
   @@unique([clientId, headName, month, year])

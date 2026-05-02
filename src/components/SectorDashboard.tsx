@@ -3,9 +3,10 @@
 import { useState, useMemo, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { 
-  Factory, Briefcase, ArrowRightLeft, Download, Settings2, Link2 
+  Factory, Briefcase, ArrowRightLeft, Download, Settings2, Link2, UploadCloud
 } from "lucide-react";
 import PNLMappingModal from "./PNLMappingModal";
+import BudgetUploadModal from "./BudgetUploadModal";
 
 interface SectorDashboardProps {
   title: string;
@@ -27,6 +28,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
   const [isMappingOpen, setIsMappingOpen] = useState(false);
+  const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   
   const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
 
@@ -236,6 +238,14 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
             </div>
             <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-[#13131A] border border-white/10 rounded-xl px-4 py-2 text-sm font-bold text-white focus:outline-none cursor-pointer"><option value={2026}>2026-27</option><option value={2025}>2025-26</option></select>
             <button 
+              onClick={() => setIsBudgetOpen(true)}
+              disabled={!activeClientId}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs font-black text-purple-400 hover:bg-purple-500/20 hover:border-purple-500/50 transition-all disabled:opacity-50"
+            >
+              <UploadCloud className="w-4 h-4" />
+              Upload Budget
+            </button>
+            <button 
               onClick={() => setIsMappingOpen(true)}
               disabled={!activeClientId}
               className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/50 transition-all disabled:opacity-50"
@@ -248,14 +258,6 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         </div>
 
         {/* Modal */}
-        {activeClientId && (
-          <PNLMappingModal 
-            isOpen={isMappingOpen}
-            onClose={() => setIsMappingOpen(false)}
-            clientId={activeClientId}
-            sectorHeads={allSectorHeads}
-          />
-        )}
 
         <div className="bg-[#13131A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
           <div className="overflow-x-auto">
@@ -311,6 +313,20 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
           </div>
         </div>
       </div>
+
+      <PNLMappingModal 
+        isOpen={isMappingOpen} 
+        onClose={() => setIsMappingOpen(false)} 
+        clientId={activeClientId || ""} 
+        sectorHeads={allSectorHeads} 
+      />
+
+      <BudgetUploadModal
+        isOpen={isBudgetOpen}
+        onClose={() => setIsBudgetOpen(false)}
+        clientId={activeClientId || ""}
+        sectorHeads={allSectorHeads}
+      />
     </div>
   );
 }
