@@ -32,32 +32,38 @@ export async function GET(
       return NextResponse.json({ error: "Access Denied" }, { status: 403 });
     }
 
-    // 3. Fetch and DECRYPT values
+    // 3. Fetch and DECRYPT actual values
     const encryptedValues = await prisma.pNLValue.findMany({
-      where: { 
-        clientId: id,
-        year: year
-      }
+      where: { clientId: id, year: year }
     });
 
-    const values = encryptedValues.map(v => {
+    // 4. Fetch and DECRYPT budget values
+    const encryptedBudgets = await prisma.budgetValue.findMany({
+      where: { clientId: id, year: year }
+    });
+
+    const decryptValue = (amountStr: string) => {
       let decryptedAmount = 0;
       try {
-        // Attempt decryption
-        const decrypted = decrypt(v.amount);
+        const decrypted = decrypt(amountStr);
         decryptedAmount = parseFloat(decrypted);
       } catch (e) {
-        // Fallback for transition
-        decryptedAmount = parseFloat(v.amount);
+        decryptedAmount = parseFloat(amountStr);
       }
-      
-      return {
-        ...v,
-        amount: isNaN(decryptedAmount) ? 0 : decryptedAmount
-      };
-    });
+      return isNaN(decryptedAmount) ? 0 : decryptedAmount;
+    };
 
-    return NextResponse.json({ values });
+    const values = encryptedValues.map(v => ({
+      ...v,
+      amount: decryptValue(v.amount)
+    }));
+
+    const budgetValues = encryptedBudgets.map(v => ({
+      ...v,
+      amount: decryptValue(v.amount)
+    }));
+
+    return NextResponse.json({ values, budgetValues });
   } catch (error: any) {
     console.error("Values Fetch Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

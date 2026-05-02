@@ -31,6 +31,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   
   const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
+  const [budgetData, setBudgetData] = useState<Record<string, Record<string, number>>>({});
 
   useEffect(() => {
     if (activeClientId) {
@@ -43,13 +44,21 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
       const res = await fetch(`/api/clients/${activeClientId}/values?year=${selectedYear}`);
       const data = await res.json();
       
-      // Convert flat array from DB to grid structure
+      // Convert actuals
       const grid: Record<string, Record<string, number>> = {};
       data.values?.forEach((v: any) => {
         if (!grid[v.month]) grid[v.month] = {};
         grid[v.month][v.headName] = v.amount;
       });
       setGridData(grid);
+
+      // Convert budgets
+      const bGrid: Record<string, Record<string, number>> = {};
+      data.budgetValues?.forEach((v: any) => {
+        if (!bGrid[v.month]) bGrid[v.month] = {};
+        bGrid[v.month][v.headName] = v.amount;
+      });
+      setBudgetData(bGrid);
     } catch (err) {
       console.error(err);
     }
@@ -75,11 +84,11 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
   }, [fyType]);
 
   // Internal Calculation Engine to avoid serialization issues
-  const calculatedData = useMemo(() => {
+  const calculateMetrics = (sourceGrid: Record<string, Record<string, number>>) => {
     const newData: Record<string, Record<string, number>> = {};
     
     months.forEach(month => {
-      const v = { ...(gridData[month] || {}) };
+      const v = { ...(sourceGrid[month] || {}) };
       
       if (type === "manufacturing") {
         // Step 1: Revenue
@@ -177,7 +186,10 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
     });
 
     return newData;
-  }, [gridData, type, months]);
+  };
+
+  const calculatedData = useMemo(() => calculateMetrics(gridData), [gridData, type, months]);
+  const calculatedBudgetData = useMemo(() => calculateMetrics(budgetData), [budgetData, type, months]);
 
   const handleValueChange = (month: string, item: string, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -199,7 +211,11 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
   };
 
   const getRowTotal = (item: string) => {
-    return months.reduce((sum, m) => sum + (calculatedData[m][item] || 0), 0);
+    return months.reduce((sum, m) => sum + (calculatedData[m]?.[item] || gridData[m]?.[item] || 0), 0);
+  };
+
+  const getBudgetRowTotal = (item: string) => {
+    return months.reduce((sum, m) => sum + (calculatedBudgetData[m]?.[item] || budgetData[m]?.[item] || 0), 0);
   };
 
   return (
@@ -266,30 +282,42 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                 <tr className="border-b border-white/10">
                   <th className="sticky left-0 z-30 bg-[#13131A] p-6 text-left text-xs font-black text-slate-500 uppercase tracking-widest min-w-[300px]">Particulars</th>
                   {months.map(month => (<th key={month} className="p-4 text-center text-xs font-black text-slate-500 uppercase tracking-widest min-w-[120px] border-l border-white/5">{month}</th>))}
-                  <th className="p-4 text-center text-xs font-black text-cyan-500 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">Total</th>
+                  <th className="p-4 text-center text-xs font-black text-cyan-500 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">Total Actuals</th>
+                  <th className="p-4 text-center text-xs font-black text-purple-400 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-purple-500/5">Total Budget</th>
+                  <th className="p-4 text-center text-xs font-black text-emerald-400 uppercase tracking-widest min-w-[120px] border-l border-white/10 bg-emerald-500/5">Variance</th>
                 </tr>
               </thead>
               <tbody>
                 {sections.map((section, sIdx) => (
                   <Fragment key={sIdx}>
                     <tr className="bg-white/[0.02]">
-                      <td className="sticky left-0 z-30 bg-[#181821] p-4 text-sm font-black text-cyan-400 uppercase tracking-wide border-b border-white/5" colSpan={months.length + 2}>{section.name}</td>
+                      <td className="sticky left-0 z-30 bg-[#181821] p-4 text-sm font-black text-cyan-400 uppercase tracking-wide border-b border-white/5" colSpan={months.length + 4}>{section.name}</td>
                     </tr>
-                    {section.items.map((item, iIdx) => (
-                      <tr key={iIdx} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${section.isBold ? 'font-bold text-white bg-white/[0.01]' : ''} ${section.isSubtotal ? 'bg-cyan-500/5' : ''}`}>
-                        <td className={`sticky left-0 z-30 p-4 text-sm border-r border-white/5 ${section.isBold || section.isTotal ? 'bg-[#181821]' : 'bg-[#13131A] text-slate-400'}`}>{item}</td>
-                        {months.map(m => (
-                          <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px]">
-                            {section.isCalculated ? (
-                              <span className="text-sm font-mono font-bold text-white">{formatCurrency(calculatedData[m]?.[item] || 0)}</span>
-                            ) : (
-                              <input type="number" value={gridData[m]?.[item] || ""} onChange={(e) => handleValueChange(m, item, e.target.value)} className="w-full bg-transparent border-none text-center text-sm font-mono text-slate-300 focus:ring-1 focus:ring-cyan-500/50 rounded p-1" placeholder="0" />
-                            )}
+                    {section.items.map((item, iIdx) => {
+                      const totalAct = getRowTotal(item);
+                      const totalBgt = getBudgetRowTotal(item);
+                      const variance = totalBgt > 0 ? ((totalAct - totalBgt) / totalBgt) * 100 : 0;
+                      
+                      return (
+                        <tr key={iIdx} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${section.isBold ? 'font-bold text-white bg-white/[0.01]' : ''} ${section.isSubtotal ? 'bg-cyan-500/5' : ''}`}>
+                          <td className={`sticky left-0 z-30 p-4 text-sm border-r border-white/5 ${section.isBold || section.isTotal ? 'bg-[#181821]' : 'bg-[#13131A] text-slate-400'}`}>{item}</td>
+                          {months.map(m => (
+                            <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px]">
+                              {section.isCalculated ? (
+                                <span className="text-sm font-mono font-bold text-white">{formatCurrency(calculatedData[m]?.[item] || 0)}</span>
+                              ) : (
+                                <input type="number" value={gridData[m]?.[item] || ""} onChange={(e) => handleValueChange(m, item, e.target.value)} className="w-full bg-transparent border-none text-center text-sm font-mono text-slate-300 focus:ring-1 focus:ring-cyan-500/50 rounded p-1" placeholder="0" />
+                              )}
+                            </td>
+                          ))}
+                          <td className="p-4 text-center text-sm font-mono font-bold text-cyan-400 border-l border-white/10 bg-cyan-500/5">{formatCurrency(totalAct)}</td>
+                          <td className="p-4 text-center text-sm font-mono font-bold text-purple-400 border-l border-white/10 bg-purple-500/5">{totalBgt > 0 ? formatCurrency(totalBgt) : "-"}</td>
+                          <td className={`p-4 text-center text-sm font-mono font-bold border-l border-white/10 bg-white/[0.02] ${variance > 0 ? 'text-emerald-400' : variance < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                            {totalBgt > 0 ? `${variance > 0 ? '+' : ''}${variance.toFixed(1)}%` : "-"}
                           </td>
-                        ))}
-                        <td className="p-4 text-center text-sm font-mono font-bold text-white border-l border-white/10 bg-white/[0.02]">{formatCurrency(getRowTotal(item))}</td>
-                      </tr>
-                    ))}
+                        </tr>
+                      );
+                    })}
                     <tr className="h-4"></tr>
                   </Fragment>
                 ))}
