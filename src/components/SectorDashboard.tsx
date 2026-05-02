@@ -83,7 +83,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
       
       const { monthlyData, mappings } = data;
       if (!monthlyData || Object.keys(monthlyData).length === 0) {
-        throw new Error("No transactions found in Zoho for the selected period.");
+        throw new Error(`Zoho returned the report, but no monthly breakdown columns were found for the period ${selectedYear}-${selectedYear+1}. Please verify that your Zoho books has transactions in this date range.`);
       }
 
       const monthKeys = Object.keys(monthlyData); // ["Apr", "May", ...]

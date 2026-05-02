@@ -122,48 +122,76 @@ export async function POST(
     const plData = await plRes.json();
     
     // Zoho P&L breakdown returns an array of columns (months) and rows (accounts)
-    // We need to extract the data per month
-    const monthlyData: Record<string, Record<string, number>> = {};
+    const monthlyData: Record<string, any> = {};
     const columns = plData.profit_and_loss?.columns || [];
     const sections = plData.profit_and_loss?.sections || [];
 
-    // Map month names from columns (e.g., "April 2026") to short names ("Apr")
-    const columnMap = columns.map((col: any) => {
-      const date = new Date(col.label);
-      return {
-        id: col.column_id,
-        shortMonth: date.toLocaleString('default', { month: 'short' }),
-        year: date.getFullYear()
-      };
-    });
+    // Map month names from columns safely
+    const columnMap = columns
+      .filter((col: any) => col.column_id && col.column_id !== "total")
+      .map((col: any) => {
+        let date = new Date(col.label);
+        // Fallback for tricky date formats
+        if (isNaN(date.getTime())) {
+          const parts = col.label.split(" ");
+          if (parts.length >= 2) {
+            date = new Date(`${parts[0]} 1, ${parts[1]}`);
+          }
+        }
+        
+        return {
+          id: String(col.column_id),
+          shortMonth: isNaN(date.getTime()) ? null : date.toLocaleString('default', { month: 'short' }),
+          year: isNaN(date.getTime()) ? targetYear : date.getFullYear()
+        };
+      })
+      .filter((c: any) => c.shortMonth !== null);
 
-    const extractRows = (rows: any[]) => {
+    const processRows = (rows: any[]) => {
+      if (!rows) return;
       rows.forEach((row: any) => {
+        // Account Row
         if (row.account_name && row.values) {
           row.values.forEach((val: any) => {
-            const colInfo = columnMap.find((c: any) => c.id === val.column_id);
+            const colInfo = columnMap.find((c: any) => c.id === String(val.column_id));
             if (colInfo) {
               const m = colInfo.shortMonth;
               if (!monthlyData[m]) monthlyData[m] = { year: colInfo.year };
-              monthlyData[m][row.account_name] = (monthlyData[m][row.account_name] || 0) + (val.value || 0);
+              
+              // Handle both numbers and formatted strings
+              let amount = 0;
+              if (typeof val.value === "number") amount = val.value;
+              else if (typeof val.value === "string") amount = parseFloat(val.value.replace(/,/g, "")) || 0;
+              
+              monthlyData[m][row.account_name] = (monthlyData[m][row.account_name] || 0) + amount;
             }
           });
         }
+        
+        // Recurse into sub-sections
         if (row.sub_sections) {
-          row.sub_sections.forEach((sub: any) => extractRows(sub.rows || []));
+          row.sub_sections.forEach((sub: any) => processRows(sub.rows));
         }
-        if (row.rows) extractRows(row.rows);
+        
+        // Recurse into nested rows
+        if (row.rows) processRows(row.rows);
       });
     };
 
-    sections.forEach((sec: any) => extractRows(sec.rows || []));
+    // Traverse all sections
+    sections.forEach((sec: any) => {
+      processRows(sec.rows);
+      if (sec.sub_sections) {
+        sec.sub_sections.forEach((sub: any) => processRows(sub.rows));
+      }
+    });
 
     const clientWithMappings = await prisma.client.findUnique({
       where: { id },
       include: { pnlMappings: true }
     });
 
-    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Fetched full FY monthly breakdown from Zoho P&L`, req);
+    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Fetched and parsed P&L breakdown for ${Object.keys(monthlyData).length} months`, req);
 
     return NextResponse.json({ 
       monthlyData,
