@@ -121,7 +121,6 @@ export async function POST(
 
     const plData = await plRes.json();
     
-    // Zoho P&L breakdown returns an array of columns (months) and rows (accounts)
     const monthlyData: Record<string, any> = {};
     const columns = plData.profit_and_loss?.columns || [];
     const sections = plData.profit_and_loss?.sections || [];
@@ -131,12 +130,9 @@ export async function POST(
       .filter((col: any) => col.column_id && col.column_id !== "total")
       .map((col: any) => {
         let date = new Date(col.label);
-        // Fallback for tricky date formats
         if (isNaN(date.getTime())) {
           const parts = col.label.split(" ");
-          if (parts.length >= 2) {
-            date = new Date(`${parts[0]} 1, ${parts[1]}`);
-          }
+          if (parts.length >= 2) date = new Date(`${parts[0]} 1, ${parts[1]}`);
         }
         
         return {
@@ -150,48 +146,75 @@ export async function POST(
     const processRows = (rows: any[]) => {
       if (!rows) return;
       rows.forEach((row: any) => {
-        // Account Row
         if (row.account_name && row.values) {
           row.values.forEach((val: any) => {
             const colInfo = columnMap.find((c: any) => c.id === String(val.column_id));
             if (colInfo) {
               const m = colInfo.shortMonth;
               if (!monthlyData[m]) monthlyData[m] = { year: colInfo.year };
-              
-              // Handle both numbers and formatted strings
               let amount = 0;
               if (typeof val.value === "number") amount = val.value;
               else if (typeof val.value === "string") amount = parseFloat(val.value.replace(/,/g, "")) || 0;
-              
               monthlyData[m][row.account_name] = (monthlyData[m][row.account_name] || 0) + amount;
             }
           });
         }
-        
-        // Recurse into sub-sections
-        if (row.sub_sections) {
-          row.sub_sections.forEach((sub: any) => processRows(sub.rows));
-        }
-        
-        // Recurse into nested rows
+        if (row.sub_sections) row.sub_sections.forEach((sub: any) => processRows(sub.rows));
         if (row.rows) processRows(row.rows);
       });
     };
 
-    // Traverse all sections
     sections.forEach((sec: any) => {
       processRows(sec.rows);
-      if (sec.sub_sections) {
-        sec.sub_sections.forEach((sub: any) => processRows(sub.rows));
-      }
+      if (sec.sub_sections) sec.sub_sections.forEach((sub: any) => processRows(sub.rows));
     });
+
+    // FALLBACK: If P&L returned no months, loop through months and fetch Trial Balance
+    if (Object.keys(monthlyData).length === 0) {
+      const months = fyType === "APR_MAR" 
+        ? ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+        : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+      const currentMonth = now.toLocaleString('default', { month: 'short' });
+      const currentMonthIndex = months.indexOf(currentMonth);
+      const monthsToSync = months.slice(0, currentMonthIndex + 1);
+
+      await Promise.all(monthsToSync.map(async (mShort) => {
+        const mIdx = months.indexOf(mShort);
+        let syncYear = targetYear;
+        if (fyType === "APR_MAR" && ["Jan", "Feb", "Mar"].includes(mShort)) syncYear++;
+
+        const monthNum = (mIdx + (fyType === "APR_MAR" ? 4 : 1) - 1) % 12 + 1;
+        const firstDay = `${syncYear}-${monthNum.toString().padStart(2, '0')}-01`;
+        const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
+
+        try {
+          const tbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
+            headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+          });
+
+          if (tbRes.ok) {
+            const tbData = await tbRes.json();
+            const accounts = tbData.trialbalance?.trial_balance_details || [];
+            const accMap: Record<string, number> = { year: syncYear } as any;
+            accounts.forEach((acc: any) => {
+              const balance = (acc.credit_amount || 0) - (acc.debit_amount || 0);
+              accMap[acc.account_name] = balance;
+            });
+            monthlyData[mShort] = accMap;
+          }
+        } catch (e) {
+          console.error(`Fallback failed for ${mShort}:`, e);
+        }
+      }));
+    }
 
     const clientWithMappings = await prisma.client.findUnique({
       where: { id },
       include: { pnlMappings: true }
     });
 
-    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Fetched and parsed P&L breakdown for ${Object.keys(monthlyData).length} months`, req);
+    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Synced ${Object.keys(monthlyData).length} months using ${Object.keys(monthlyData).length > 1 ? 'P&L/TB' : 'TB'}`, req);
 
     return NextResponse.json({ 
       monthlyData,
