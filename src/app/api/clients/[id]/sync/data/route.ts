@@ -244,17 +244,18 @@ export async function POST(
 
     // 8. Map and Save to DB
     let recordsSaved = 0;
-    for (const m of clientWithMappings.pnlMappings) {
-      for (const mShort of months) {
-        const accounts = monthlyData[mShort];
-        if (!accounts || accounts.error) continue;
+    for (const mShort of months) {
+      const accounts = monthlyData[mShort];
+      if (!accounts || accounts.error) continue;
 
+      const syncYearToSave = accounts.year || targetYear;
+      const aggregatedValues: any[] = [];
+
+      for (const m of clientWithMappings.pnlMappings) {
         const softwareName = (m.softwareLedgerName || "").trim().toLowerCase();
-        
-        // --- SMART MATCHING LOGIC ---
         let balance = 0;
-        const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === softwareName);
         
+        const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === softwareName);
         if (exactMatchKey) {
           balance = accounts[exactMatchKey];
         } else {
@@ -265,28 +266,31 @@ export async function POST(
           if (fuzzyMatchKey) balance = accounts[fuzzyMatchKey];
         }
 
-        const syncYearToSave = accounts.year || targetYear;
-        const encryptedValue = encrypt(Math.abs(balance).toString());
-
-        await prisma.pNLValue.upsert({
-          where: {
-            clientId_headName_month_year: {
-              clientId: id,
-              headName: m.sectorHead,
-              month: mShort,
-              year: syncYearToSave
-            }
-          },
-          update: { amount: encryptedValue },
-          create: {
+        if (balance !== 0) {
+          aggregatedValues.push({
             clientId: id,
             headName: m.sectorHead,
             month: mShort,
             year: syncYearToSave,
-            amount: encryptedValue
+            amount: encrypt(Math.abs(balance).toString())
+          });
+        }
+      }
+
+      // Bulk Update for this month
+      if (aggregatedValues.length > 0) {
+        await prisma.pNLValue.deleteMany({
+          where: {
+            clientId: id,
+            month: mShort,
+            year: syncYearToSave
           }
         });
+        await prisma.pNLValue.createMany({
+          data: aggregatedValues
+        });
       }
+      recordsSaved++;
     }
     recordsSaved = monthsToSync.length;
 
