@@ -472,6 +472,9 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                       </div>
                     ))}
                   </div>
+                </div>
+              ))}
+            </div>
             <p className="mt-6 text-slate-500 text-[10px] font-medium leading-relaxed italic">
               Note: This panel is for verification only. If these names match your "Particulars" column above, the data will be visible in the grid.
             </p>
@@ -479,8 +482,6 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         )}
       </div>
     </div>
-  </div>
-)}
       <PNLMappingModal 
         isOpen={isMappingOpen} 
         onClose={() => setIsMappingOpen(false)} 
