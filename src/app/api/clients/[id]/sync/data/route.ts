@@ -259,8 +259,10 @@ export async function POST(
     await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Synced ${Object.keys(monthlyData).length} months`, req);
 
     return NextResponse.json({ 
+      success: true, 
+      message: `Synced ${clientWithMappings?.pnlMappings.length || 0} mappings for FY ${targetYear}`,
       monthlyData,
-      mappings: clientWithMappings?.pnlMappings || [] 
+      mappings: clientWithMappings?.pnlMappings || []
     });
 
   } catch (error: any) {

@@ -104,6 +104,8 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         const actualYear = accounts.year;
         
         // 2. Map data for this specific month using current mappings
+        console.log(`Sync Preview for ${mShort}:`, accounts);
+        
         const results: Record<string, number> = {};
         mappings.forEach((m: any) => {
           const balance = accounts[m.softwareLedgerName] || 0;
