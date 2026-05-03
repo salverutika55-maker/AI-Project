@@ -201,19 +201,17 @@ export async function POST(
           const accMap: Record<string, any> = { year: syncYear };
           
           // Parsing the flat array structure seen in Zoho Books API
-          const items = plData.profit_and_loss || [];
           const processItems = (list: any[]) => {
             list.forEach(item => {
-              if (item.name && typeof item.total === "number") {
+              // Only pick actual accounts, not summary headings like "Gross Profit"
+              if (item.name && typeof item.total === "number" && item.account_id) {
                 accMap[item.name] = item.total;
               }
-              // Also check for nested rows or sections if any
               if (item.rows) processItems(item.rows);
               if (item.sub_sections) processItems(item.sub_sections);
             });
           };
           processItems(items);
-          console.log(`DIAGNOSTIC: Extracted data for ${mShort}:`, accMap);
           monthlyData[mShort] = accMap;
         }
       } catch (e) {
@@ -273,7 +271,7 @@ export async function POST(
         heads: Object.entries(data)
           .filter(([k, v]) => typeof v === "number" && k !== "year")
           .sort((a, b) => (b[1] as number) - (a[1] as number))
-          .slice(0, 10) // Show more to be sure
+          .slice(0, 15) // Show more to help with mapping
       }));
 
     return NextResponse.json({ 
