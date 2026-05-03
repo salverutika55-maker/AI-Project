@@ -358,9 +358,10 @@ export async function POST(
       allOrgs: organizations?.map((o: any) => o.name) || [],
       apiBaseUsed: apiBase,
       responseKeys: Object.keys(plData),
+      rawData: JSON.stringify(plData).substring(0, 2000),
       rawResponseSample: plData?.profit_and_loss ? "Data found in P&L" : "No P&L data",
       topBalances,
-      ts: "2026-05-03 12:41"
+      ts: "2026-05-03 12:51"
     });
 
   } catch (error: any) {

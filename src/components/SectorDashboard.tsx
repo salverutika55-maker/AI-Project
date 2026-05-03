@@ -96,7 +96,8 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         throw new Error(data.error || `Sync Failed: Zoho returned status ${dataRes.status}`);
       }
       
-      const { count, topBalances, orgName, apiBaseUsed } = data;
+      const { count, topBalances, orgName, apiBaseUsed, rawData } = data;
+      console.log("DIAGNOSTIC: RAW ZOHO JSON SNIPPET:", rawData);
       const sampleWithOrg = topBalances || [];
       (sampleWithOrg as any).orgName = orgName;
       (sampleWithOrg as any).apiBaseUsed = apiBaseUsed;
