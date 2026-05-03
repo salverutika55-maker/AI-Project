@@ -57,6 +57,10 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         if (!grid[v.month]) grid[v.month] = {};
         grid[v.month][v.headName] = v.amount;
       });
+      
+      console.log("Processed Grid Sample (Apr):", grid["Apr"] || "No Apr data");
+      console.log("Sample Mapped Head Names:", Object.keys(grid["Apr"] || {}).slice(0, 5));
+      
       setGridData(grid);
 
       // Convert budgets
