@@ -76,7 +76,17 @@ export async function GET(
       amount: decryptValue(v.amount)
     }));
 
-    return NextResponse.json({ values, budgetValues });
+    return NextResponse.json({ 
+      values, 
+      budgetValues,
+      debug: {
+        clientId: id,
+        year,
+        fyType,
+        count: values.length,
+        queryYears
+      }
+    });
   } catch (error: any) {
     console.error("Values Fetch Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

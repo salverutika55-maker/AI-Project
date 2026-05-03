@@ -45,6 +45,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
     try {
       const res = await fetch(`/api/clients/${activeClientId}/values?year=${selectedYear}&fyType=${fyType}`);
       const data = await res.json();
+      console.log("Dashboard Data Fetch:", data.debug || "No debug info");
       
       // Convert actuals
       const grid: Record<string, Record<string, number>> = {};
