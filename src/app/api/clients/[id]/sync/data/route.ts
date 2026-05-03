@@ -107,6 +107,7 @@ export async function POST(
     let orgId = "";
     let accessTokenUsed = accessToken;
     let finalApiBase = ""; // Will include the /books/v3 part
+    let organization: any = null;
 
     for (const domain of domains) {
       try {
@@ -132,7 +133,7 @@ export async function POST(
         if (orgsRes.ok) {
           const orgsData = await orgsRes.json();
           const organizations = orgsData.organizations || [];
-          let organization = organizations.find((o: any) => 
+          organization = organizations.find((o: any) => 
             o.name.toLowerCase().includes(client.name.toLowerCase()) || 
             client.name.toLowerCase().includes(o.name.toLowerCase())
           );
