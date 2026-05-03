@@ -339,13 +339,13 @@ export async function POST(
           .filter(([k, v]) => typeof v === "number" && k !== "year")
           .sort((a, b) => (b[1] as number) - (a[1] as number))
           .slice(0, 10) // Show more to be sure
-      }))
-      .filter(m => m.heads.length > 0);
+      }));
 
     return NextResponse.json({ 
       success: true, 
       message: `Successfully synced and saved ${recordsSaved} months for FY ${targetYear}.`,
       count: recordsSaved,
+      orgName: organization?.name || "Unknown",
       topBalances
     });
 

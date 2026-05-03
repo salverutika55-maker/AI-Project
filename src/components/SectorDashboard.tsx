@@ -96,8 +96,10 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         throw new Error(data.error || `Sync Failed: Zoho returned status ${dataRes.status}`);
       }
       
-      const { count, topBalances } = data;
-      setTopBalancesSample(topBalances || []);
+      const { count, topBalances, orgName } = data;
+      const sampleWithOrg = topBalances || [];
+      (sampleWithOrg as any).orgName = orgName;
+      setTopBalancesSample(sampleWithOrg);
       
       // 2. Refresh grid with the new data
       await fetchPNLValues();
@@ -435,13 +437,19 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         {/* Sync Diagnostic Panel */}
         {topBalancesSample.length > 0 && (
           <div className="mt-12 p-8 bg-emerald-500/5 border border-emerald-500/20 rounded-3xl animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
-                <RefreshCw className="w-5 h-5 text-emerald-400" />
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                  <RefreshCw className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white">Sync Diagnostic Report</h3>
+                  <p className="text-slate-400 text-xs font-medium">Top balances found in Zoho for each month</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-black text-white">Sync Diagnostic Report</h3>
-                <p className="text-slate-400 text-xs font-medium">Top 5 balances found in Zoho for each month</p>
+              <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest mb-1">Connected Org</p>
+                <p className="text-sm text-white font-bold">{(topBalancesSample as any).orgName || "Unknown Org"}</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
