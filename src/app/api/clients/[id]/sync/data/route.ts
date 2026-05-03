@@ -240,7 +240,7 @@ export async function POST(
             const accounts = tbData.trialbalance?.trial_balance_details || [];
             const accMap: Record<string, any> = { year: syncYear };
             accounts.forEach((acc: any) => {
-              const balance = (acc.credit_amount || 0) - (acc.debit_amount || 0);
+              const balance = (acc.credit_balance || 0) - (acc.debit_balance || 0);
               accMap[acc.account_name] = balance;
             });
             monthlyData[mShort] = accMap;
