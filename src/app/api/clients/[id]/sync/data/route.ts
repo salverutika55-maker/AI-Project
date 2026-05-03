@@ -96,37 +96,61 @@ export async function POST(
       return false;
     };
 
-    // 5. Fetch Organizations and Match by Name
-    let orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
-      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
-    });
-    
-    if (orgsRes.status === 401) {
-      const refreshed = await refreshZohoToken();
-      if (refreshed) {
-        orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
-          headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+    // 5. Fetch Organizations with Multi-Region Fallback
+    const domains = tokens.api_domain ? [tokens.api_domain] : [
+      "https://books.zoho.in",
+      "https://books.zoho.com",
+      "https://books.zoho.eu",
+      "https://books.zoho.com.au"
+    ];
+
+    let orgId = "";
+    let accessTokenUsed = accessToken;
+    let finalApiDomain = "";
+
+    for (const domain of domains) {
+      try {
+        let orgsRes = await fetch(`${domain}/api/v3/organizations`, {
+          headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
+          signal: AbortSignal.timeout(5000)
         });
+        
+        if (orgsRes.status === 401) {
+          const refreshed = await refreshZohoToken();
+          if (refreshed) {
+            accessTokenUsed = accessToken; // Updated by the helper
+            orgsRes = await fetch(`${domain}/api/v3/organizations`, {
+              headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
+              signal: AbortSignal.timeout(5000)
+            });
+          }
+        }
+
+        if (orgsRes.ok) {
+          const orgsData = await orgsRes.json();
+          const organizations = orgsData.organizations || [];
+          let organization = organizations.find((o: any) => 
+            o.name.toLowerCase().includes(client.name.toLowerCase()) || 
+            client.name.toLowerCase().includes(o.name.toLowerCase())
+          );
+          if (!organization) organization = organizations[0];
+          
+          if (organization?.organization_id) {
+            orgId = organization.organization_id;
+            finalApiDomain = domain;
+            break;
+          }
+        }
+      } catch (err) {
+        continue;
       }
     }
 
-    if (!orgsRes.ok) {
-      const errorText = await orgsRes.text().catch(() => "Unknown Error");
-      throw new Error(`Zoho Auth Failed (${orgsRes.status}): ${errorText}. Please re-link your Zoho account in Client Hub.`);
+    if (!orgId) {
+      throw new Error("Zoho Auth Failed: Could not connect to your Zoho account in any region (.in, .com, etc.). Please re-link your account in Client Hub.");
     }
 
-    const orgsData = await orgsRes.json();
-    const organizations = orgsData.organizations || [];
-    
-    // Try to find organization matching client name, else take first
-    let organization = organizations.find((o: any) => 
-      o.name.toLowerCase().includes(client.name.toLowerCase()) || 
-      client.name.toLowerCase().includes(o.name.toLowerCase())
-    );
-    if (!organization) organization = organizations[0];
-    
-    const orgId = organization?.organization_id;
-    if (!orgId) throw new Error("No organizations found in your Zoho account.");
+    const apiDomain = finalApiDomain;
 
     const now = new Date();
     const searchParams = new URL(req.url).searchParams;
