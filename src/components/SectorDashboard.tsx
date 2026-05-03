@@ -475,8 +475,12 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                 </div>
               ))}
             </div>
-            <div className="mt-4 p-3 bg-black/40 rounded border border-white/10 text-[10px] font-mono text-white/40 break-all">
-              RAW ZOHO DATA: {syncDiagnostic[0]?.rawSnippet || (syncDiagnostic as any).rawSnippet || "No raw data"}
+            <div className="mt-4 p-3 bg-black/40 rounded border border-white/10 text-[10px] font-mono text-white/40 break-all overflow-hidden max-h-32">
+              RAW ZOHO DATA: {
+                (syncDiagnostic as any)?.rawSnippet || 
+                (Array.isArray(syncDiagnostic) && (syncDiagnostic as any)[0]?.rawSnippet) || 
+                "No raw data"
+              }
             </div>
           </div>
         )}
