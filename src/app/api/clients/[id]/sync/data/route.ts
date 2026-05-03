@@ -200,49 +200,47 @@ export async function POST(
           const tbData = await tbRes.json();
           const accMap: Record<string, any> = { year: syncYear };
           
-          const exhaustiveDiscovery = (data: any) => {
+          const targetedDiscovery = (data: any) => {
             if (!data) return;
             if (Array.isArray(data)) {
-              data.forEach(item => exhaustiveDiscovery(item));
-            } else if (typeof data === "object") {
-              // AGGRESSIVE PAIR DISCOVERY: 
-              // Find ANY string and ANY number in this object
-              let potentialName = "";
-              let potentialValues: number[] = [];
+              data.forEach(item => targetedDiscovery(item));
+              return;
+            }
+
+            if (typeof data === "object") {
+              // 1. Identify if this object represents an ACCOUNT
+              const name = data.account_name || data.account || data.name || data.label || data.display_name;
+              
+              // 2. Look for financial values specifically
+              let value = 0;
+              let foundFinance = false;
 
               Object.entries(data).forEach(([key, val]) => {
                 const lowerKey = key.toLowerCase();
+                const isFinanceKey = lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("amount") || lowerKey.includes("balance");
                 
-                // If it's a string and not a metadata key, it might be the account name
-                if (typeof val === "string" && !["id", "account_id", "code", "type"].includes(lowerKey)) {
-                  if (val.length > 2 && val.length < 100) potentialName = val.trim();
-                }
-
-                // If it's a number and not a metadata key, it's a financial value
-                if (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val))) {
+                if (isFinanceKey && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
                   const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
-                  if (!isNaN(num) && !["id", "account_id", "year"].includes(lowerKey)) {
-                    potentialValues.push(Math.abs(num));
+                  if (!isNaN(num) && lowerKey !== "id" && lowerKey !== "account_id" && lowerKey !== "year") {
+                    value = Math.abs(num);
+                    foundFinance = true;
                   }
                 }
 
-                // RECURSE
+                // RECURSE deeper
                 if (val && typeof val === "object" && key !== "account_transactions") {
-                  exhaustiveDiscovery(val);
+                  targetedDiscovery(val);
                 }
               });
 
-              // If we found a name and at least one non-zero value, save it
-              if (potentialName && potentialValues.length > 0) {
-                const maxVal = Math.max(...potentialValues);
-                if (maxVal > 0) {
-                  accMap[potentialName] = maxVal;
-                }
+              // 3. If we have a name and a financial value, it's a ledger!
+              if (name && foundFinance && name !== "Total") {
+                accMap[name.trim()] = value;
               }
             }
           };
 
-          exhaustiveDiscovery(tbData);
+          targetedDiscovery(tbData);
           monthlyData[mShort] = accMap;
         } else {
           const errText = await tbRes.text().catch(() => "Unknown error");
