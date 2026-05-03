@@ -188,7 +188,6 @@ export async function POST(
       const firstDay = `${syncYear}-${monthNum.toString().padStart(2, '0')}-01`;
       const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
 
-      // Trial Balance - The User's requested source of truth
       const tbUrl = `${finalApiBase}/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`;
       
       try {
@@ -201,35 +200,49 @@ export async function POST(
           const tbData = await tbRes.json();
           const accMap: Record<string, any> = { year: syncYear };
           
-          const omniDiscovery = (data: any) => {
+          const exhaustiveDiscovery = (data: any) => {
             if (!data) return;
             if (Array.isArray(data)) {
-              data.forEach(item => omniDiscovery(item));
+              data.forEach(item => exhaustiveDiscovery(item));
             } else if (typeof data === "object") {
-              // Try ALL possible name keys in Trial Balance
-              const name = data.account_name || data.account || data.name || data.label || data.display_name;
-              
-              // Search ALL keys for debit/credit or amount
+              // AGGRESSIVE PAIR DISCOVERY: 
+              // Find ANY string and ANY number in this object
+              let potentialName = "";
+              let potentialValues: number[] = [];
+
               Object.entries(data).forEach(([key, val]) => {
                 const lowerKey = key.toLowerCase();
-                const isAmountKey = lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("amount") || lowerKey.includes("balance");
                 
-                if (name && isAmountKey && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
+                // If it's a string and not a metadata key, it might be the account name
+                if (typeof val === "string" && !["id", "account_id", "code", "type"].includes(lowerKey)) {
+                  if (val.length > 2 && val.length < 100) potentialName = val.trim();
+                }
+
+                // If it's a number and not a metadata key, it's a financial value
+                if (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val))) {
                   const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
-                  if (!isNaN(num) && !["id", "account_id", "year"].includes(key)) {
-                    // Accumulate movements - for Trial Balance we take the absolute movement
-                    accMap[name.trim()] = (accMap[name.trim()] || 0) + Math.abs(num);
+                  if (!isNaN(num) && !["id", "account_id", "year"].includes(lowerKey)) {
+                    potentialValues.push(Math.abs(num));
                   }
                 }
-                // Recurse into everything
+
+                // RECURSE
                 if (val && typeof val === "object" && key !== "account_transactions") {
-                  omniDiscovery(val);
+                  exhaustiveDiscovery(val);
                 }
               });
+
+              // If we found a name and at least one non-zero value, save it
+              if (potentialName && potentialValues.length > 0) {
+                const maxVal = Math.max(...potentialValues);
+                if (maxVal > 0) {
+                  accMap[potentialName] = maxVal;
+                }
+              }
             }
           };
 
-          omniDiscovery(tbData);
+          exhaustiveDiscovery(tbData);
           monthlyData[mShort] = accMap;
         } else {
           const errText = await tbRes.text().catch(() => "Unknown error");
