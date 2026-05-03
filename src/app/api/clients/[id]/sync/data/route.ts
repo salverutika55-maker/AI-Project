@@ -188,57 +188,48 @@ export async function POST(
       const firstDay = `${syncYear}-${monthNum.toString().padStart(2, '0')}-01`;
       const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
 
-      // Switching to Trial Balance as requested - it is much more reliable for ledger balances
-      const tbUrl = `${finalApiBase}/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`;
+      const plUrl = `${finalApiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`;
       
       try {
-        const tbRes = await fetch(tbUrl, {
+        const plRes = await fetch(plUrl, {
           headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
           signal: AbortSignal.timeout(30000)
         });
 
-        if (tbRes.ok) {
-          const tbData = await tbRes.json();
+        if (plRes.ok) {
+          const plData = await plRes.json();
           const accMap: Record<string, any> = { year: syncYear };
           
-          const processTrialBalance = (data: any) => {
+          const discovery = (data: any) => {
             if (!data) return;
-            
-            // 1. If it's an array, it might be the list of accounts
             if (Array.isArray(data)) {
-              data.forEach(item => {
-                const name = item.account_name || item.name || item.label || item.display_name;
-                const debit = parseFloat(String(item.debit_amount || item.debit || 0).replace(/,/g, "")) || 0;
-                const credit = parseFloat(String(item.credit_amount || item.credit || 0).replace(/,/g, "")) || 0;
-                
-                if (name && (debit !== 0 || credit !== 0)) {
-                  accMap[name.trim()] = Math.abs(debit - credit);
+              data.forEach(item => discovery(item));
+            } else if (typeof data === "object") {
+              const name = data.name || data.account_name || data.label || data.display_name;
+              // Check ALL properties for numbers
+              Object.entries(data).forEach(([key, val]) => {
+                if (name && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
+                  const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
+                  if (!isNaN(num) && !["id", "account_id", "year"].includes(key)) {
+                    accMap[name.trim()] = num;
+                  }
                 }
-
-                // Recursively check if this item has children (sub_sections, sub_rows, etc.)
-                Object.values(item).forEach(val => {
-                  if (val && typeof val === "object") processTrialBalance(val);
-                });
-              });
-              return;
-            }
-
-            // 2. If it's an object, recurse into all its properties
-            if (typeof data === "object") {
-              Object.values(data).forEach(val => {
-                if (val && typeof val === "object") processTrialBalance(val);
+                // Recurse
+                if (val && typeof val === "object" && key !== "account_transactions") {
+                  discovery(val);
+                }
               });
             }
           };
 
-          processTrialBalance(tbData);
+          discovery(plData);
           monthlyData[mShort] = accMap;
         } else {
-          const errText = await tbRes.text().catch(() => "Unknown error");
-          monthlyData[mShort] = { error: `Zoho TB Error ${tbRes.status}: ${errText.substring(0, 50)}` };
+          const errText = await plRes.text().catch(() => "Unknown error");
+          monthlyData[mShort] = { error: `Zoho P&L Error ${plRes.status}: ${errText.substring(0, 50)}` };
         }
       } catch (e: any) {
-        monthlyData[mShort] = { error: `TB Fetch Failed: ${e.message}` };
+        monthlyData[mShort] = { error: `P&L Fetch Failed: ${e.message}` };
       }
     }
 
