@@ -203,9 +203,14 @@ export async function POST(
           const processItems = (list: any[]) => {
             list.forEach(item => {
               if (item.name && typeof item.total === "number") {
-                accMap[item.name.trim()] = item.total;
-              } else if (item.name) {
-                skippedNames.push(`${item.name} (Bad Total: ${typeof item.total})`);
+                // If it has an account_id, it's a map-able ledger
+                if (item.account_id) {
+                  accMap[item.name.trim()] = item.total;
+                } else {
+                  // If no ID, it's likely a summary total (Gross Profit, etc.)
+                  // We still store it with a prefix so it doesn't collide but can be seen in diagnostic
+                  accMap[`TOTAL_${item.name.trim()}`] = item.total;
+                }
               }
               if (item.rows) processItems(item.rows);
               if (item.sub_sections) processItems(item.sub_sections);
@@ -275,8 +280,15 @@ export async function POST(
         month,
         heads: Object.entries(data)
           .filter(([k, v]) => typeof v === "number" && k !== "year")
-          .sort((a, b) => (b[1] as number) - (a[1] as number))
-          .slice(0, 15) // Show more to help with mapping
+          // Sort actual accounts first, then by amount
+          .sort((a, b) => {
+            const isATotal = a[0].startsWith("TOTAL_");
+            const isBTotal = b[0].startsWith("TOTAL_");
+            if (isATotal && !isBTotal) return 1;
+            if (!isATotal && isBTotal) return -1;
+            return (b[1] as number) - (a[1] as number);
+          })
+          .slice(0, 20)
       }));
 
     return NextResponse.json({ 
