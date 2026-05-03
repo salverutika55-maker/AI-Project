@@ -203,25 +203,32 @@ export async function POST(
           
           const processTrialBalance = (data: any) => {
             if (!data) return;
-            const reports = data.trialbalance || data.report || [];
             
-            reports.forEach((item: any) => {
-              const name = item.account_name || item.name || item.label;
-              // For P&L, we want the net movement. In TB, this is usually debit - credit (or vice versa for income)
-              // We'll take the absolute highest value or net it
-              const debit = parseFloat(String(item.debit_amount || 0).replace(/,/g, "")) || 0;
-              const credit = parseFloat(String(item.credit_amount || 0).replace(/,/g, "")) || 0;
-              
-              if (name) {
-                // For P&L heads, we just need the magnitude of movement in that month
-                accMap[name.trim()] = Math.abs(debit - credit);
-              }
+            // 1. If it's an array, it might be the list of accounts
+            if (Array.isArray(data)) {
+              data.forEach(item => {
+                const name = item.account_name || item.name || item.label || item.display_name;
+                const debit = parseFloat(String(item.debit_amount || item.debit || 0).replace(/,/g, "")) || 0;
+                const credit = parseFloat(String(item.credit_amount || item.credit || 0).replace(/,/g, "")) || 0;
+                
+                if (name && (debit !== 0 || credit !== 0)) {
+                  accMap[name.trim()] = Math.abs(debit - credit);
+                }
 
-              // Recursively check for sub_sections if any
-              if (item.sub_sections && Array.isArray(item.sub_sections)) {
-                processTrialBalance({ trialbalance: item.sub_sections });
-              }
-            });
+                // Recursively check if this item has children (sub_sections, sub_rows, etc.)
+                Object.values(item).forEach(val => {
+                  if (val && typeof val === "object") processTrialBalance(val);
+                });
+              });
+              return;
+            }
+
+            // 2. If it's an object, recurse into all its properties
+            if (typeof data === "object") {
+              Object.values(data).forEach(val => {
+                if (val && typeof val === "object") processTrialBalance(val);
+              });
+            }
           };
 
           processTrialBalance(tbData);
