@@ -245,8 +245,9 @@ export async function POST(
       if (sec.sub_sections) sec.sub_sections.forEach((sub: any) => processRows(sub.rows));
     });
 
-    // 7. FALLBACK: If P&L returned no months, fetch Trial Balance month-by-month
-    if (Object.keys(monthlyData).length === 0) {
+    // 7. FALLBACK: If P&L returned no data or any month is empty, fetch Trial Balance month-by-month
+    const monthsWithData = Object.entries(monthlyData).filter(([m, d]) => Object.keys(d).length > 1); // >1 because 'year' is always there
+    if (monthsWithData.length < 2) { // If we don't have at least 2 months of data (Apr, May)
       const months = fyType === "APR_MAR" 
         ? ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
         : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
