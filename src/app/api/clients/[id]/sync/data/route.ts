@@ -244,22 +244,20 @@ export async function POST(
 
     // 8. Map and Save to DB
     let recordsSaved = 0;
-    await Promise.all(clientWithMappings.pnlMappings.map(async (m) => {
-      await Promise.all(months.map(async (mShort) => {
+    for (const m of clientWithMappings.pnlMappings) {
+      for (const mShort of months) {
         const accounts = monthlyData[mShort];
-        if (!accounts || accounts.error) return;
+        if (!accounts || accounts.error) continue;
 
         const softwareName = (m.softwareLedgerName || "").trim().toLowerCase();
         
         // --- SMART MATCHING LOGIC ---
-        // 1. Try Exact Match (Case Insensitive)
         let balance = 0;
         const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === softwareName);
         
         if (exactMatchKey) {
           balance = accounts[exactMatchKey];
         } else {
-          // 2. Try Partial Match (Fuzzy)
           const fuzzyMatchKey = Object.keys(accounts).find(k => {
             const lowerK = k.trim().toLowerCase();
             return lowerK.includes(softwareName) || softwareName.includes(lowerK);
@@ -268,8 +266,8 @@ export async function POST(
         }
 
         const syncYearToSave = accounts.year || targetYear;
-
         const encryptedValue = encrypt(Math.abs(balance).toString());
+
         await prisma.pNLValue.upsert({
           where: {
             clientId_headName_month_year: {
@@ -288,9 +286,9 @@ export async function POST(
             amount: encryptedValue
           }
         });
-      }));
-    }));
-    recordsSaved = months.length;
+      }
+    }
+    recordsSaved = monthsToSync.length;
 
     await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Synced and saved ${recordsSaved} months`, req);
 
