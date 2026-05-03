@@ -193,17 +193,15 @@ export async function POST(
       try {
         const plRes = await fetch(plUrl, {
           headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
-          signal: AbortSignal.timeout(10000)
+          signal: AbortSignal.timeout(30000)
         });
 
         if (plRes.ok) {
           plData = await plRes.json();
           const accMap: Record<string, any> = { year: syncYear };
           
-          // Parsing the flat array structure seen in Zoho Books API
           const processItems = (list: any[]) => {
             list.forEach(item => {
-              // Only pick actual accounts, not summary headings like "Gross Profit"
               if (item.name && typeof item.total === "number" && item.account_id) {
                 accMap[item.name.trim()] = item.total;
               }
@@ -211,11 +209,15 @@ export async function POST(
               if (item.sub_sections) processItems(item.sub_sections);
             });
           };
+
           processItems(plData.profit_and_loss || []);
           monthlyData[mShort] = accMap;
+        } else {
+          const errText = await plRes.text().catch(() => "Unknown error");
+          monthlyData[mShort] = { error: `Zoho Error ${plRes.status}: ${errText.substring(0, 50)}` };
         }
-      } catch (e) {
-        console.error(`Sync failed for ${mShort}:`, e);
+      } catch (e: any) {
+        monthlyData[mShort] = { error: `Fetch Failed: ${e.message}` };
       }
     }
 
