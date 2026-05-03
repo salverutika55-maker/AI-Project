@@ -45,7 +45,11 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
     try {
       const res = await fetch(`/api/clients/${activeClientId}/values?year=${selectedYear}&fyType=${fyType}`);
       const data = await res.json();
-      console.log("Dashboard Data Fetch:", data.debug || "No debug info");
+      console.log("Dashboard Data Fetch:", {
+        debug: data.debug,
+        valuesSample: data.values?.[0],
+        monthsFound: [...new Set(data.values?.map((v: any) => v.month))]
+      });
       
       // Convert actuals
       const grid: Record<string, Record<string, number>> = {};
@@ -118,8 +122,11 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
       }
       
       // 4. Refresh grid with the new data
+      const refreshRes = await fetch(`/api/clients/${activeClientId}/values?year=${selectedYear}&fyType=${fyType}`);
+      const refreshData = await refreshRes.json();
+      
       await fetchPNLValues();
-      alert(`✅ Sync Complete! Successfully updated ${processedCount} months for FY ${selectedYear}-${(selectedYear+1).toString().slice(-2)}.`);
+      alert(`✅ Sync Complete! Updated ${processedCount} months. Found ${refreshData.values?.length || 0} total records for FY ${selectedYear}.`);
     } catch (err: any) {
       console.error("Sync Failure:", err);
       alert("Sync Error: " + err.message);
