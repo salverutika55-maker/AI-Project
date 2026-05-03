@@ -65,7 +65,7 @@ export async function POST(
     
     const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
     const tokenUrl = `${accountsUrl}/oauth/v2/token`;
-    let apiDomain = tokens.api_domain || "https://www.zohoapis.in";
+    let apiDomain = tokens.api_domain || "https://books.zoho.in";
     const config = OAUTH_CONFIGS[client.software];
     let accessToken = tokens.access_token;
     
@@ -111,7 +111,8 @@ export async function POST(
     }
 
     if (!orgsRes.ok) {
-      throw new Error(`Zoho Auth Failed (${orgsRes.status}). Please re-link your Zoho account in Client Hub.`);
+      const errorText = await orgsRes.text().catch(() => "Unknown Error");
+      throw new Error(`Zoho Auth Failed (${orgsRes.status}): ${errorText}. Please re-link your Zoho account in Client Hub.`);
     }
 
     const orgsData = await orgsRes.json();
