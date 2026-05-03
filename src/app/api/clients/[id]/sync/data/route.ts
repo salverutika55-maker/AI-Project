@@ -200,18 +200,21 @@ export async function POST(
           plData = await plRes.json();
           const accMap: Record<string, any> = { year: syncYear };
           const skippedNames: string[] = [];
+          const rawSamples: any[] = [];
           const processItems = (list: any[]) => {
             list.forEach(item => {
+              if (rawSamples.length < 5) rawSamples.push(JSON.stringify(item).substring(0, 100));
               if (item.name && typeof item.total === "number") {
-                // Save everything. Mapping will handle picking the right one.
                 accMap[item.name.trim()] = item.total;
               }
               if (item.rows) processItems(item.rows);
               if (item.sub_sections) processItems(item.sub_sections);
+              if (item.sub_rows) processItems(item.sub_rows);
             });
           };
 
           processItems(plData.profit_and_loss || []);
+          (accMap as any)._raw = rawSamples;
           monthlyData[mShort] = accMap;
         } else {
           const errText = await plRes.text().catch(() => "Unknown error");
