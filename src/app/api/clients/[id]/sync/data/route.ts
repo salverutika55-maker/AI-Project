@@ -231,7 +231,7 @@ export async function POST(
         const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
 
         try {
-          const tbRes = await fetch(`${apiDomain}/books/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
+          const tbRes = await fetch(`${apiDomain}/api/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
             headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
           });
 
