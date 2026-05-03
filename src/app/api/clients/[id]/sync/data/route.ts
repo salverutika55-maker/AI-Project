@@ -211,7 +211,7 @@ export async function POST(
               if (item.sub_sections) processItems(item.sub_sections);
             });
           };
-          processItems(items);
+          processItems(plData.profit_and_loss || []);
           monthlyData[mShort] = accMap;
         }
       } catch (e) {
