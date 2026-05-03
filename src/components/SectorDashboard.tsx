@@ -31,6 +31,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"STANDARD" | "MONTHLY_BUDGET">("STANDARD");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [topBalancesSample, setTopBalancesSample] = useState<any[]>([]);
   
   const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
   const [budgetData, setBudgetData] = useState<Record<string, Record<string, number>>>({});
@@ -96,7 +97,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
       }
       
       const { count, topBalances } = data;
-      console.log("Sync Top Balances Sample:", topBalances);
+      setTopBalancesSample(topBalances || []);
       
       // 2. Refresh grid with the new data
       await fetchPNLValues();
@@ -430,6 +431,39 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
             <p className="text-sm text-slate-300 italic italic">Auto-calculating all Contribution, GP, and NP fields based on your provided P&L logic.</p>
           </div>
         </div>
+
+        {/* Sync Diagnostic Panel */}
+        {topBalancesSample.length > 0 && (
+          <div className="mt-12 p-8 bg-emerald-500/5 border border-emerald-500/20 rounded-3xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                <RefreshCw className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">Sync Diagnostic Report</h3>
+                <p className="text-slate-400 text-xs font-medium">Top 5 balances found in Zoho for each month</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {topBalancesSample.map((m: any) => (
+                <div key={m.month} className="bg-[#13131A] p-4 rounded-2xl border border-white/5">
+                  <div className="text-emerald-400 text-xs font-black uppercase tracking-widest mb-3">{m.month}</div>
+                  <div className="space-y-2">
+                    {m.heads.map(([head, bal]: any) => (
+                      <div key={head} className="flex justify-between items-center text-[11px]">
+                        <span className="text-slate-500 font-bold truncate max-w-[150px]">{head}</span>
+                        <span className="text-white font-mono font-black">{formatCurrency(bal)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-6 text-slate-500 text-[10px] font-medium leading-relaxed italic">
+              Note: This panel is for verification only. If these names match your "Particulars" column above, the data will be visible in the grid.
+            </p>
+          </div>
+        )}
       </div>
 
       <PNLMappingModal 
