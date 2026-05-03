@@ -243,43 +243,52 @@ export async function POST(
     });
 
     // 8. Map and Save to DB
-    const mappings = clientWithMappings?.pnlMappings || [];
     let recordsSaved = 0;
+    await Promise.all(clientWithMappings.pnlMappings.map(async (m) => {
+      await Promise.all(months.map(async (mShort) => {
+        const accounts = monthlyData[mShort];
+        if (!accounts || accounts.error) return;
 
-    await Promise.all(Object.entries(monthlyData).map(async ([mShort, accounts]) => {
-      const year = accounts.year;
-      const results: Record<string, number> = {};
-      
-      mappings.forEach((m: any) => {
-        const softwareName = (m.softwareLedgerName || "").trim();
-        const balance = accounts[softwareName] || 0;
-        results[m.sectorHead] = (results[m.sectorHead] || 0) + Math.abs(balance);
-      });
+        const softwareName = (m.softwareLedgerName || "").trim().toLowerCase();
+        
+        // --- SMART MATCHING LOGIC ---
+        // 1. Try Exact Match (Case Insensitive)
+        let balance = 0;
+        const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === softwareName);
+        
+        if (exactMatchKey) {
+          balance = accounts[exactMatchKey];
+        } else {
+          // 2. Try Partial Match (Fuzzy)
+          const fuzzyMatchKey = Object.keys(accounts).find(k => {
+            const lowerK = k.trim().toLowerCase();
+            return lowerK.includes(softwareName) || softwareName.includes(lowerK);
+          });
+          if (fuzzyMatchKey) balance = accounts[fuzzyMatchKey];
+        }
 
-      // Save to DB
-      await Promise.all(Object.entries(results).map(([head, amount]) => {
-        const encryptedAmount = encrypt(String(amount));
-        return prisma.pNLValue.upsert({
+        const encryptedValue = encrypt(Math.abs(balance).toString());
+        await prisma.pNLValue.upsert({
           where: {
             clientId_headName_month_year: {
               clientId: id,
-              headName: head,
+              headName: m.sectorHead,
               month: mShort,
-              year
+              year: syncYear
             }
           },
-          update: { amount: encryptedAmount },
+          update: { amount: encryptedValue },
           create: {
             clientId: id,
-            headName: head,
+            headName: m.sectorHead,
             month: mShort,
-            year,
-            amount: encryptedAmount
+            year: syncYear,
+            amount: encryptedValue
           }
         });
       }));
-      recordsSaved++;
     }));
+    recordsSaved = months.length;
 
     await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Synced and saved ${recordsSaved} months`, req);
 
