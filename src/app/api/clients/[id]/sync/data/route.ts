@@ -199,33 +199,40 @@ export async function POST(
         if (plRes.ok) {
           plData = await plRes.json();
           const accMap: Record<string, any> = { year: syncYear };
-          const skippedNames: string[] = [];
           const rawSamples: any[] = [];
-          const processItems = (list: any[]) => {
-            if (!Array.isArray(list)) return;
-            list.forEach(item => {
-              if (!item) return;
-              
-              // 1. Try to find the amount using ANY common Zoho key
-              const val = item.total ?? item.amount ?? item.net_amount ?? item.balance ?? item.amount_payable;
-              
-              if (item.name && (typeof val === "number" || typeof val === "string")) {
-                const numericVal = typeof val === "string" ? parseFloat(val.replace(/[^0-9.-]/g, "")) : val;
-                if (!isNaN(numericVal)) {
-                  accMap[item.name.trim()] = numericVal;
-                }
-              }
+          const processItems = (data: any) => {
+            if (!data) return;
+            
+            // 1. If it's an array, process each element
+            if (Array.isArray(data)) {
+              data.forEach(item => processItems(item));
+              return;
+            }
 
-              // 2. Recursively check EVERY property that is an array (Zoho uses rows, sub_sections, sub_rows, etc.)
-              Object.entries(item).forEach(([key, value]) => {
-                if (Array.isArray(value) && key !== "account_transactions") {
-                  processItems(value);
+            // 2. If it's an object, check for values and recurse
+            if (typeof data === "object") {
+              // Try to find a name and a numeric value in this object
+              const name = data.name || data.account_name || data.label;
+              
+              // Search ALL keys for a number
+              Object.entries(data).forEach(([key, val]) => {
+                // If we found a name and this key looks like a financial value
+                if (name && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
+                  const numericVal = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
+                  if (!isNaN(numericVal) && key !== "id" && key !== "account_id") {
+                    accMap[name.trim()] = numericVal;
+                  }
+                }
+
+                // RECURSE: If this property is an object or array, go deeper
+                if (val && typeof val === "object" && key !== "account_transactions") {
+                  processItems(val);
                 }
               });
-            });
+            }
           };
 
-          processItems(plData.profit_and_loss || []);
+          processItems(plData.profit_and_loss || plData.report || plData);
           (accMap as any)._raw = rawSamples;
           monthlyData[mShort] = accMap;
         } else {
