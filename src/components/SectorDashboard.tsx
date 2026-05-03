@@ -480,8 +480,6 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
             </p>
           </div>
         )}
-      </div>
-    </div>
       <PNLMappingModal 
         isOpen={isMappingOpen} 
         onClose={() => setIsMappingOpen(false)} 
@@ -496,5 +494,6 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         sectorHeads={allSectorHeads}
       />
     </div>
+  </div>
   );
 }
