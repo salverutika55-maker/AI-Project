@@ -96,21 +96,24 @@ export async function POST(
       return false;
     };
 
-    // 5. Fetch Organizations with Multi-Region Fallback
+    // 5. Fetch Organizations with Multi-Region Fallback (Correct Books API Root)
     const domains = tokens.api_domain ? [tokens.api_domain] : [
-      "https://books.zoho.in",
-      "https://books.zoho.com",
-      "https://books.zoho.eu",
-      "https://books.zoho.com.au"
+      "https://www.zohoapis.in/books/v3",
+      "https://www.zohoapis.com/books/v3",
+      "https://www.zohoapis.eu/books/v3",
+      "https://www.zohoapis.com.au/books/v3"
     ];
 
     let orgId = "";
     let accessTokenUsed = accessToken;
-    let finalApiDomain = "";
+    let finalApiBase = ""; // Will include the /books/v3 part
 
     for (const domain of domains) {
       try {
-        let orgsRes = await fetch(`${domain}/api/v3/organizations`, {
+        // Ensure domain has /books/v3 if it doesn't already
+        const apiBase = domain.includes("/books/v3") ? domain : `${domain.replace(/\/$/, "")}/books/v3`;
+        
+        let orgsRes = await fetch(`${apiBase}/organizations`, {
           headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
           signal: AbortSignal.timeout(5000)
         });
@@ -118,8 +121,8 @@ export async function POST(
         if (orgsRes.status === 401) {
           const refreshed = await refreshZohoToken();
           if (refreshed) {
-            accessTokenUsed = accessToken; // Updated by the helper
-            orgsRes = await fetch(`${domain}/api/v3/organizations`, {
+            accessTokenUsed = accessToken;
+            orgsRes = await fetch(`${apiBase}/organizations`, {
               headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
               signal: AbortSignal.timeout(5000)
             });
@@ -137,7 +140,7 @@ export async function POST(
           
           if (organization?.organization_id) {
             orgId = organization.organization_id;
-            finalApiDomain = domain;
+            finalApiBase = apiBase;
             break;
           }
         }
@@ -147,10 +150,10 @@ export async function POST(
     }
 
     if (!orgId) {
-      throw new Error("Zoho Auth Failed: Could not connect to your Zoho account in any region (.in, .com, etc.). Please re-link your account in Client Hub.");
+      throw new Error("Zoho Auth Failed: Could not connect to your Zoho Books account in any region. Please re-link your account in Client Hub.");
     }
 
-    const apiDomain = finalApiDomain;
+    const apiBase = finalApiBase;
 
     const now = new Date();
     const searchParams = new URL(req.url).searchParams;
@@ -167,10 +170,10 @@ export async function POST(
     }
 
     // 6. Fetch Profit and Loss with monthly breakdown
-    const plUrl = `${apiDomain}/api/v3/reports/profitandloss?organization_id=${orgId}&from_date=${fromDate}&to_date=${toDate}&breakdown=month&report_basis=Accrual`;
+    const plUrl = `${apiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${fromDate}&to_date=${toDate}&breakdown=month&report_basis=Accrual`;
     
     let plRes = await fetch(plUrl, {
-      headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
+      headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
       signal: AbortSignal.timeout(10000)
     });
 
@@ -263,8 +266,8 @@ export async function POST(
         const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
 
         try {
-          const tbRes = await fetch(`${apiDomain}/api/v3/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
-            headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
+          const tbRes = await fetch(`${apiBase}/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
+            headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` }
           });
 
           if (tbRes.ok) {
