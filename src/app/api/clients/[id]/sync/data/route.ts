@@ -202,14 +202,26 @@ export async function POST(
           const skippedNames: string[] = [];
           const rawSamples: any[] = [];
           const processItems = (list: any[]) => {
+            if (!Array.isArray(list)) return;
             list.forEach(item => {
-              if (rawSamples.length < 5) rawSamples.push(JSON.stringify(item).substring(0, 100));
-              if (item.name && typeof item.total === "number") {
-                accMap[item.name.trim()] = item.total;
+              if (!item) return;
+              
+              // 1. Try to find the amount using ANY common Zoho key
+              const val = item.total ?? item.amount ?? item.net_amount ?? item.balance ?? item.amount_payable;
+              
+              if (item.name && (typeof val === "number" || typeof val === "string")) {
+                const numericVal = typeof val === "string" ? parseFloat(val.replace(/[^0-9.-]/g, "")) : val;
+                if (!isNaN(numericVal)) {
+                  accMap[item.name.trim()] = numericVal;
+                }
               }
-              if (item.rows) processItems(item.rows);
-              if (item.sub_sections) processItems(item.sub_sections);
-              if (item.sub_rows) processItems(item.sub_rows);
+
+              // 2. Recursively check EVERY property that is an array (Zoho uses rows, sub_sections, sub_rows, etc.)
+              Object.entries(item).forEach(([key, value]) => {
+                if (Array.isArray(value) && key !== "account_transactions") {
+                  processItems(value);
+                }
+              });
             });
           };
 
