@@ -96,9 +96,10 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         throw new Error(data.error || `Sync Failed: Zoho returned status ${dataRes.status}`);
       }
       
-      const { count, topBalances, orgName } = data;
+      const { count, topBalances, orgName, apiBaseUsed } = data;
       const sampleWithOrg = topBalances || [];
       (sampleWithOrg as any).orgName = orgName;
+      (sampleWithOrg as any).apiBaseUsed = apiBaseUsed;
       setTopBalancesSample(sampleWithOrg);
       
       // 2. Refresh grid with the new data
@@ -447,9 +448,15 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                   <p className="text-slate-400 text-xs font-medium">Top balances found in Zoho for each month</p>
                 </div>
               </div>
-              <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest mb-1">Connected Org</p>
-                <p className="text-sm text-white font-bold">{(topBalancesSample as any).orgName || "Unknown Org"}</p>
+              <div className="flex flex-col gap-2 text-right">
+                <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                  <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest mb-1">Connected Org</p>
+                  <p className="text-sm text-white font-bold">{(topBalancesSample as any).orgName || "Unknown Org"}</p>
+                </div>
+                <div className="px-4 py-1 bg-white/5 border border-white/10 rounded-lg">
+                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Region</p>
+                  <p className="text-[10px] text-slate-300">{(topBalancesSample as any).apiBaseUsed || "Unknown"}</p>
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -184,7 +184,11 @@ export async function POST(
     }
 
     let plData: any = {};
-    if (plRes.ok) plData = await plRes.json();
+    if (plRes.ok) {
+      const rawText = await plRes.text();
+      console.log("Raw Zoho P&L Response (Sample):", rawText.substring(0, 2000));
+      plData = JSON.parse(rawText);
+    }
     
     const monthlyData: Record<string, any> = {};
     const columns = plData.profit_and_loss?.columns || [];
@@ -272,7 +276,9 @@ export async function POST(
           });
 
           if (tbRes.ok) {
-            const tbData = await tbRes.json();
+            const rawTb = await tbRes.text();
+            console.log(`Raw Trial Balance for ${mShort}:`, rawTb.substring(0, 500));
+            const tbData = JSON.parse(rawTb);
             const accounts = tbData.trialbalance?.trial_balance_details || [];
             const accMap: Record<string, any> = { year: syncYear };
             accounts.forEach((acc: any) => {
@@ -347,6 +353,7 @@ export async function POST(
       message: `Successfully synced and saved ${recordsSaved} months for FY ${targetYear}.`,
       count: recordsSaved,
       orgName: organization?.name || "Unknown",
+      apiBaseUsed: apiBase,
       topBalances,
       ts: "2026-05-03 12:03"
     });
