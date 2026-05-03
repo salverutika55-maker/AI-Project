@@ -213,13 +213,22 @@ export async function POST(
               if (Array.isArray(item)) {
                 item.forEach(i => discover(i));
               } else if (typeof item === "object") {
-                const name = item.account_name || item.account || item.name || item.label || item.display_name;
+                // AGGRESSIVE PAIRING: Find the best string to use as a name
+                let potentialName = "";
+                let maxStrLen = 0;
+                Object.entries(item).forEach(([key, val]) => {
+                  if (typeof val === "string" && val.length > maxStrLen && !["id", "account_id", "code"].includes(key.toLowerCase())) {
+                    potentialName = val;
+                    maxStrLen = val.length;
+                  }
+                });
+
                 Object.entries(item).forEach(([key, val]) => {
                   const lowerKey = key.toLowerCase();
-                  if (name && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
+                  if (potentialName && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
                     const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
                     if (!isNaN(num) && !["id", "account_id", "year"].includes(lowerKey)) {
-                      accMap[name.trim()] = (accMap[name.trim()] || 0) + Math.abs(num);
+                      accMap[potentialName.trim()] = (accMap[potentialName.trim()] || 0) + Math.abs(num);
                     }
                   }
                   if (val && typeof val === "object" && key !== "account_transactions") discover(val);

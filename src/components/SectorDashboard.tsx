@@ -486,6 +486,14 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
             <p className="mt-6 text-slate-500 text-[10px] font-medium leading-relaxed italic">
               Note: This panel is for verification only. If these names match your "Particulars" column above, the data will be visible in the grid.
             </p>
+            {syncDiagnostic?.rawSnippet && (
+              <div className="mt-4 p-4 bg-black/40 rounded-xl border border-white/5">
+                <h4 className="text-[10px] text-red-500 font-black uppercase tracking-widest mb-2">Raw Data Trace (Internal Debug)</h4>
+                <div className="max-h-[100px] overflow-auto text-[8px] text-slate-500 font-mono break-all opacity-50">
+                  {syncDiagnostic.rawSnippet}
+                </div>
+              </div>
+            )}
           </div>
         )}
       <PNLMappingModal 
