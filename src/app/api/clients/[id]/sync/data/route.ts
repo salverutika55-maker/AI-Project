@@ -267,6 +267,8 @@ export async function POST(
           if (fuzzyMatchKey) balance = accounts[fuzzyMatchKey];
         }
 
+        const syncYearToSave = accounts.year || targetYear;
+
         const encryptedValue = encrypt(Math.abs(balance).toString());
         await prisma.pNLValue.upsert({
           where: {
@@ -274,7 +276,7 @@ export async function POST(
               clientId: id,
               headName: m.sectorHead,
               month: mShort,
-              year: syncYear
+              year: syncYearToSave
             }
           },
           update: { amount: encryptedValue },
@@ -282,7 +284,7 @@ export async function POST(
             clientId: id,
             headName: m.sectorHead,
             month: mShort,
-            year: syncYear,
+            year: syncYearToSave,
             amount: encryptedValue
           }
         });
