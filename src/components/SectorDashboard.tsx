@@ -32,6 +32,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
   const [viewMode, setViewMode] = useState<"STANDARD" | "MONTHLY_BUDGET">("STANDARD");
   const [isSyncing, setIsSyncing] = useState(false);
   const [topBalancesSample, setTopBalancesSample] = useState<any[]>([]);
+  const [syncDiagnostic, setSyncDiagnostic] = useState<any>(null);
   
   const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
   const [budgetData, setBudgetData] = useState<Record<string, Record<string, number>>>({});
@@ -96,12 +97,9 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         throw new Error(data.error || `Sync Failed: Zoho returned status ${dataRes.status}`);
       }
       
-      const { count, topBalances, orgName, apiBaseUsed, rawData } = data;
-      console.log("DIAGNOSTIC: RAW ZOHO JSON SNIPPET:", rawData);
-      const sampleWithOrg = topBalances || [];
-      (sampleWithOrg as any).orgName = orgName;
-      (sampleWithOrg as any).apiBaseUsed = apiBaseUsed;
-      setTopBalancesSample(sampleWithOrg);
+      const { count, topBalances, orgName, apiBaseUsed, allNames } = data;
+      setTopBalancesSample(topBalances || []);
+      setSyncDiagnostic({ orgName, apiBaseUsed, allNames });
       
       // 2. Refresh grid with the new data
       await fetchPNLValues();
@@ -452,11 +450,11 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
               <div className="flex flex-col gap-2 text-right">
                 <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
                   <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest mb-1">Connected Org</p>
-                  <p className="text-sm text-white font-bold">{(topBalancesSample as any).orgName || "Unknown Org"}</p>
+                  <p className="text-sm text-white font-bold">{syncDiagnostic?.orgName || "Unknown Org"}</p>
                 </div>
                 <div className="px-4 py-1 bg-white/5 border border-white/10 rounded-lg">
                   <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Region</p>
-                  <p className="text-[10px] text-slate-300">{(topBalancesSample as any).apiBaseUsed || "Unknown"}</p>
+                  <p className="text-[10px] text-slate-300">{syncDiagnostic?.apiBaseUsed || "Unknown"}</p>
                 </div>
               </div>
             </div>
