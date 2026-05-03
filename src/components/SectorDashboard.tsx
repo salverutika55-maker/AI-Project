@@ -472,20 +472,15 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                       </div>
                     ))}
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 p-3 bg-black/40 rounded border border-white/10 text-[10px] font-mono text-white/40 break-all overflow-hidden max-h-32">
-              RAW ZOHO DATA: {
-                (syncDiagnostic as any)?.rawSnippet || 
-                (Array.isArray(syncDiagnostic) && (syncDiagnostic as any)[0]?.rawSnippet) || 
-                "No raw data"
-              }
-            </div>
+            <p className="mt-6 text-slate-500 text-[10px] font-medium leading-relaxed italic">
+              Note: This panel is for verification only. If these names match your "Particulars" column above, the data will be visible in the grid.
+            </p>
           </div>
         )}
       </div>
-
+    </div>
+  </div>
+)}
       <PNLMappingModal 
         isOpen={isMappingOpen} 
         onClose={() => setIsMappingOpen(false)} 
