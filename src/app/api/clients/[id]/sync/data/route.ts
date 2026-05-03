@@ -108,6 +108,7 @@ export async function POST(
     let accessTokenUsed = accessToken;
     let finalApiBase = ""; // Will include the /books/v3 part
     let organization: any = null;
+    let organizations: any[] = [];
 
     for (const domain of domains) {
       try {
@@ -132,7 +133,7 @@ export async function POST(
 
         if (orgsRes.ok) {
           const orgsData = await orgsRes.json();
-          const organizations = orgsData.organizations || [];
+          organizations = orgsData.organizations || [];
           organization = organizations.find((o: any) => 
             o.name.toLowerCase().includes(client.name.toLowerCase()) || 
             client.name.toLowerCase().includes(o.name.toLowerCase())
@@ -354,9 +355,10 @@ export async function POST(
       message: `Successfully synced and saved ${recordsSaved} months for FY ${targetYear}.`,
       count: recordsSaved,
       orgName: organization?.name || "Unknown",
+      allOrgs: organizations?.map((o: any) => o.name) || [],
       apiBaseUsed: apiBase,
       topBalances,
-      ts: "2026-05-03 12:03"
+      ts: "2026-05-03 12:31"
     });
 
   } catch (error: any) {
