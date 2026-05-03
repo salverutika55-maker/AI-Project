@@ -188,48 +188,55 @@ export async function POST(
       const firstDay = `${syncYear}-${monthNum.toString().padStart(2, '0')}-01`;
       const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
 
-      const plUrl = `${finalApiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`;
+      // Trial Balance - The User's requested source of truth
+      const tbUrl = `${finalApiBase}/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`;
       
       try {
-        const plRes = await fetch(plUrl, {
+        const tbRes = await fetch(tbUrl, {
           headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
           signal: AbortSignal.timeout(30000)
         });
 
-        if (plRes.ok) {
-          const plData = await plRes.json();
+        if (tbRes.ok) {
+          const tbData = await tbRes.json();
           const accMap: Record<string, any> = { year: syncYear };
           
-          const discovery = (data: any) => {
+          const omniDiscovery = (data: any) => {
             if (!data) return;
             if (Array.isArray(data)) {
-              data.forEach(item => discovery(item));
+              data.forEach(item => omniDiscovery(item));
             } else if (typeof data === "object") {
-              const name = data.name || data.account_name || data.label || data.display_name;
-              // Check ALL properties for numbers
+              // Try ALL possible name keys in Trial Balance
+              const name = data.account_name || data.account || data.name || data.label || data.display_name;
+              
+              // Search ALL keys for debit/credit or amount
               Object.entries(data).forEach(([key, val]) => {
-                if (name && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
+                const lowerKey = key.toLowerCase();
+                const isAmountKey = lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("amount") || lowerKey.includes("balance");
+                
+                if (name && isAmountKey && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
                   const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
                   if (!isNaN(num) && !["id", "account_id", "year"].includes(key)) {
-                    accMap[name.trim()] = num;
+                    // Accumulate movements - for Trial Balance we take the absolute movement
+                    accMap[name.trim()] = (accMap[name.trim()] || 0) + Math.abs(num);
                   }
                 }
-                // Recurse
+                // Recurse into everything
                 if (val && typeof val === "object" && key !== "account_transactions") {
-                  discovery(val);
+                  omniDiscovery(val);
                 }
               });
             }
           };
 
-          discovery(plData);
+          omniDiscovery(tbData);
           monthlyData[mShort] = accMap;
         } else {
-          const errText = await plRes.text().catch(() => "Unknown error");
-          monthlyData[mShort] = { error: `Zoho P&L Error ${plRes.status}: ${errText.substring(0, 50)}` };
+          const errText = await tbRes.text().catch(() => "Unknown error");
+          monthlyData[mShort] = { error: `Zoho TB Error ${tbRes.status}: ${errText.substring(0, 50)}` };
         }
       } catch (e: any) {
-        monthlyData[mShort] = { error: `P&L Fetch Failed: ${e.message}` };
+        monthlyData[mShort] = { error: `TB Fetch Failed: ${e.message}` };
       }
     }
 
