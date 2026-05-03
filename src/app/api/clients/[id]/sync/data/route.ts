@@ -314,8 +314,10 @@ export async function POST(
       count: recordsSaved,
       topBalances,
       allNames: Array.from(allUniqueNames),
+      orgName: organization?.name || "ABC LLP",
+      apiBaseUsed: finalApiBase,
       rawSnippet: monthlyData["Apr"]?._raw || "No raw data captured",
-      ts: "2026-05-03 17:36"
+      ts: "2026-05-03 17:39"
     });
 
   } catch (error: any) {
