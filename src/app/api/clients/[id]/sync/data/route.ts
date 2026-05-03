@@ -188,67 +188,55 @@ export async function POST(
       const firstDay = `${syncYear}-${monthNum.toString().padStart(2, '0')}-01`;
       const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
 
-      const tbUrl = `${finalApiBase}/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`;
-      
-      try {
-        const tbRes = await fetch(tbUrl, {
-          headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
-          signal: AbortSignal.timeout(30000)
-        });
+      // Try BOTH Trial Balance and P&L for maximum reliability
+      const endpoints = [
+        { url: `${finalApiBase}/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`, type: "TB" },
+        { url: `${finalApiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`, type: "PL" }
+      ];
 
-        if (tbRes.ok) {
-          const tbData = await tbRes.json();
-          const accMap: Record<string, any> = { year: syncYear };
-          
-          const targetedDiscovery = (data: any) => {
-            if (!data) return;
-            if (Array.isArray(data)) {
-              data.forEach(item => targetedDiscovery(item));
-              return;
-            }
+      const accMap: Record<string, any> = { year: syncYear };
+      let rawSample = "";
 
-            if (typeof data === "object") {
-              // 1. Identify if this object represents an ACCOUNT
-              const name = data.account_name || data.account || data.name || data.label || data.display_name;
-              
-              // 2. Look for financial values specifically
-              let value = 0;
-              let foundFinance = false;
+      for (const endpoint of endpoints) {
+        try {
+          const res = await fetch(endpoint.url, {
+            headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
+            signal: AbortSignal.timeout(30000)
+          });
 
-              Object.entries(data).forEach(([key, val]) => {
-                const lowerKey = key.toLowerCase();
-                const isFinanceKey = lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("amount") || lowerKey.includes("balance");
-                
-                if (isFinanceKey && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
-                  const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
-                  if (!isNaN(num) && lowerKey !== "id" && lowerKey !== "account_id" && lowerKey !== "year") {
-                    value = Math.abs(num);
-                    foundFinance = true;
+          if (res.ok) {
+            const data = await res.json();
+            rawSample = JSON.stringify(data).substring(0, 1000);
+            
+            const discover = (item: any) => {
+              if (!item) return;
+              if (Array.isArray(item)) {
+                item.forEach(i => discover(i));
+              } else if (typeof item === "object") {
+                const name = item.account_name || item.account || item.name || item.label || item.display_name;
+                Object.entries(item).forEach(([key, val]) => {
+                  const lowerKey = key.toLowerCase();
+                  if (name && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
+                    const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
+                    if (!isNaN(num) && !["id", "account_id", "year"].includes(lowerKey)) {
+                      accMap[name.trim()] = (accMap[name.trim()] || 0) + Math.abs(num);
+                    }
                   }
-                }
-
-                // RECURSE deeper
-                if (val && typeof val === "object" && key !== "account_transactions") {
-                  targetedDiscovery(val);
-                }
-              });
-
-              // 3. If we have a name and a financial value, it's a ledger!
-              if (name && foundFinance && name !== "Total") {
-                accMap[name.trim()] = value;
+                  if (val && typeof val === "object" && key !== "account_transactions") discover(val);
+                });
               }
-            }
-          };
-
-          targetedDiscovery(tbData);
-          monthlyData[mShort] = accMap;
-        } else {
-          const errText = await tbRes.text().catch(() => "Unknown error");
-          monthlyData[mShort] = { error: `Zoho TB Error ${tbRes.status}: ${errText.substring(0, 50)}` };
+            };
+            discover(data);
+            
+            // If we found more than just the year, stop and use this source
+            if (Object.keys(accMap).length > 1) break;
+          }
+        } catch (e) {
+          continue;
         }
-      } catch (e: any) {
-        monthlyData[mShort] = { error: `TB Fetch Failed: ${e.message}` };
       }
+      monthlyData[mShort] = accMap;
+      (monthlyData[mShort] as any)._raw = rawSample;
     }
 
     const clientWithMappings = await prisma.client.findUnique({
@@ -258,9 +246,9 @@ export async function POST(
 
     // 8. Map and Save to DB
     let recordsSaved = 0;
-    for (const mShort of months) {
+    for (const mShort of monthsToSync) {
       const accounts = monthlyData[mShort];
-      if (!accounts || accounts.error) continue;
+      if (!accounts || Object.keys(accounts).length <= 1) continue;
 
       const syncYearToSave = accounts.year || targetYear;
       const aggregatedValues: any[] = [];
@@ -291,26 +279,18 @@ export async function POST(
         }
       }
 
-      // Bulk Update for this month
       if (aggregatedValues.length > 0) {
         await prisma.pNLValue.deleteMany({
-          where: {
-            clientId: id,
-            month: mShort,
-            year: syncYearToSave
-          }
+          where: { clientId: id, month: mShort, year: syncYearToSave }
         });
-        await prisma.pNLValue.createMany({
-          data: aggregatedValues
-        });
+        await prisma.pNLValue.createMany({ data: aggregatedValues });
       }
       recordsSaved++;
     }
-    recordsSaved = monthsToSync.length;
 
     await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Synced and saved ${recordsSaved} months`, req);
 
-    // Get a small sample of data for the UI to log (including zeros for debugging)
+    // Get a small sample of data for the UI to log
     const topBalances = Object.entries(monthlyData)
       .map(([month, data]) => ({
         month,
@@ -320,20 +300,22 @@ export async function POST(
           .slice(0, 30)
       }));
 
+    // Collect ALL unique names across ALL months for diagnostics
+    const allUniqueNames = new Set<string>();
+    Object.values(monthlyData).forEach((data: any) => {
+      Object.keys(data).forEach(k => {
+        if (k !== "year" && !k.startsWith("_")) allUniqueNames.add(k);
+      });
+    });
+
     return NextResponse.json({ 
       success: true, 
       message: `Successfully synced and saved ${recordsSaved} months for FY ${targetYear}.`,
       count: recordsSaved,
       topBalances,
-      allNames: Object.keys(monthlyData["Apr"] || {}).filter(k => k !== "year" && !k.startsWith("_")),
-      orgName: organization?.name || "Unknown",
-      allOrgs: organizations?.map((o: any) => o.name) || [],
-      apiBaseUsed: apiBase,
-      responseKeys: Object.keys(plData),
-      rawData: JSON.stringify(plData).substring(0, 2000),
-      rawResponseSample: plData?.profit_and_loss ? "Data found in P&L" : "No P&L data",
-      rawSnippet: JSON.stringify(plData).substring(0, 500),
-      ts: "2026-05-03 12:51"
+      allNames: Array.from(allUniqueNames),
+      rawSnippet: monthlyData["Apr"]?._raw || "No raw data captured",
+      ts: "2026-05-03 17:36"
     });
 
   } catch (error: any) {
