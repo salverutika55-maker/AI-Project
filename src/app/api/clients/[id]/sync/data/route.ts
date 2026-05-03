@@ -188,59 +188,50 @@ export async function POST(
       const firstDay = `${syncYear}-${monthNum.toString().padStart(2, '0')}-01`;
       const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
 
-      const plUrl = `${finalApiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`;
+      // Switching to Trial Balance as requested - it is much more reliable for ledger balances
+      const tbUrl = `${finalApiBase}/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`;
       
       try {
-        const plRes = await fetch(plUrl, {
+        const tbRes = await fetch(tbUrl, {
           headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
           signal: AbortSignal.timeout(30000)
         });
 
-        if (plRes.ok) {
-          plData = await plRes.json();
+        if (tbRes.ok) {
+          const tbData = await tbRes.json();
           const accMap: Record<string, any> = { year: syncYear };
-          const rawSamples: any[] = [];
-          const processItems = (data: any) => {
+          
+          const processTrialBalance = (data: any) => {
             if (!data) return;
+            const reports = data.trialbalance || data.report || [];
             
-            // 1. If it's an array, process each element
-            if (Array.isArray(data)) {
-              data.forEach(item => processItems(item));
-              return;
-            }
-
-            // 2. If it's an object, check for values and recurse
-            if (typeof data === "object") {
-              // Try to find a name and a numeric value in this object
-              const name = data.name || data.account_name || data.label;
+            reports.forEach((item: any) => {
+              const name = item.account_name || item.name || item.label;
+              // For P&L, we want the net movement. In TB, this is usually debit - credit (or vice versa for income)
+              // We'll take the absolute highest value or net it
+              const debit = parseFloat(String(item.debit_amount || 0).replace(/,/g, "")) || 0;
+              const credit = parseFloat(String(item.credit_amount || 0).replace(/,/g, "")) || 0;
               
-              // Search ALL keys for a number
-              Object.entries(data).forEach(([key, val]) => {
-                // If we found a name and this key looks like a financial value
-                if (name && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
-                  const numericVal = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
-                  if (!isNaN(numericVal) && key !== "id" && key !== "account_id") {
-                    accMap[name.trim()] = numericVal;
-                  }
-                }
+              if (name) {
+                // For P&L heads, we just need the magnitude of movement in that month
+                accMap[name.trim()] = Math.abs(debit - credit);
+              }
 
-                // RECURSE: If this property is an object or array, go deeper
-                if (val && typeof val === "object" && key !== "account_transactions") {
-                  processItems(val);
-                }
-              });
-            }
+              // Recursively check for sub_sections if any
+              if (item.sub_sections && Array.isArray(item.sub_sections)) {
+                processTrialBalance({ trialbalance: item.sub_sections });
+              }
+            });
           };
 
-          processItems(plData.profit_and_loss || plData.report || plData);
-          (accMap as any)._raw = rawSamples;
+          processTrialBalance(tbData);
           monthlyData[mShort] = accMap;
         } else {
-          const errText = await plRes.text().catch(() => "Unknown error");
-          monthlyData[mShort] = { error: `Zoho Error ${plRes.status}: ${errText.substring(0, 50)}` };
+          const errText = await tbRes.text().catch(() => "Unknown error");
+          monthlyData[mShort] = { error: `Zoho TB Error ${tbRes.status}: ${errText.substring(0, 50)}` };
         }
       } catch (e: any) {
-        monthlyData[mShort] = { error: `Fetch Failed: ${e.message}` };
+        monthlyData[mShort] = { error: `TB Fetch Failed: ${e.message}` };
       }
     }
 
