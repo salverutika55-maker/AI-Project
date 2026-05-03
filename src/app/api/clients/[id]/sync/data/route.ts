@@ -205,7 +205,7 @@ export async function POST(
             list.forEach(item => {
               // Only pick actual accounts, not summary headings like "Gross Profit"
               if (item.name && typeof item.total === "number" && item.account_id) {
-                accMap[item.name] = item.total;
+                accMap[item.name.trim()] = item.total;
               }
               if (item.rows) processItems(item.rows);
               if (item.sub_sections) processItems(item.sub_sections);
@@ -233,7 +233,8 @@ export async function POST(
       const results: Record<string, number> = {};
       
       mappings.forEach((m: any) => {
-        const balance = accounts[m.softwareLedgerName] || 0;
+        const softwareName = (m.softwareLedgerName || "").trim();
+        const balance = accounts[softwareName] || 0;
         results[m.sectorHead] = (results[m.sectorHead] || 0) + Math.abs(balance);
       });
 
