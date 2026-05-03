@@ -331,10 +331,22 @@ export async function POST(
 
     await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Synced and saved ${recordsSaved} months`, req);
 
+    // Get a small sample of non-zero data for the UI to log
+    const topBalances = Object.entries(monthlyData)
+      .map(([month, data]) => ({
+        month,
+        heads: Object.entries(data)
+          .filter(([k, v]) => typeof v === "number" && v !== 0 && k !== "year")
+          .sort((a, b) => (b[1] as number) - (a[1] as number))
+          .slice(0, 5)
+      }))
+      .filter(m => m.heads.length > 0);
+
     return NextResponse.json({ 
       success: true, 
       message: `Successfully synced and saved ${recordsSaved} months for FY ${targetYear}.`,
-      count: recordsSaved
+      count: recordsSaved,
+      topBalances
     });
 
   } catch (error: any) {

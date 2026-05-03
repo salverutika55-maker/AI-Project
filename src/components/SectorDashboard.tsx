@@ -57,6 +57,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         if (!grid[v.month]) grid[v.month] = {};
         grid[v.month][v.headName] = v.amount;
       });
+      console.log("Full Grid Data:", grid);
       setGridData(grid);
 
       // Convert budgets
@@ -94,7 +95,8 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         throw new Error(data.error || `Sync Failed: Zoho returned status ${dataRes.status}`);
       }
       
-      const { count } = data;
+      const { count, topBalances } = data;
+      console.log("Sync Top Balances Sample:", topBalances);
       
       // 2. Refresh grid with the new data
       await fetchPNLValues();
