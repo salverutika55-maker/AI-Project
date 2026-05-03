@@ -77,58 +77,29 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
     try {
       // 1. Fetch raw data from Zoho (Full FY Breakdown)
       // We pass the selectedYear and fyType to get the correct range
+      // 1. Trigger the background sync and data fetch
       const dataRes = await fetch(`/api/clients/${activeClientId}/sync/data?year=${selectedYear}&fyType=${fyType}`, { 
         method: "POST" 
       });
-      const data = await dataRes.json();
+      
+      const responseText = await dataRes.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error(`Server returned an invalid response (not JSON). Status: ${dataRes.status}`);
+      }
       
       if (!dataRes.ok || data.error) {
-        throw new Error(data.error || "Failed to fetch Zoho data. Please check your connection.");
+        throw new Error(data.error || `Sync Failed: Zoho returned status ${dataRes.status}`);
       }
       
-      const { monthlyData, mappings } = data;
+      const { count } = data;
       
-      if (!mappings || mappings.length === 0) {
-        throw new Error("No mappings found! Please click 'Smart Map Data' to map your Zoho ledgers to P&L heads first.");
-      }
-
-      if (!monthlyData || Object.keys(monthlyData).length === 0) {
-        throw new Error(`Zoho returned the report, but no monthly breakdown columns were found for the period ${selectedYear}-${selectedYear+1}. Please verify that your Zoho books has transactions in this date range.`);
-      }
-
-      const monthKeys = Object.keys(monthlyData); // ["Apr", "May", ...]
-      let processedCount = 0;
-
-      for (const mShort of monthKeys) {
-        const accounts = monthlyData[mShort];
-        const actualYear = accounts.year;
-        
-        // 2. Map data for this specific month using current mappings
-        console.log(`Sync Preview for ${mShort}:`, accounts);
-        
-        const results: Record<string, number> = {};
-        mappings.forEach((m: any) => {
-          const balance = accounts[m.softwareLedgerName] || 0;
-          // We add to the head (multiple ledgers can map to one head)
-          results[m.sectorHead] = (results[m.sectorHead] || 0) + Math.abs(balance);
-        });
-
-        // 3. Save mapped data to DB for this month
-        const saveRes = await fetch(`/api/clients/${activeClientId}/sync/save`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ results, month: mShort, year: actualYear })
-        });
-        
-        if (saveRes.ok) processedCount++;
-      }
-      
-      // 4. Refresh grid with the new data
-      const refreshRes = await fetch(`/api/clients/${activeClientId}/values?year=${selectedYear}&fyType=${fyType}`);
-      const refreshData = await refreshRes.json();
-      
+      // 2. Refresh grid with the new data
       await fetchPNLValues();
-      alert(`✅ Sync Complete! Updated ${processedCount} months. Found ${refreshData.values?.length || 0} total records for FY ${selectedYear}.`);
+      
+      alert(`✅ Sync Complete! Updated ${count} months for FY ${selectedYear}.`);
     } catch (err: any) {
       console.error("Sync Failure:", err);
       alert("Sync Error: " + err.message);

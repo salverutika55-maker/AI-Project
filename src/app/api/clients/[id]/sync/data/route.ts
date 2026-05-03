@@ -97,14 +97,14 @@ export async function POST(
     };
 
     // 5. Fetch Organizations and Match by Name
-    let orgsRes = await fetch(`${apiDomain}/books/v3/organizations`, {
+    let orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
     });
     
     if (orgsRes.status === 401) {
       const refreshed = await refreshZohoToken();
       if (refreshed) {
-        orgsRes = await fetch(`${apiDomain}/books/v3/organizations`, {
+        orgsRes = await fetch(`${apiDomain}/api/v3/organizations`, {
           headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
         });
       }
@@ -263,13 +263,50 @@ export async function POST(
       include: { pnlMappings: true }
     });
 
-    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Synced ${Object.keys(monthlyData).length} months`, req);
+    // 8. Map and Save to DB
+    const mappings = clientWithMappings?.pnlMappings || [];
+    let recordsSaved = 0;
+
+    await Promise.all(Object.entries(monthlyData).map(async ([mShort, accounts]) => {
+      const year = accounts.year;
+      const results: Record<string, number> = {};
+      
+      mappings.forEach((m: any) => {
+        const balance = accounts[m.softwareLedgerName] || 0;
+        results[m.sectorHead] = (results[m.sectorHead] || 0) + Math.abs(balance);
+      });
+
+      // Save to DB
+      await Promise.all(Object.entries(results).map(([head, amount]) => {
+        const encryptedAmount = encrypt(String(amount));
+        return prisma.pNLValue.upsert({
+          where: {
+            clientId_headName_month_year: {
+              clientId: id,
+              headName: head,
+              month: mShort,
+              year
+            }
+          },
+          update: { amount: encryptedAmount },
+          create: {
+            clientId: id,
+            headName: head,
+            month: mShort,
+            year,
+            amount: encryptedAmount
+          }
+        });
+      }));
+      recordsSaved++;
+    }));
+
+    await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Synced and saved ${recordsSaved} months`, req);
 
     return NextResponse.json({ 
       success: true, 
-      message: `Synced ${clientWithMappings?.pnlMappings.length || 0} mappings for FY ${targetYear}`,
-      monthlyData,
-      mappings: clientWithMappings?.pnlMappings || []
+      message: `Successfully synced and saved ${recordsSaved} months for FY ${targetYear}.`,
+      count: recordsSaved
     });
 
   } catch (error: any) {
@@ -278,8 +315,7 @@ export async function POST(
       error: error.message,
       debug: {
         message: error.message,
-        stack: error.stack,
-        monthlyDataKeys: monthlyData ? Object.keys(monthlyData) : []
+        stack: error.stack
       }
     }, { status: 500 });
   }
