@@ -285,13 +285,14 @@ export async function POST(
       success: true, 
       message: `Successfully synced and saved ${recordsSaved} months for FY ${targetYear}.`,
       count: recordsSaved,
+      topBalances,
       orgName: organization?.name || "Unknown",
       allOrgs: organizations?.map((o: any) => o.name) || [],
       apiBaseUsed: apiBase,
       responseKeys: Object.keys(plData),
       rawData: JSON.stringify(plData).substring(0, 2000),
       rawResponseSample: plData?.profit_and_loss ? "Data found in P&L" : "No P&L data",
-      topBalances,
+      rawSnippet: JSON.stringify(plData).substring(0, 500),
       ts: "2026-05-03 12:51"
     });
 

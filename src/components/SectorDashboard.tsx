@@ -475,9 +475,9 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                 </div>
               ))}
             </div>
-            <p className="mt-6 text-slate-500 text-[10px] font-medium leading-relaxed italic">
-              Note: This panel is for verification only. If these names match your "Particulars" column above, the data will be visible in the grid.
-            </p>
+            <div className="mt-4 p-3 bg-black/40 rounded border border-white/10 text-[10px] font-mono text-white/40 break-all">
+              RAW ZOHO DATA: {syncDiagnostic[0]?.rawSnippet || (syncDiagnostic as any).rawSnippet || "No raw data"}
+            </div>
           </div>
         )}
       </div>
