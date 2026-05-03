@@ -149,8 +149,8 @@ export async function POST(
     const user = await prisma.user.findUnique({ where: { email: session.user.email } });
     if (user?.role !== "ADMIN" && client.userId !== user?.id) return NextResponse.json({ error: "Access Denied" }, { status: 403 });
 
-    await prisma.pnlMapping.deleteMany({ where: { clientId: id } });
-    await prisma.pnlMapping.createMany({
+    await prisma.pNLMapping.deleteMany({ where: { clientId: id } });
+    await prisma.pNLMapping.createMany({
       data: mappings.map((m: any) => ({
         clientId: id,
         sectorHead: m.sectorHead,
