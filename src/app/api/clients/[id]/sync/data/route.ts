@@ -7,6 +7,7 @@ import { decrypt, encrypt } from "@/lib/encryption";
 import { checkRateLimit, logSecurityEvent } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(
   req: Request,
@@ -183,15 +184,21 @@ export async function POST(
       if (!rows) return;
       rows.forEach((row: any) => {
         if (row.account_name && row.values) {
-          row.values.forEach((val: any) => {
-            const colInfo = columnMap.find((c: any) => c.id === String(val.column_id));
-            if (colInfo) {
-              const m = colInfo.shortMonth!;
-              if (!monthlyData[m]) monthlyData[m] = { year: colInfo.year };
-              let amount = 0;
-              if (typeof val.value === "number") amount = val.value;
-              else if (typeof val.value === "string") amount = parseFloat(val.value.replace(/,/g, "")) || 0;
-              monthlyData[m][row.account_name] = (monthlyData[m][row.account_name] || 0) + amount;
+          columns.forEach((col: any) => {
+            if (col.column_id === "total") return;
+            const val = row.values?.find((v: any) => v.column_id === col.column_id);
+            if (val) {
+              const colInfo = columnMap.find((c: any) => c.id === String(col.column_id));
+              if (colInfo && colInfo.shortMonth) {
+                const m = colInfo.shortMonth;
+                if (!monthlyData[m]) monthlyData[m] = { year: colInfo.year };
+                
+                let amount = 0;
+                if (typeof val.value === "number") amount = val.value;
+                else if (typeof val.value === "string") amount = parseFloat(val.value.replace(/,/g, "")) || 0;
+                
+                monthlyData[m][row.account_name] = (monthlyData[m][row.account_name] || 0) + amount;
+              }
             }
           });
         }
