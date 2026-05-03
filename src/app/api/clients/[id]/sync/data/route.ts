@@ -347,7 +347,8 @@ export async function POST(
       message: `Successfully synced and saved ${recordsSaved} months for FY ${targetYear}.`,
       count: recordsSaved,
       orgName: organization?.name || "Unknown",
-      topBalances
+      topBalances,
+      ts: "2026-05-03 12:03"
     });
 
   } catch (error: any) {
