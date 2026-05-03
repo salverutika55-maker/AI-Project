@@ -172,7 +172,7 @@ export async function POST(
     }
 
     // 6. Fetch Profit and Loss with monthly breakdown
-    const plUrl = `${apiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${fromDate}&to_date=${toDate}&breakdown=month&report_basis=Accrual`;
+    const plUrl = `${apiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${fromDate}&to_date=${toDate}&report_basis=Accrual&interval=Monthly`;
     
     let plRes = await fetch(plUrl, {
       headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
@@ -187,8 +187,8 @@ export async function POST(
     let plData: any = {};
     if (plRes.ok) {
       const rawText = await plRes.text();
-      console.log("Raw Zoho P&L Response (Sample):", rawText.substring(0, 2000));
       plData = JSON.parse(rawText);
+      console.log("DIAGNOSTIC: Raw Zoho P&L Data Object:", plData);
     }
     
     const monthlyData: Record<string, any> = {};
