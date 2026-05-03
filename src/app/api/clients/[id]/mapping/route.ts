@@ -94,7 +94,7 @@ export async function GET(
           
           for (const domain of domains) {
             try {
-              const orgsRes = await fetch(`${domain}/books/v3/organizations`, {
+              const orgsRes = await fetch(`${domain}/api/v3/organizations`, {
                 headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
                 signal: AbortSignal.timeout(5000)
               });
@@ -102,7 +102,7 @@ export async function GET(
               const orgsData = await orgsRes.json();
               const orgId = orgsData.organizations?.[0]?.organization_id;
               if (orgId) {
-                const coaRes = await fetch(`${domain}/books/v3/chartofaccounts?organization_id=${orgId}`, {
+                const coaRes = await fetch(`${domain}/api/v3/chartofaccounts?organization_id=${orgId}`, {
                   headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
                 });
                 coaData = await coaRes.json();

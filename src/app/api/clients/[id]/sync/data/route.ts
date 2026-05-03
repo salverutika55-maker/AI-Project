@@ -141,7 +141,7 @@ export async function POST(
     }
 
     // 6. Fetch Profit and Loss with monthly breakdown
-    const plUrl = `${apiDomain}/books/v3/reports/profitandloss?organization_id=${orgId}&from_date=${fromDate}&to_date=${toDate}&breakdown=month&report_basis=Accrual`;
+    const plUrl = `${apiDomain}/api/v3/reports/profitandloss?organization_id=${orgId}&from_date=${fromDate}&to_date=${toDate}&breakdown=month&report_basis=Accrual`;
     
     let plRes = await fetch(plUrl, {
       headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
@@ -267,6 +267,13 @@ export async function POST(
 
   } catch (error: any) {
     console.error("Sync Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ 
+      error: error.message,
+      debug: {
+        message: error.message,
+        stack: error.stack,
+        monthlyDataKeys: monthlyData ? Object.keys(monthlyData) : []
+      }
+    }, { status: 500 });
   }
 }
