@@ -109,6 +109,7 @@ export async function POST(
     let finalApiBase = ""; // Will include the /books/v3 part
     let organization: any = null;
     let organizations: any[] = [];
+    let plData: any = {};
 
     for (const domain of domains) {
       try {
@@ -196,7 +197,7 @@ export async function POST(
         });
 
         if (plRes.ok) {
-          const plData = await plRes.json();
+          plData = await plRes.json();
           const accMap: Record<string, any> = { year: syncYear };
           
           // Parsing the flat array structure seen in Zoho Books API
