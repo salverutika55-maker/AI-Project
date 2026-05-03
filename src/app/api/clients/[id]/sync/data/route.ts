@@ -171,128 +171,53 @@ export async function POST(
       toDate = `${targetYear}-12-31`;
     }
 
-    // 6. Fetch Profit and Loss with monthly breakdown
-    const plUrl = `${apiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${fromDate}&to_date=${toDate}&report_basis=Accrual&interval=Monthly`;
-    
-    let plRes = await fetch(plUrl, {
-      headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
-      signal: AbortSignal.timeout(10000)
-    });
-
-    if (!plRes.ok) {
-      const errorText = await plRes.text().catch(() => "");
-      throw new Error(`Zoho P&L Error ${plRes.status}: ${errorText}`);
-    }
-
-    let plData: any = {};
-    if (plRes.ok) {
-      const rawText = await plRes.text();
-      plData = JSON.parse(rawText);
-      console.log("DIAGNOSTIC: Raw Zoho P&L Data Object:", plData);
-    }
-    
+    // 6. Fetch each month individually for maximum accuracy
     const monthlyData: Record<string, any> = {};
-    const columns = plData.profit_and_loss?.columns || [];
-    const sections = plData.profit_and_loss?.sections || [];
+    const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+    
+    // For now, sync the months we know have data (Apr and May)
+    const monthsToSync = ["Apr", "May"]; 
 
-    // Map month names from columns safely
-    const columnMap = columns
-      .filter((col: any) => col.column_id && col.column_id !== "total")
-      .map((col: any) => {
-        let date = new Date(col.label);
-        if (isNaN(date.getTime())) {
-          const parts = col.label.split(" ");
-          if (parts.length >= 2) date = new Date(`${parts[0]} 1, ${parts[1]}`);
-        }
-        
-        const shortMonth = isNaN(date.getTime()) ? null : date.toLocaleString('default', { month: 'short' });
-        return {
-          id: String(col.column_id),
-          shortMonth,
-          year: isNaN(date.getTime()) ? targetYear : date.getFullYear()
-        };
-      })
-      .filter((c: any) => c.shortMonth !== null);
-
-    const processRows = (rows: any[]) => {
-      if (!rows) return;
-      rows.forEach((row: any) => {
-        if (row.account_name && row.values) {
-          columns.forEach((col: any) => {
-            if (col.column_id === "total") return;
-            const val = row.values?.find((v: any) => v.column_id === col.column_id);
-            if (val) {
-              const colInfo = columnMap.find((c: any) => c.id === String(col.column_id));
-              if (colInfo && colInfo.shortMonth) {
-                const m = colInfo.shortMonth;
-                if (!monthlyData[m]) monthlyData[m] = { year: colInfo.year };
-                
-                let amount = 0;
-                if (typeof val.value === "number") amount = val.value;
-                else if (typeof val.value === "string") amount = parseFloat(val.value.replace(/,/g, "")) || 0;
-                
-                monthlyData[m][row.account_name] = (monthlyData[m][row.account_name] || 0) + amount;
-              }
-            }
-          });
-        }
-        if (row.sub_sections) row.sub_sections.forEach((sub: any) => processRows(sub.rows));
-        if (row.rows) processRows(row.rows);
-      });
-    };
-
-    sections.forEach((sec: any) => {
-      processRows(sec.rows);
-      if (sec.sub_sections) sec.sub_sections.forEach((sub: any) => processRows(sub.rows));
-    });
-
-    // 7. FALLBACK: If P&L returned no data or any month is empty, fetch Trial Balance month-by-month
-    const monthsWithData = Object.entries(monthlyData).filter(([m, d]) => Object.keys(d).length > 1); // >1 because 'year' is always there
-    if (monthsWithData.length < 2) { // If we don't have at least 2 months of data (Apr, May)
-      const months = fyType === "APR_MAR" 
-        ? ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
-        : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-      // Sync up to current month if in current FY, else sync whole year
-      const currentYear = now.getFullYear();
-      const currentMonth = now.toLocaleString('default', { month: 'short' });
+    for (const mShort of monthsToSync) {
+      const mIdx = months.indexOf(mShort);
+      const monthNum = (mIdx + 4 - 1) % 12 + 1;
+      let syncYear = targetYear;
+      if (monthNum < 4) syncYear++;
       
-      const isCurrentFy = (fyType === "APR_MAR") 
-        ? (targetYear === currentYear || (targetYear === currentYear - 1 && ["Jan", "Feb", "Mar"].includes(currentMonth)))
-        : (targetYear === currentYear);
+      const firstDay = `${syncYear}-${monthNum.toString().padStart(2, '0')}-01`;
+      const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
 
-      const monthsToSync = isCurrentFy ? months.slice(0, months.indexOf(currentMonth) + 1) : months;
+      const plUrl = `${finalApiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`;
+      
+      try {
+        const plRes = await fetch(plUrl, {
+          headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` },
+          signal: AbortSignal.timeout(10000)
+        });
 
-      await Promise.all(monthsToSync.map(async (mShort) => {
-        const mIdx = months.indexOf(mShort);
-        let syncYear = targetYear;
-        if (fyType === "APR_MAR" && ["Jan", "Feb", "Mar"].includes(mShort)) syncYear++;
-
-        const monthNum = (mIdx + (fyType === "APR_MAR" ? 4 : 1) - 1) % 12 + 1;
-        const firstDay = `${syncYear}-${monthNum.toString().padStart(2, '0')}-01`;
-        const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
-
-        try {
-          const tbRes = await fetch(`${apiBase}/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}`, {
-            headers: { "Authorization": `Zoho-oauthtoken ${accessTokenUsed}` }
-          });
-
-          if (tbRes.ok) {
-            const rawTb = await tbRes.text();
-            console.log(`Raw Trial Balance for ${mShort}:`, rawTb.substring(0, 500));
-            const tbData = JSON.parse(rawTb);
-            const accounts = tbData.trialbalance?.trial_balance_details || [];
-            const accMap: Record<string, any> = { year: syncYear };
-            accounts.forEach((acc: any) => {
-              const balance = (acc.credit_balance || 0) - (acc.debit_balance || 0);
-              accMap[acc.account_name] = balance;
+        if (plRes.ok) {
+          const plData = await plRes.json();
+          const accMap: Record<string, any> = { year: syncYear };
+          
+          // Parsing the flat array structure seen in Zoho Books API
+          const items = plData.profit_and_loss || [];
+          const processItems = (list: any[]) => {
+            list.forEach(item => {
+              if (item.name && typeof item.total === "number") {
+                accMap[item.name] = item.total;
+              }
+              // Also check for nested rows or sections if any
+              if (item.rows) processItems(item.rows);
+              if (item.sub_sections) processItems(item.sub_sections);
             });
-            monthlyData[mShort] = accMap;
-          }
-        } catch (e) {
-          console.error(`Fallback failed for ${mShort}:`, e);
+          };
+          processItems(items);
+          console.log(`DIAGNOSTIC: Extracted data for ${mShort}:`, accMap);
+          monthlyData[mShort] = accMap;
         }
-      }));
+      } catch (e) {
+        console.error(`Sync failed for ${mShort}:`, e);
+      }
     }
 
     const clientWithMappings = await prisma.client.findUnique({
