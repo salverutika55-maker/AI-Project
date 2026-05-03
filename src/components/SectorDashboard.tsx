@@ -475,6 +475,16 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                 </div>
               ))}
             </div>
+            <div className="mt-6 p-4 bg-black/20 rounded-2xl border border-white/5">
+              <h4 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-2">Complete List of Names Found in Zoho</h4>
+              <div className="flex flex-wrap gap-2">
+                {(syncDiagnostic as any).allNames?.map((name: string) => (
+                  <span key={name} className="px-2 py-1 bg-white/5 rounded text-[9px] text-slate-400 font-mono">
+                    {name}
+                  </span>
+                )) || <span className="text-[9px] text-slate-600">No names found</span>}
+              </div>
+            </div>
             <p className="mt-6 text-slate-500 text-[10px] font-medium leading-relaxed italic">
               Note: This panel is for verification only. If these names match your "Particulars" column above, the data will be visible in the grid.
             </p>

@@ -298,6 +298,7 @@ export async function POST(
       message: `Successfully synced and saved ${recordsSaved} months for FY ${targetYear}.`,
       count: recordsSaved,
       topBalances,
+      allNames: Object.keys(monthlyData["Apr"] || {}).filter(k => k !== "year" && !k.startsWith("_")),
       orgName: organization?.name || "Unknown",
       allOrgs: organizations?.map((o: any) => o.name) || [],
       apiBaseUsed: apiBase,
