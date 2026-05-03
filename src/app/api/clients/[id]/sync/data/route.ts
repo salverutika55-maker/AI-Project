@@ -199,11 +199,13 @@ export async function POST(
         if (plRes.ok) {
           plData = await plRes.json();
           const accMap: Record<string, any> = { year: syncYear };
-          
+          const skippedNames: string[] = [];
           const processItems = (list: any[]) => {
             list.forEach(item => {
-              if (item.name && typeof item.total === "number" && item.account_id) {
+              if (item.name && typeof item.total === "number") {
                 accMap[item.name.trim()] = item.total;
+              } else if (item.name) {
+                skippedNames.push(`${item.name} (Bad Total: ${typeof item.total})`);
               }
               if (item.rows) processItems(item.rows);
               if (item.sub_sections) processItems(item.sub_sections);
