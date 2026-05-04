@@ -208,42 +208,34 @@ export async function POST(
             const data = await res.json();
             rawSample = JSON.stringify(data).substring(0, 1000);
             
-            const discover = (item: any) => {
+            const discover = (item: any, context: string = "") => {
               if (!item) return;
               if (Array.isArray(item)) {
-                item.forEach(i => discover(i));
+                item.forEach(i => discover(i, context));
               } else if (typeof item === "object") {
-                // OMNISCIENT PAIRING: Collect all strings and numbers in this object
-                const strings: string[] = [];
-                const numbers: { key: string, val: number }[] = [];
-
+                // 1. Identify a potential account name in this object
+                const name = item.account_name || item.account || item.name || item.label || item.display_name || item.account_id || context;
+                
+                // 2. Look for financial values (STRICT FINANCE KEYS ONLY)
                 Object.entries(item).forEach(([key, val]) => {
                   const lowerKey = key.toLowerCase();
-                  if (typeof val === "string" && val.length > 2 && !["id", "account_id", "code", "currency"].includes(lowerKey)) {
-                    strings.push(val.trim());
-                  }
-                  if (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val))) {
+                  const isFinanceKey = lowerKey.includes("amount") || lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("balance");
+
+                  if (name && isFinanceKey && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
                     const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
                     if (!isNaN(num) && !["id", "account_id", "year", "code"].includes(lowerKey)) {
-                      numbers.push({ key, val: Math.abs(num) });
+                      // Assignment logic (prefer non-total keys)
+                      const isTotal = lowerKey.includes("total") || lowerKey.includes("net") || name.toLowerCase().includes("total");
+                      if (!accMap[name.trim()] || !isTotal) {
+                        accMap[name.trim()] = Math.abs(num);
+                      }
                     }
                   }
-                  
-                  // Recurse deeper
-                  if (val && typeof val === "object" && key !== "account_transactions") {
-                    discover(val);
-                  }
-                });
 
-                // Pair every string found with every number found in this same object
-                strings.forEach(s => {
-                  numbers.forEach(n => {
-                    // Only assign if it's not a known total key (unless we have nothing else)
-                    const isTotal = n.key.toLowerCase().includes("total") || s.toLowerCase().includes("total");
-                    if (!accMap[s] || !isTotal) {
-                      accMap[s] = n.val;
-                    }
-                  });
+                  // 3. Recurse deeper, passing the name as the new context
+                  if (val && typeof val === "object" && key !== "account_transactions") {
+                    discover(val, name);
+                  }
                 });
               }
             };
