@@ -188,7 +188,7 @@ export async function POST(
       const firstDay = `${syncYear}-${monthNum.toString().padStart(2, '0')}-01`;
       const lastDay = new Date(syncYear, monthNum, 0).toISOString().split('T')[0];
 
-      // Try BOTH Trial Balance and P&L for maximum reliability
+      // Try BOTH Trial Balance and P&L
       const endpoints = [
         { url: `${finalApiBase}/reports/trialbalance?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`, type: "TB" },
         { url: `${finalApiBase}/reports/profitandloss?organization_id=${orgId}&from_date=${firstDay}&to_date=${lastDay}&report_basis=Accrual`, type: "PL" }
@@ -206,22 +206,38 @@ export async function POST(
 
           if (res.ok) {
             const data = await res.json();
-            rawSample = JSON.stringify(data).substring(0, 1000);
+            rawSample = JSON.stringify(data).substring(0, 5000); // Increased trace size
             
             const discover = (item: any, context: string = "") => {
               if (!item) return;
               if (Array.isArray(item)) {
                 item.forEach(i => discover(i, context));
               } else if (typeof item === "object") {
-                // 1. Identify a potential account name (EXHAUSTIVE KEY LIST)
-                const name = item.account_name || item.account || item.name || item.label || item.display_name || item.account_id || item.particulars || item.description || item.group_name || context;
+                // 1. Context Recognition
+                const name = item.account_name || item.account || item.name || item.label || item.display_name || item.particulars || item.description || item.group_name || context;
                 
-                // 2. Look for financial values (STRICT FINANCE KEYS ONLY)
+                // 2. Parallel Array Detection (Zoho Special)
+                const keys = Object.keys(item);
+                const stringArrays = keys.filter(k => Array.isArray(item[k]) && item[k].every((v: any) => typeof v === "string"));
+                const numberArrays = keys.filter(k => Array.isArray(item[k]) && item[k].every((v: any) => typeof v === "number" || (typeof v === "string" && /^[0-9,.-]+$/.test(v))));
+
+                if (stringArrays.length > 0 && numberArrays.length > 0) {
+                  const sArr = item[stringArrays[0]];
+                  const nArr = item[numberArrays[0]];
+                  if (sArr.length === nArr.length) {
+                    sArr.forEach((s: string, idx: number) => {
+                      const num = typeof nArr[idx] === "string" ? parseFloat(nArr[idx].replace(/,/g, "")) : nArr[idx];
+                      if (!isNaN(num)) accMap[s.trim()] = Math.abs(num);
+                    });
+                  }
+                }
+
+                // 3. Recursive Value Discovery
                 Object.entries(item).forEach(([key, val]) => {
                   const lowerKey = key.toLowerCase();
-                  const isFinanceKey = lowerKey.includes("amount") || lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("balance") || lowerKey.includes("value");
+                  const isFinance = lowerKey.includes("amount") || lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("balance") || lowerKey.includes("value");
 
-                  if (name && isFinanceKey && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
+                  if (name && isFinance && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
                     const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
                     if (!isNaN(num) && !["id", "account_id", "year", "code", "index"].includes(lowerKey)) {
                       const isTotal = lowerKey.includes("total") || lowerKey.includes("net") || name.toLowerCase().includes("total") || name.toLowerCase().includes("summary");
@@ -230,8 +246,6 @@ export async function POST(
                       }
                     }
                   }
-
-                  // 3. Recurse deeper
                   if (val && typeof val === "object" && key !== "account_transactions") {
                     discover(val, name);
                   }
@@ -239,7 +253,6 @@ export async function POST(
               }
             };
             discover(data);
-            
             if (Object.keys(accMap).length > 1) break;
           }
         } catch (e) {
@@ -255,7 +268,7 @@ export async function POST(
       include: { pnlMappings: true }
     });
 
-    // 8. Map and Save to DB with ALIAS SUPPORT
+    // 8. Map and Save to DB
     let recordsSaved = 0;
     for (const mShort of monthsToSync) {
       const accounts = monthlyData[mShort];
@@ -265,17 +278,14 @@ export async function POST(
       const aggregatedValues: any[] = [];
 
       for (const m of clientWithMappings.pnlMappings) {
-        // Support multiple aliases (comma separated)
         const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
         let balance = 0;
         
         for (const alias of aliases) {
-          // Exact Match
           const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
           if (exactMatchKey) {
             balance += accounts[exactMatchKey];
           } else {
-            // Fuzzy Match (Contains)
             const fuzzyMatchKey = Object.keys(accounts).find(k => {
               const lowerK = k.trim().toLowerCase();
               return lowerK.includes(alias) || alias.includes(lowerK);
@@ -306,19 +316,20 @@ export async function POST(
 
     await logSecurityEvent(user.id, "SYNC_DATA_SUCCESS", id, `Synced and saved ${recordsSaved} months`, req);
 
-    // Get a small sample of data for the UI to log
     const topBalances = Object.entries(monthlyData)
       .map(([month, data]) => ({
         month,
         heads: Object.entries(data)
           .filter(([k, v]) => typeof v === "number" && k !== "year")
           .sort((a, b) => (b[1] as number) - (a[1] as number))
-          .slice(0, 30)
+          .slice(0, 50)
       }));
 
-    // Collect ALL unique names across ALL months for diagnostics
     const allUniqueNames = new Set<string>();
+    let finalRawTrace = "No raw data captured";
+
     Object.values(monthlyData).forEach((data: any) => {
+      if (data._raw) finalRawTrace = data._raw;
       Object.keys(data).forEach(k => {
         if (k !== "year" && !k.startsWith("_")) allUniqueNames.add(k);
       });
@@ -332,13 +343,13 @@ export async function POST(
       allNames: Array.from(allUniqueNames),
       orgName: organization?.name || "ABC LLP",
       apiBaseUsed: finalApiBase,
-      rawSnippet: monthlyData["Apr"]?._raw || "No raw data captured",
-      ts: "2026-05-03 17:39"
+      rawSnippet: finalRawTrace,
+      ts: "2026-05-04 08:45"
     });
 
   } catch (error: any) {
     console.error("Sync Error:", error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: error.message,
       debug: {
         message: error.message,
