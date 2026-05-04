@@ -233,7 +233,7 @@ export async function POST(
                   }
 
                   // 3. Recurse deeper (Pass the 'name' down as context for child arrays/objects)
-                  if (val && typeof val === "object" && key !== "account_transactions") {
+                  if (val && typeof val === "object") {
                     discover(val, name);
                   }
                 });
