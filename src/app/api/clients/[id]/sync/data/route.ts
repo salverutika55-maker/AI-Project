@@ -214,21 +214,27 @@ export async function POST(
                 item.forEach(i => discover(i, currentName));
               } else if (typeof item === "object") {
                 // 1. Determine the name for this context
+                // Prioritize account_name or specific Zoho ledger keys
                 let name = item.account_name || item.account || item.name || item.label || item.display_name || currentName;
                 
-                // 2. Identify and record financial values
+                // 2. Identify financial values
                 Object.entries(item).forEach(([key, val]) => {
                   const lowerKey = key.toLowerCase();
                   const isFinance = lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("amount") || lowerKey.includes("balance");
 
                   if (name && isFinance && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
                     const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
-                    if (!isNaN(num) && !["id", "account_id", "year"].includes(lowerKey)) {
-                      accMap[name.trim()] = (accMap[name.trim()] || 0) + Math.abs(num);
+                    if (!isNaN(num) && !["id", "account_id", "year", "code"].includes(lowerKey)) {
+                      // Assignment instead of addition to prevent double-counting nested totals
+                      // We prefer the non-total keys if possible
+                      const isTotalKey = lowerKey.includes("total") || lowerKey.includes("net");
+                      if (!accMap[name.trim()] || !isTotalKey) {
+                        accMap[name.trim()] = Math.abs(num);
+                      }
                     }
                   }
 
-                  // 3. Recurse deeper, passing the current name context down
+                  // 3. Recurse deeper, passing the name down
                   if (val && typeof val === "object" && key !== "account_transactions") {
                     discover(val, name);
                   }
