@@ -208,36 +208,35 @@ export async function POST(
             const data = await res.json();
             rawSample = JSON.stringify(data).substring(0, 1000);
             
-            const discover = (item: any) => {
+            const discover = (item: any, currentName: string = "") => {
               if (!item) return;
               if (Array.isArray(item)) {
-                item.forEach(i => discover(i));
+                item.forEach(i => discover(i, currentName));
               } else if (typeof item === "object") {
-                // AGGRESSIVE PAIRING: Find the best string to use as a name
-                let potentialName = "";
-                let maxStrLen = 0;
-                Object.entries(item).forEach(([key, val]) => {
-                  if (typeof val === "string" && val.length > maxStrLen && !["id", "account_id", "code"].includes(key.toLowerCase())) {
-                    potentialName = val;
-                    maxStrLen = val.length;
-                  }
-                });
-
+                // 1. Determine the name for this context
+                let name = item.account_name || item.account || item.name || item.label || item.display_name || currentName;
+                
+                // 2. Identify and record financial values
                 Object.entries(item).forEach(([key, val]) => {
                   const lowerKey = key.toLowerCase();
-                  if (potentialName && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
+                  const isFinance = lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("amount") || lowerKey.includes("balance");
+
+                  if (name && isFinance && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
                     const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
                     if (!isNaN(num) && !["id", "account_id", "year"].includes(lowerKey)) {
-                      accMap[potentialName.trim()] = (accMap[potentialName.trim()] || 0) + Math.abs(num);
+                      accMap[name.trim()] = (accMap[name.trim()] || 0) + Math.abs(num);
                     }
                   }
-                  if (val && typeof val === "object" && key !== "account_transactions") discover(val);
+
+                  // 3. Recurse deeper, passing the current name context down
+                  if (val && typeof val === "object" && key !== "account_transactions") {
+                    discover(val, name);
+                  }
                 });
               }
             };
             discover(data);
             
-            // If we found more than just the year, stop and use this source
             if (Object.keys(accMap).length > 1) break;
           }
         } catch (e) {
@@ -253,7 +252,7 @@ export async function POST(
       include: { pnlMappings: true }
     });
 
-    // 8. Map and Save to DB
+    // 8. Map and Save to DB with ALIAS SUPPORT
     let recordsSaved = 0;
     for (const mShort of monthsToSync) {
       const accounts = monthlyData[mShort];
@@ -263,18 +262,23 @@ export async function POST(
       const aggregatedValues: any[] = [];
 
       for (const m of clientWithMappings.pnlMappings) {
-        const softwareName = (m.softwareLedgerName || "").trim().toLowerCase();
+        // Support multiple aliases (comma separated)
+        const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
         let balance = 0;
         
-        const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === softwareName);
-        if (exactMatchKey) {
-          balance = accounts[exactMatchKey];
-        } else {
-          const fuzzyMatchKey = Object.keys(accounts).find(k => {
-            const lowerK = k.trim().toLowerCase();
-            return lowerK.includes(softwareName) || softwareName.includes(lowerK);
-          });
-          if (fuzzyMatchKey) balance = accounts[fuzzyMatchKey];
+        for (const alias of aliases) {
+          // Exact Match
+          const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
+          if (exactMatchKey) {
+            balance += accounts[exactMatchKey];
+          } else {
+            // Fuzzy Match (Contains)
+            const fuzzyMatchKey = Object.keys(accounts).find(k => {
+              const lowerK = k.trim().toLowerCase();
+              return lowerK.includes(alias) || alias.includes(lowerK);
+            });
+            if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
+          }
         }
 
         if (balance !== 0) {
