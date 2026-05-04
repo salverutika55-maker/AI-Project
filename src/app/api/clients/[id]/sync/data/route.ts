@@ -271,7 +271,7 @@ export async function POST(
       if (!accounts || Object.keys(accounts).length <= 1) continue;
 
       const syncYearToSave = accounts.year || targetYear;
-      const aggregatedValues: any[] = [];
+      const headBalances: Record<string, number> = {};
 
       for (const m of clientWithMappings.pnlMappings) {
         const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
@@ -291,21 +291,23 @@ export async function POST(
         }
 
         if (balance !== 0) {
-          aggregatedValues.push({
-            clientId: id,
-            headName: m.sectorHead,
-            month: mShort,
-            year: syncYearToSave,
-            amount: encrypt(Math.abs(balance).toString())
-          });
+          headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
         }
       }
 
-      if (aggregatedValues.length > 0) {
+      const finalEntries = Object.entries(headBalances).map(([headName, balance]) => ({
+        clientId: id,
+        headName,
+        month: mShort,
+        year: syncYearToSave,
+        amount: encrypt(balance.toString())
+      }));
+
+      if (finalEntries.length > 0) {
         await prisma.pNLValue.deleteMany({
           where: { clientId: id, month: mShort, year: syncYearToSave }
         });
-        await prisma.pNLValue.createMany({ data: aggregatedValues });
+        await prisma.pNLValue.createMany({ data: finalEntries });
       }
       recordsSaved++;
     }
