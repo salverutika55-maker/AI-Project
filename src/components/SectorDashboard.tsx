@@ -97,9 +97,9 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
         throw new Error(data.error || `Sync Failed: Zoho returned status ${dataRes.status}`);
       }
       
-      const { count, topBalances, orgName, apiBaseUsed, allNames } = data;
+      const { count, topBalances, orgName, apiBaseUsed, allNames, rawSnippet } = data;
       setTopBalancesSample(topBalances || []);
-      setSyncDiagnostic({ orgName, apiBaseUsed, allNames });
+      setSyncDiagnostic({ orgName, apiBaseUsed, allNames, rawSnippet });
       
       // 2. Refresh grid with the new data
       await fetchPNLValues();
