@@ -213,26 +213,25 @@ export async function POST(
               if (Array.isArray(item)) {
                 item.forEach(i => discover(i, context));
               } else if (typeof item === "object") {
-                // 1. Identify a potential account name in this object
-                const name = item.account_name || item.account || item.name || item.label || item.display_name || item.account_id || context;
+                // 1. Identify a potential account name (EXHAUSTIVE KEY LIST)
+                const name = item.account_name || item.account || item.name || item.label || item.display_name || item.account_id || item.particulars || item.description || item.group_name || context;
                 
                 // 2. Look for financial values (STRICT FINANCE KEYS ONLY)
                 Object.entries(item).forEach(([key, val]) => {
                   const lowerKey = key.toLowerCase();
-                  const isFinanceKey = lowerKey.includes("amount") || lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("balance");
+                  const isFinanceKey = lowerKey.includes("amount") || lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("balance") || lowerKey.includes("value");
 
                   if (name && isFinanceKey && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
                     const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
-                    if (!isNaN(num) && !["id", "account_id", "year", "code"].includes(lowerKey)) {
-                      // Assignment logic (prefer non-total keys)
-                      const isTotal = lowerKey.includes("total") || lowerKey.includes("net") || name.toLowerCase().includes("total");
+                    if (!isNaN(num) && !["id", "account_id", "year", "code", "index"].includes(lowerKey)) {
+                      const isTotal = lowerKey.includes("total") || lowerKey.includes("net") || name.toLowerCase().includes("total") || name.toLowerCase().includes("summary");
                       if (!accMap[name.trim()] || !isTotal) {
                         accMap[name.trim()] = Math.abs(num);
                       }
                     }
                   }
 
-                  // 3. Recurse deeper, passing the name as the new context
+                  // 3. Recurse deeper
                   if (val && typeof val === "object" && key !== "account_transactions") {
                     discover(val, name);
                   }
