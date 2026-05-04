@@ -213,39 +213,26 @@ export async function POST(
               if (Array.isArray(item)) {
                 item.forEach(i => discover(i, context));
               } else if (typeof item === "object") {
-                // 1. Context Recognition
-                const name = item.account_name || item.account || item.name || item.label || item.display_name || item.particulars || item.description || item.group_name || context;
+                // 1. Identify the Name (Zoho usually puts this at the parent level)
+                const name = item.name || item.account_name || item.account || item.label || item.display_name || item.particulars || context;
                 
-                // 2. Parallel Array Detection (Zoho Special)
-                const keys = Object.keys(item);
-                const stringArrays = keys.filter(k => Array.isArray(item[k]) && item[k].every((v: any) => typeof v === "string"));
-                const numberArrays = keys.filter(k => Array.isArray(item[k]) && item[k].every((v: any) => typeof v === "number" || (typeof v === "string" && /^[0-9,.-]+$/.test(v))));
-
-                if (stringArrays.length > 0 && numberArrays.length > 0) {
-                  const sArr = item[stringArrays[0]];
-                  const nArr = item[numberArrays[0]];
-                  if (sArr.length === nArr.length) {
-                    sArr.forEach((s: string, idx: number) => {
-                      const num = typeof nArr[idx] === "string" ? parseFloat(nArr[idx].replace(/,/g, "")) : nArr[idx];
-                      if (!isNaN(num)) accMap[s.trim()] = Math.abs(num);
-                    });
-                  }
-                }
-
-                // 3. Recursive Value Discovery
+                // 2. Scan for financial values (Including Zoho-specific keys found in trace)
                 Object.entries(item).forEach(([key, val]) => {
                   const lowerKey = key.toLowerCase();
-                  const isFinance = lowerKey.includes("amount") || lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("balance") || lowerKey.includes("value");
+                  const isFinance = lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("amount") || lowerKey.includes("balance") || lowerKey.includes("total");
 
                   if (name && isFinance && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
                     const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
-                    if (!isNaN(num) && !["id", "account_id", "year", "code", "index"].includes(lowerKey)) {
-                      const isTotal = lowerKey.includes("total") || lowerKey.includes("net") || name.toLowerCase().includes("total") || name.toLowerCase().includes("summary");
-                      if (!accMap[name.trim()] || !isTotal) {
+                    if (!isNaN(num) && !["id", "account_id", "year", "code", "depth", "span"].includes(lowerKey)) {
+                      // Assignment logic: Skip generic structural names if we already have a better one
+                      const isGeneric = ["income", "expense", "assets", "liabilities", "equities"].includes(name.toLowerCase());
+                      if (!accMap[name.trim()] || !isGeneric) {
                         accMap[name.trim()] = Math.abs(num);
                       }
                     }
                   }
+
+                  // 3. Recurse deeper (Pass the 'name' down as context for child arrays/objects)
                   if (val && typeof val === "object" && key !== "account_transactions") {
                     discover(val, name);
                   }
