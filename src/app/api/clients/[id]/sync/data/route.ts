@@ -213,26 +213,35 @@ export async function POST(
               if (Array.isArray(item)) {
                 item.forEach(i => discover(i, context));
               } else if (typeof item === "object") {
-                // 1. Identify the Name (Zoho usually puts this at the parent level)
-                const name = item.name || item.account_name || item.account || item.label || item.display_name || item.particulars || context;
+                // 1. Identify the Name
+                const name = (item.name || item.account_name || item.account || item.label || item.display_name || item.particulars || context || "").trim();
                 
-                // 2. Scan for financial values (Including Zoho-specific keys found in trace)
+                // 2. Scan for financial values
                 Object.entries(item).forEach(([key, val]) => {
                   const lowerKey = key.toLowerCase();
                   const isFinance = lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("amount") || lowerKey.includes("balance") || lowerKey.includes("total");
 
-                  if (name && isFinance && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
-                    const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
-                    if (!isNaN(num) && !["id", "account_id", "year", "code", "depth", "span"].includes(lowerKey)) {
-                      // Assignment logic: Skip generic structural names if we already have a better one
-                      const isGeneric = ["income", "expense", "assets", "liabilities", "equities"].includes(name.toLowerCase());
-                      if (!accMap[name.trim()] || !isGeneric) {
-                        accMap[name.trim()] = Math.abs(num);
+                  if (name && isFinance && val !== null && val !== undefined && val !== "") {
+                    // Force numeric conversion
+                    let num = 0;
+                    if (typeof val === "number") {
+                      num = val;
+                    } else if (typeof val === "string") {
+                      num = parseFloat(val.replace(/[^0-9.-]/g, ""));
+                    }
+
+                    if (!isNaN(num) && num !== 0 && !["id", "account_id", "year", "code", "depth", "span"].includes(lowerKey)) {
+                      const isGeneric = ["income", "expense", "assets", "liabilities", "equities", "total"].includes(name.toLowerCase());
+                      // Only aggregate if it's not a generic name we already have a better value for
+                      if (!accMap[name] || !isGeneric) {
+                        // Use addition for different keys in same object, but assignment for recursion to avoid doubling
+                        const current = accMap[name] || 0;
+                        accMap[name] = isGeneric ? Math.abs(num) : current + Math.abs(num);
                       }
                     }
                   }
 
-                  // 3. Recurse deeper (Pass the 'name' down as context for child arrays/objects)
+                  // 3. Recurse deeper
                   if (val && typeof val === "object") {
                     discover(val, name);
                   }
