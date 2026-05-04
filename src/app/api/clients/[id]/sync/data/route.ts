@@ -208,36 +208,42 @@ export async function POST(
             const data = await res.json();
             rawSample = JSON.stringify(data).substring(0, 1000);
             
-            const discover = (item: any, currentName: string = "") => {
+            const discover = (item: any) => {
               if (!item) return;
               if (Array.isArray(item)) {
-                item.forEach(i => discover(i, currentName));
+                item.forEach(i => discover(i));
               } else if (typeof item === "object") {
-                // 1. Determine the name for this context
-                // Prioritize account_name or specific Zoho ledger keys
-                let name = item.account_name || item.account || item.name || item.label || item.display_name || currentName;
-                
-                // 2. Identify financial values
+                // OMNISCIENT PAIRING: Collect all strings and numbers in this object
+                const strings: string[] = [];
+                const numbers: { key: string, val: number }[] = [];
+
                 Object.entries(item).forEach(([key, val]) => {
                   const lowerKey = key.toLowerCase();
-                  const isFinance = lowerKey.includes("debit") || lowerKey.includes("credit") || lowerKey.includes("amount") || lowerKey.includes("balance");
-
-                  if (name && isFinance && (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val)))) {
+                  if (typeof val === "string" && val.length > 2 && !["id", "account_id", "code", "currency"].includes(lowerKey)) {
+                    strings.push(val.trim());
+                  }
+                  if (typeof val === "number" || (typeof val === "string" && /^[0-9,.-]+$/.test(val))) {
                     const num = typeof val === "string" ? parseFloat(val.replace(/,/g, "")) : val;
                     if (!isNaN(num) && !["id", "account_id", "year", "code"].includes(lowerKey)) {
-                      // Assignment instead of addition to prevent double-counting nested totals
-                      // We prefer the non-total keys if possible
-                      const isTotalKey = lowerKey.includes("total") || lowerKey.includes("net");
-                      if (!accMap[name.trim()] || !isTotalKey) {
-                        accMap[name.trim()] = Math.abs(num);
-                      }
+                      numbers.push({ key, val: Math.abs(num) });
                     }
                   }
-
-                  // 3. Recurse deeper, passing the name down
+                  
+                  // Recurse deeper
                   if (val && typeof val === "object" && key !== "account_transactions") {
-                    discover(val, name);
+                    discover(val);
                   }
+                });
+
+                // Pair every string found with every number found in this same object
+                strings.forEach(s => {
+                  numbers.forEach(n => {
+                    // Only assign if it's not a known total key (unless we have nothing else)
+                    const isTotal = n.key.toLowerCase().includes("total") || s.toLowerCase().includes("total");
+                    if (!accMap[s] || !isTotal) {
+                      accMap[s] = n.val;
+                    }
+                  });
                 });
               }
             };
