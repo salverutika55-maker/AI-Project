@@ -47,14 +47,19 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   const [misLoading, setMisLoading] = useState(false);
   const [customSubHeads, setCustomSubHeads] = useState<any[]>([]);
   const [isManagingStructure, setIsManagingStructure] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   const dashboardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (client.id) {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (client?.id) {
       fetchAllData();
     }
-  }, [client.id, selectedYear, fyType]);
+  }, [client?.id, selectedYear, fyType]);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -205,8 +210,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
     return newData;
   };
 
-  const calculatedData = useMemo(() => calculateMetrics(gridData), [gridData, client.sector, months]);
-  const calculatedBudgetData = useMemo(() => calculateMetrics(budgetData), [budgetData, client.sector, months]);
+  const calculatedData = useMemo(() => calculateMetrics(gridData), [gridData, client?.sector, months]);
+  const calculatedBudgetData = useMemo(() => calculateMetrics(budgetData), [budgetData, client?.sector, months]);
 
   const getRowTotal = (item: string) => {
     return visibleMonths.reduce((sum, m) => sum + (calculatedData[m]?.[item] || gridData[m]?.[item] || 0), 0);
@@ -278,7 +283,13 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
     return customSubHeads.map(s => s.name);
   }, [customSubHeads]);
 
-  const Icon = client.sector === "MANUFACTURING" ? Factory : client.sector === "TRADING" ? ArrowRightLeft : Briefcase;
+  const Icon = client?.sector === "MANUFACTURING" ? Factory : client?.sector === "TRADING" ? ArrowRightLeft : Briefcase;
+
+  if (!isMounted) return (
+    <div className="min-h-screen bg-[#0A0A0C] flex items-center justify-center">
+      <RefreshCw className="w-8 h-8 text-cyan-500 animate-spin" />
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-slate-200" ref={dashboardRef}>
@@ -528,7 +539,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                     </tr>
                   </thead>
                   <tbody>
-                    {sections.map((section, sIdx) => (
+                    {(sections || []).map((section, sIdx) => (
                       <Fragment key={sIdx}>
                         <tr className="bg-white/[0.02]">
                           <td className="sticky left-0 z-30 bg-[#1a1a24] p-4 text-[11px] font-black text-cyan-400 uppercase tracking-widest border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? visibleMonths.length * 2 : visibleMonths.length) + (viewMode === "MONTHLY_BUDGET" ? 4 : 2)}>{section.name}</td>

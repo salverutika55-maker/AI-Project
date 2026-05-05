@@ -20,7 +20,8 @@ export default function PNLStructureModal({ isOpen, onClose, clientId, sections,
   useEffect(() => {
     if (isOpen) {
       fetchSubheads();
-      if (sections.length > 0) setSelectedHead(sections[0].name);
+      const firstHead = (sections || []).find(s => !s.isCalculated);
+      if (firstHead) setSelectedHead(firstHead.name);
     }
   }, [isOpen]);
 
@@ -101,7 +102,7 @@ export default function PNLStructureModal({ isOpen, onClose, clientId, sections,
                 onChange={(e) => setSelectedHead(e.target.value)}
                 className="bg-[#1a1a24] border border-white/10 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
               >
-                {sections.filter(s => !s.isCalculated).map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                {(sections || []).filter(s => s && !s.isCalculated).map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
               </select>
               <div className="relative">
                 <input 
@@ -124,8 +125,8 @@ export default function PNLStructureModal({ isOpen, onClose, clientId, sections,
 
           {/* List Sections */}
           <div className="space-y-6">
-            {sections.filter(s => !s.isCalculated).map(section => {
-              const items = subheads.filter(sh => sh.headName === section.name);
+            {(sections || []).filter(s => s && !s.isCalculated).map(section => {
+              const items = (subheads || []).filter(sh => sh && sh.headName === section.name);
               return (
                 <div key={section.name} className="space-y-3">
                   <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{section.name}</h4>
