@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { 
   Factory, Briefcase, ArrowRightLeft, Download, Link2, UploadCloud, RefreshCw,
   TrendingDown, BarChart3, WalletCards, GitMerge, BrainCircuit, Activity,
-  FileText, FileSpreadsheet, Zap, LayoutDashboard, Table as TableIcon, Search, AlertCircle
+  FileText, FileSpreadsheet, Zap, LayoutDashboard, Table as TableIcon, Search, AlertCircle, Settings2
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -395,7 +395,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                       </div>
                     </div>
                     <div className="h-[300px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" debounce={100}>
                         <AreaChart data={chartData}>
                           <defs>
                             <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10B981" stopOpacity={0}/></linearGradient>
@@ -415,7 +415,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                   <div className="bg-[#13131A] border border-white/5 rounded-3xl p-8 shadow-xl">
                     <h3 className="text-xl font-black text-white mb-8">COGS Optimization Analysis</h3>
                     <div className="h-[250px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" debounce={100}>
                         <RechartsLineChart data={chartData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
                           <XAxis dataKey="name" stroke="#ffffff20" tick={{fill: '#ffffff50', fontSize: 10, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
