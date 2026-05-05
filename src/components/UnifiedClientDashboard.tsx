@@ -127,8 +127,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   const visibleMonths = useMemo(() => {
     const idx = months.indexOf(selectedMonth);
     if (idx === -1) return [selectedMonth];
-    if (idx === 0) return [months[0]]; // FY Boundary (e.g. Apr)
-    return [months[idx - 1], months[idx]]; // Prev + Curr
+    return months.slice(0, idx + 1); // All months from start of FY up to selected month
   }, [selectedMonth, months]);
 
   // CALCULATION ENGINE (Copied from SectorDashboard)
@@ -188,7 +187,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   const calculatedBudgetData = useMemo(() => calculateMetrics(budgetData), [budgetData, client.sector, months]);
 
   const getRowTotal = (item: string) => {
-    return months.reduce((sum, m) => sum + (calculatedData[m]?.[item] || gridData[m]?.[item] || 0), 0);
+    return visibleMonths.reduce((sum, m) => sum + (calculatedData[m]?.[item] || gridData[m]?.[item] || 0), 0);
   };
 
   // EXPORT TOOLS (Salvaged from DashboardClient)
@@ -492,7 +491,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                           </Fragment>
                         )
                       ))}
-                      <th className="p-4 text-center text-[10px] font-black text-cyan-500 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">Annual Total</th>
+                      <th className="p-4 text-center text-[10px] font-black text-cyan-500 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">Cumulative Total</th>
                     </tr>
                   </thead>
                   <tbody>
