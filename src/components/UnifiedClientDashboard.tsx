@@ -28,6 +28,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   const [activeTab, setActiveTab] = useState<"insights" | "pnl" | "diagnostics">("insights");
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
+  const [selectedMonth, setSelectedMonth] = useState("May");
   const [displayCurrency, setDisplayCurrency] = useState("INR");
   const [isMappingOpen, setIsMappingOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
@@ -123,6 +124,12 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
     }
     return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   }, [fyType]);
+  const visibleMonths = useMemo(() => {
+    const idx = months.indexOf(selectedMonth);
+    if (idx === -1) return [selectedMonth];
+    if (idx === 0) return [months[0]]; // FY Boundary (e.g. Apr)
+    return [months[idx - 1], months[idx]]; // Prev + Curr
+  }, [selectedMonth, months]);
 
   // CALCULATION ENGINE (Copied from SectorDashboard)
   const calculateMetrics = (sourceGrid: Record<string, Record<string, number>>) => {
@@ -285,6 +292,10 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
             <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none hover:bg-white/10 transition-all cursor-pointer">
               <option value={2026} className="bg-[#13131A]">2026-27</option>
               <option value={2025} className="bg-[#13131A]">2025-26</option>
+            </select>
+            <div className="h-4 w-[1px] bg-white/10 hidden md:block" />
+            <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-3 py-1.5 text-xs font-black text-cyan-400 focus:outline-none hover:bg-cyan-500/20 transition-all cursor-pointer">
+              {months.map(m => <option key={m} value={m} className="bg-[#13131A]">{m.toUpperCase()}</option>)}
             </select>
             <div className="h-4 w-[1px] bg-white/10 hidden md:block" />
             <button onClick={exportPDF} className="p-2 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-colors" title="Export PDF"><FileText className="w-4 h-4" /></button>
@@ -471,7 +482,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                   <thead>
                     <tr className="border-b border-white/10">
                       <th className="sticky left-0 z-30 bg-[#181821] p-6 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[300px]">Particulars</th>
-                      {months.map(month => (
+                      {visibleMonths.map(month => (
                         viewMode === "STANDARD" ? (
                           <th key={month} className="p-4 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[120px] border-l border-white/5">{month}</th>
                         ) : (
@@ -488,14 +499,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                     {sections.map((section, sIdx) => (
                       <Fragment key={sIdx}>
                         <tr className="bg-white/[0.02]">
-                          <td className="sticky left-0 z-30 bg-[#1a1a24] p-4 text-[11px] font-black text-cyan-400 uppercase tracking-widest border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? months.length * 2 : months.length) + 2}>{section.name}</td>
+                          <td className="sticky left-0 z-30 bg-[#1a1a24] p-4 text-[11px] font-black text-cyan-400 uppercase tracking-widest border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? visibleMonths.length * 2 : visibleMonths.length) + 2}>{section.name}</td>
                         </tr>
                         {section.items.map((item: string, iIdx: number) => {
                           const totalAct = getRowTotal(item);
                           return (
                             <tr key={iIdx} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${section.isBold ? 'font-bold text-white bg-white/[0.01]' : ''} ${section.isSubtotal ? 'bg-cyan-500/5' : ''}`}>
                               <td className={`sticky left-0 z-30 p-4 text-sm border-r border-white/5 ${section.isBold || section.isTotal ? 'bg-[#181821]' : 'bg-[#13131A] text-slate-400 font-medium'}`}>{item}</td>
-                              {months.map(m => {
+                              {visibleMonths.map(m => {
                                 const actualVal = section.isCalculated ? (calculatedData[m]?.[item] || 0) : (gridData[m]?.[item] || 0);
                                 const budgetVal = section.isCalculated ? (calculatedBudgetData[m]?.[item] || 0) : (budgetData[m]?.[item] || 0);
                                 return viewMode === "STANDARD" ? (
