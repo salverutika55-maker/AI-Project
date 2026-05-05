@@ -88,21 +88,37 @@ export async function GET(
         try {
           const { token: accessToken, tokens } = await getZohoAccessToken(id);
           
-          const domains = tokens.api_domain ? [tokens.api_domain] : ["https://www.zohoapis.in"];
+          const domains = tokens.api_domain ? [tokens.api_domain] : [
+            "https://www.zohoapis.in/books/v3",
+            "https://www.zohoapis.com/books/v3",
+            "https://www.zohoapis.eu/books/v3",
+            "https://www.zohoapis.com.au/books/v3"
+          ];
+          
           let coaData: any = null;
-          let lastError = "";
           
           for (const domain of domains) {
             try {
-              const orgsRes = await fetch(`${domain}/api/v3/organizations`, {
+              const apiBase = domain.includes("/books/v3") ? domain : `${domain.replace(/\/$/, "")}/books/v3`;
+              
+              const orgsRes = await fetch(`${apiBase}/organizations`, {
                 headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` },
                 signal: AbortSignal.timeout(5000)
               });
+              
               if (!orgsRes.ok) continue;
               const orgsData = await orgsRes.json();
-              const orgId = orgsData.organizations?.[0]?.organization_id;
-              if (orgId) {
-                const coaRes = await fetch(`${domain}/api/v3/chartofaccounts?organization_id=${orgId}`, {
+              const organizations = orgsData.organizations || [];
+              
+              // Match organization by name (same as sync)
+              let org = organizations.find((o: any) => 
+                o.name.toLowerCase().includes(client.name.toLowerCase()) || 
+                client.name.toLowerCase().includes(o.name.toLowerCase())
+              );
+              if (!org) org = organizations[0];
+
+              if (org?.organization_id) {
+                const coaRes = await fetch(`${apiBase}/chartofaccounts?organization_id=${org.organization_id}`, {
                   headers: { "Authorization": `Zoho-oauthtoken ${accessToken}` }
                 });
                 coaData = await coaRes.json();
@@ -112,7 +128,7 @@ export async function GET(
           }
 
           if (coaData?.chartofaccounts) chartOfAccounts = coaData.chartofaccounts;
-          else error = "Failed to connect to Zoho Books.";
+          else error = "Failed to connect to Zoho Books. Please ensure your organization name matches Zoho.";
         } catch (e: any) { error = e.message; }
       }
     }
