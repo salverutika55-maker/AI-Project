@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import SectorDashboard from "@/components/SectorDashboard";
+import UnifiedClientDashboard from "@/components/UnifiedClientDashboard";
 import { SECTOR_CONFIGS } from "@/lib/sector-configs";
 import { redirect } from "next/navigation";
 import { Sector } from "@prisma/client";
@@ -29,19 +29,17 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
     );
   }
 
-  // Fetch all clients of the same sector for the dropdown in the dashboard
-  const clients = await prisma.client.findMany({
-    where: { sector: client.sector },
+  // Fetch all clients (for the dropdown)
+  const allClients = await prisma.client.findMany({
     orderBy: { name: "asc" }
   });
 
   return (
-    <SectorDashboard 
-      title={`${config.title}`} 
-      type={config.type} 
-      sections={config.sections} 
-      activeClientId={id}
-      clients={clients}
+    <UnifiedClientDashboard 
+      client={client}
+      allClients={allClients}
+      sections={config.sections}
     />
   );
 }
+
