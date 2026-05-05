@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import PNLMappingModal from "./PNLMappingModal";
 import BudgetUploadModal from "./BudgetUploadModal";
+import PNLStructureModal from "./PNLStructureModal";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import Papa from "papaparse";
@@ -44,6 +45,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   const [topBalancesSample, setTopBalancesSample] = useState<any[]>([]);
   const [misReport, setMisReport] = useState<any>(null);
   const [misLoading, setMisLoading] = useState(false);
+  const [customSubHeads, setCustomSubHeads] = useState<any[]>([]);
+  const [isManagingStructure, setIsManagingStructure] = useState(false);
 
   const dashboardRef = useRef<HTMLDivElement>(null);
 
@@ -74,9 +77,28 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
       });
       setBudgetData(bGrid);
 
-      // 2. Fetch Financial Records for Charts/Ratios
-      // Note: We might need a generic route for this, or use existing pnlData if it has enough info
-      // For now, we'll derive trends from gridData or fetch if needed.
+      // 2. Fetch Dynamic Subheads
+      const subRes = await fetch(`/api/clients/${client.id}/subheads`);
+      let subData = await subRes.json();
+
+      // Auto-Seed if empty
+      if (subData.length === 0) {
+        console.log("Seeding default subheads for client...");
+        const defaultSections = sections;
+        for (const section of defaultSections) {
+          for (const item of section.items) {
+            if (!section.isCalculated) {
+              await fetch(`/api/clients/${client.id}/subheads`, {
+                method: "POST",
+                body: JSON.stringify({ name: item, headName: section.name })
+              });
+            }
+          }
+        }
+        const refreshRes = await fetch(`/api/clients/${client.id}/subheads`);
+        subData = await refreshRes.json();
+      }
+      setCustomSubHeads(subData);
     } catch (err) {
       console.error(err);
     }
@@ -253,10 +275,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   }));
 
   const allSectorHeads = useMemo(() => {
-    const heads: string[] = [];
-    sections.forEach(s => s.items.forEach((item: string) => { if (!s.isCalculated) heads.push(item); }));
-    return heads;
-  }, [sections]);
+    return customSubHeads.map(s => s.name);
+  }, [customSubHeads]);
 
   const Icon = client.sector === "MANUFACTURING" ? Factory : client.sector === "TRADING" ? ArrowRightLeft : Briefcase;
 
@@ -477,6 +497,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                     <button onClick={() => setViewMode("MONTHLY_BUDGET")} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === "MONTHLY_BUDGET" ? 'bg-purple-500 text-white' : 'text-slate-500 hover:text-white'}`}>Vs Budget</button>
                   </div>
                   <button onClick={() => setIsMappingOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-cyan-400 hover:bg-cyan-500/10 transition-all"><Link2 className="w-3 h-3" /> Map Ledgers</button>
+                  <button onClick={() => setIsManagingStructure(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-emerald-400 hover:bg-emerald-500/10 transition-all"><Settings2 className="w-3 h-3" /> Manage Structure</button>
                   <button onClick={() => setIsBudgetOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-[10px] font-black text-purple-400 hover:bg-purple-500/20 transition-all"><UploadCloud className="w-3 h-3" /> Budget</button>
                 </div>
               </div>
@@ -512,15 +533,50 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                         <tr className="bg-white/[0.02]">
                           <td className="sticky left-0 z-30 bg-[#1a1a24] p-4 text-[11px] font-black text-cyan-400 uppercase tracking-widest border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? visibleMonths.length * 2 : visibleMonths.length) + (viewMode === "MONTHLY_BUDGET" ? 4 : 2)}>{section.name}</td>
                         </tr>
-                        {section.items.map((item: string, iIdx: number) => {
+                        {/* Dynamic Subheads from DB */}
+                        {customSubHeads.filter(s => s.headName === section.name).map((subhead, iIdx) => {
+                          const item = subhead.name;
+                          const totalAct = getRowTotal(item);
+                          const totalBgt = getBudgetRowTotal(item);
+                          return (
+                            <tr key={subhead.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                              <td className="sticky left-0 z-30 p-4 text-sm border-r border-white/5 bg-[#13131A] text-slate-400 font-medium">{item}</td>
+                              {visibleMonths.map(m => {
+                                const actualVal = gridData[m]?.[item] || 0;
+                                const budgetVal = budgetData[m]?.[item] || 0;
+                                return viewMode === "STANDARD" ? (
+                                  <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px] font-mono text-xs font-bold text-slate-300">{formatCurrency(actualVal)}</td>
+                                ) : (
+                                  <Fragment key={m}>
+                                    <td className="p-2 text-center border-l border-white/5 min-w-[120px] bg-cyan-500/5 font-mono text-xs font-bold text-cyan-400">{formatCurrency(actualVal)}</td>
+                                    <td className="p-2 text-center border-l border-white/5 min-w-[120px] bg-purple-500/5 font-mono text-xs font-bold text-purple-400">{budgetVal > 0 ? formatCurrency(budgetVal) : "-"}</td>
+                                  </Fragment>
+                                );
+                              })}
+                              {viewMode === "STANDARD" ? (
+                                <td className="p-4 text-center text-sm font-mono font-black text-cyan-400 border-l border-white/10 bg-cyan-500/5">{formatCurrency(totalAct)}</td>
+                              ) : (
+                                <Fragment>
+                                  <td className="p-4 text-center text-sm font-mono font-black text-cyan-400 border-l border-white/10 bg-cyan-500/5">{formatCurrency(totalAct)}</td>
+                                  <td className="p-4 text-center text-sm font-mono font-black text-purple-400 border-l border-white/10 bg-purple-500/5">{totalBgt > 0 ? formatCurrency(totalBgt) : "-"}</td>
+                                  <td className={`p-4 text-center text-sm font-mono font-black border-l border-white/10 bg-white/[0.02] ${totalBgt > 0 && totalAct > totalBgt ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {totalBgt > 0 ? `${(((totalAct - totalBgt)/totalBgt)*100).toFixed(1)}%` : "-"}
+                                  </td>
+                                </Fragment>
+                              )}
+                            </tr>
+                          );
+                        })}
+                        {/* Fixed Calculated Heads */}
+                        {section.isCalculated && section.items.map((item: string, iIdx: number) => {
                           const totalAct = getRowTotal(item);
                           const totalBgt = getBudgetRowTotal(item);
                           return (
                             <tr key={iIdx} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${section.isBold ? 'font-bold text-white bg-white/[0.01]' : ''} ${section.isSubtotal ? 'bg-cyan-500/5' : ''}`}>
                               <td className={`sticky left-0 z-30 p-4 text-sm border-r border-white/5 ${section.isBold || section.isTotal ? 'bg-[#181821]' : 'bg-[#13131A] text-slate-400 font-medium'}`}>{item}</td>
                               {visibleMonths.map(m => {
-                                const actualVal = section.isCalculated ? (calculatedData[m]?.[item] || 0) : (gridData[m]?.[item] || 0);
-                                const budgetVal = section.isCalculated ? (calculatedBudgetData[m]?.[item] || 0) : (budgetData[m]?.[item] || 0);
+                                const actualVal = calculatedData[m]?.[item] || 0;
+                                const budgetVal = calculatedBudgetData[m]?.[item] || 0;
                                 return viewMode === "STANDARD" ? (
                                   <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px] font-mono text-xs font-bold text-slate-300">{formatCurrency(actualVal)}</td>
                                 ) : (
@@ -622,6 +678,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
         onClose={() => setIsBudgetOpen(false)}
         clientId={client.id}
         sectorHeads={allSectorHeads}
+      />
+
+      <PNLStructureModal
+        isOpen={isManagingStructure}
+        onClose={() => setIsManagingStructure(false)}
+        clientId={client.id}
+        sections={sections}
+        onUpdate={fetchAllData}
       />
 
       {loading && (
