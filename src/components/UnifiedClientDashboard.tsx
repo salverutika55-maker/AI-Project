@@ -190,6 +190,10 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
     return visibleMonths.reduce((sum, m) => sum + (calculatedData[m]?.[item] || gridData[m]?.[item] || 0), 0);
   };
 
+  const getBudgetRowTotal = (item: string) => {
+    return visibleMonths.reduce((sum, m) => sum + (calculatedBudgetData[m]?.[item] || budgetData[m]?.[item] || 0), 0);
+  };
+
   // EXPORT TOOLS (Salvaged from DashboardClient)
   const exportPDF = async () => {
     if (!dashboardRef.current) return;
@@ -491,17 +495,26 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                           </Fragment>
                         )
                       ))}
-                      <th className="p-4 text-center text-[10px] font-black text-cyan-500 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">Cumulative Total</th>
+                      {viewMode === "STANDARD" ? (
+                        <th className="p-4 text-center text-[10px] font-black text-cyan-500 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">Cumulative Total</th>
+                      ) : (
+                        <Fragment>
+                          <th className="p-4 text-center text-[10px] font-black text-cyan-400 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">Act. Total</th>
+                          <th className="p-4 text-center text-[10px] font-black text-purple-400 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-purple-500/5">Bgt. Total</th>
+                          <th className="p-4 text-center text-[10px] font-black text-emerald-400 uppercase tracking-widest min-w-[120px] border-l border-white/10 bg-emerald-500/5">Var. Total</th>
+                        </Fragment>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {sections.map((section, sIdx) => (
                       <Fragment key={sIdx}>
                         <tr className="bg-white/[0.02]">
-                          <td className="sticky left-0 z-30 bg-[#1a1a24] p-4 text-[11px] font-black text-cyan-400 uppercase tracking-widest border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? visibleMonths.length * 2 : visibleMonths.length) + 2}>{section.name}</td>
+                          <td className="sticky left-0 z-30 bg-[#1a1a24] p-4 text-[11px] font-black text-cyan-400 uppercase tracking-widest border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? visibleMonths.length * 2 : visibleMonths.length) + (viewMode === "MONTHLY_BUDGET" ? 4 : 2)}>{section.name}</td>
                         </tr>
                         {section.items.map((item: string, iIdx: number) => {
                           const totalAct = getRowTotal(item);
+                          const totalBgt = getBudgetRowTotal(item);
                           return (
                             <tr key={iIdx} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${section.isBold ? 'font-bold text-white bg-white/[0.01]' : ''} ${section.isSubtotal ? 'bg-cyan-500/5' : ''}`}>
                               <td className={`sticky left-0 z-30 p-4 text-sm border-r border-white/5 ${section.isBold || section.isTotal ? 'bg-[#181821]' : 'bg-[#13131A] text-slate-400 font-medium'}`}>{item}</td>
@@ -517,7 +530,17 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                                   </Fragment>
                                 );
                               })}
-                              <td className="p-4 text-center text-sm font-mono font-black text-cyan-400 border-l border-white/10 bg-cyan-500/5">{formatCurrency(totalAct)}</td>
+                              {viewMode === "STANDARD" ? (
+                                <td className="p-4 text-center text-sm font-mono font-black text-cyan-400 border-l border-white/10 bg-cyan-500/5">{formatCurrency(totalAct)}</td>
+                              ) : (
+                                <Fragment>
+                                  <td className="p-4 text-center text-sm font-mono font-black text-cyan-400 border-l border-white/10 bg-cyan-500/5">{formatCurrency(totalAct)}</td>
+                                  <td className="p-4 text-center text-sm font-mono font-black text-purple-400 border-l border-white/10 bg-purple-500/5">{totalBgt > 0 ? formatCurrency(totalBgt) : "-"}</td>
+                                  <td className={`p-4 text-center text-sm font-mono font-black border-l border-white/10 bg-white/[0.02] ${totalBgt > 0 && totalAct > totalBgt ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {totalBgt > 0 ? `${(((totalAct - totalBgt)/totalBgt)*100).toFixed(1)}%` : "-"}
+                                  </td>
+                                </Fragment>
+                              )}
                             </tr>
                           );
                         })}
