@@ -266,7 +266,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
 
                       <div className="flex items-center justify-between mt-8 pt-6 border-t border-white/5">
                         <button 
-                          onClick={() => router.push(`/dashboard?client=${client.id}`)}
+                          onClick={() => router.push(`/dashboard/client/${client.id}`)}
                           className="text-slate-400 hover:text-cyan-400 text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-2"
                         >
                           View Actuals &rarr;

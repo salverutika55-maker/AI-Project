@@ -282,8 +282,7 @@ export default function SectorDashboard({ title, type, sections, activeClientId,
                   value={activeClientId || ""} 
                   onChange={(e) => {
                     const id = e.target.value;
-                    const path = window.location.pathname;
-                    router.push(`${path}?client=${id}`);
+                    router.push(`/dashboard/client/${id}`);
                   }}
                   className="bg-transparent text-cyan-400 text-sm font-bold border-none focus:ring-0 p-0 cursor-pointer hover:text-cyan-300 transition-colors"
                 >
