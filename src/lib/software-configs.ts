@@ -22,7 +22,7 @@ export const SOFTWARE_CONFIGS: Record<AccountingSoftware, SoftwareConfig> = {
     color: 'text-amber-400',
     bg: 'bg-amber-500/10',
     border: 'border-amber-500/20',
-    syncEndpoint: '/sync/tally',
+    syncEndpoint: '/sync/placeholder?type=Tally',
   },
   ZOHO: {
     id: 'ZOHO',
@@ -40,7 +40,7 @@ export const SOFTWARE_CONFIGS: Record<AccountingSoftware, SoftwareConfig> = {
     color: 'text-blue-400',
     bg: 'bg-blue-500/10',
     border: 'border-blue-500/20',
-    syncEndpoint: '/sync/quickbooks',
+    syncEndpoint: '/sync/placeholder?type=QuickBooks',
   },
   XERO: {
     id: 'XERO',
@@ -49,7 +49,7 @@ export const SOFTWARE_CONFIGS: Record<AccountingSoftware, SoftwareConfig> = {
     color: 'text-cyan-400',
     bg: 'bg-cyan-500/10',
     border: 'border-cyan-500/20',
-    syncEndpoint: '/sync/xero',
+    syncEndpoint: '/sync/placeholder?type=Xero',
   },
   ODOO: {
     id: 'ODOO',
@@ -58,7 +58,7 @@ export const SOFTWARE_CONFIGS: Record<AccountingSoftware, SoftwareConfig> = {
     color: 'text-purple-400',
     bg: 'bg-purple-500/10',
     border: 'border-purple-500/20',
-    syncEndpoint: '/sync/odoo',
+    syncEndpoint: '/sync/placeholder?type=Odoo',
   },
   SAP: {
     id: 'SAP',
@@ -67,6 +67,6 @@ export const SOFTWARE_CONFIGS: Record<AccountingSoftware, SoftwareConfig> = {
     color: 'text-slate-400',
     bg: 'bg-slate-500/10',
     border: 'border-slate-500/20',
-    syncEndpoint: '/sync/sap',
+    syncEndpoint: '/sync/placeholder?type=SAP',
   },
 };
