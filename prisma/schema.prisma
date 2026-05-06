@@ -202,10 +202,12 @@ model Device {
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   name      String   // e.g., "ADITYA-PC"
   deviceId  String   @unique // Machine fingerprint
-  token     String   @unique // Encrypted device token
-  status    String   @default("ACTIVE") // ACTIVE, REVOKED
-  lastSeen  DateTime @default(now())
-  createdAt DateTime @default(now())
+  token            String   @unique // Encrypted device token (Legacy or Machine ID)
+  refreshToken     String?  @unique // Opaque refresh token for persistent sessions
+  refreshExpiresAt DateTime?
+  status           String   @default("ACTIVE") // ACTIVE, REVOKED
+  lastSeen         DateTime @default(now())
+  createdAt        DateTime @default(now())
 }
 
 model PairingCode {
@@ -217,3 +219,6 @@ model PairingCode {
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 }
+
+// Extend Device model for persistent sessions
+// (Note: We use multi_replace to merge this into the existing model)
