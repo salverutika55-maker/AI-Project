@@ -116,7 +116,13 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch(`/api/clients/${client.id}${softwareConfig.syncEndpoint}?year=${selectedYear}&fyType=${fyType}`, { 
+      const queryParams = new URLSearchParams({
+        year: selectedYear.toString(),
+        fyType: fyType,
+        ...( (softwareConfig as any).softwareType ? { type: (softwareConfig as any).softwareType } : {} )
+      });
+
+      const response = await fetch(`/api/clients/${client.id}${softwareConfig.syncEndpoint}?${queryParams.toString()}`, { 
         method: "POST" 
       });
 
