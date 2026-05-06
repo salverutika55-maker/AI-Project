@@ -14,6 +14,7 @@ import {
 import PNLMappingModal from "./PNLMappingModal";
 import BudgetUploadModal from "./BudgetUploadModal";
 import PNLStructureModal from "./PNLStructureModal";
+import { SOFTWARE_CONFIGS, AccountingSoftware } from "@/lib/software-configs";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import Papa from "papaparse";
@@ -110,10 +111,12 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
     setLoading(false);
   };
 
-  const handleZohoSync = async () => {
+  const softwareConfig = SOFTWARE_CONFIGS[client.software as AccountingSoftware] || SOFTWARE_CONFIGS.ZOHO;
+
+  const handleSync = async () => {
     setIsSyncing(true);
     try {
-      const dataRes = await fetch(`/api/clients/${client.id}/sync/data?year=${selectedYear}&fyType=${fyType}`, { 
+      const dataRes = await fetch(`/api/clients/${client.id}${softwareConfig.syncEndpoint}?year=${selectedYear}&fyType=${fyType}`, { 
         method: "POST" 
       });
       const data = await dataRes.json();
@@ -128,7 +131,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
       });
       
       await fetchAllData();
-      alert(`✅ Sync Complete! Updated ${data.count} months.`);
+      alert(`✅ ${softwareConfig.label} Sync Complete! Updated ${data.count} months.`);
     } catch (err: any) {
       alert("Sync Error: " + err.message);
     } finally {
@@ -334,9 +337,13 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
             <div className="h-4 w-[1px] bg-white/10 hidden md:block" />
             <button onClick={exportPDF} className="p-2 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-colors" title="Export PDF"><FileText className="w-4 h-4" /></button>
             <button onClick={exportExcel} className="p-2 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-colors" title="Export CSV"><FileSpreadsheet className="w-4 h-4" /></button>
-            <button onClick={handleZohoSync} disabled={isSyncing} className="flex items-center gap-2 px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs font-black text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all disabled:opacity-50">
-              {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              Sync Zoho
+            <button 
+              onClick={handleSync} 
+              disabled={isSyncing} 
+              className={`flex items-center gap-2 px-4 py-1.5 ${softwareConfig.bg} border ${softwareConfig.border} rounded-lg text-xs font-black ${softwareConfig.color} hover:opacity-80 transition-all disabled:opacity-50`}
+            >
+              {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <softwareConfig.icon className="w-3 h-3" />}
+              Sync {softwareConfig.label}
             </button>
           </div>
         </div>
