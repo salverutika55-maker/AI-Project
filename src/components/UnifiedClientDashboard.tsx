@@ -358,17 +358,23 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
             
             {client.software === 'TALLY' && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg group relative">
-                <div className={`w-2 h-2 rounded-full ${(client as any).connectorStatus === 'ONLINE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                <div className={`w-2 h-2 rounded-full ${
+                  (client as any).connectorStatus === 'SYNCING' ? 'bg-amber-500 animate-pulse' :
+                  (client as any).connectorStatus === 'ONLINE' ? 'bg-emerald-500 animate-pulse' : 
+                  'bg-rose-500'
+                }`} />
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {(client as any).connectorStatus === 'ONLINE' ? 'Connector Active' : 'Connector Offline'}
+                  {(client as any).connectorStatus === 'SYNCING' ? 'Sync in Progress' :
+                   (client as any).connectorStatus === 'ONLINE' ? 'Connector Active' : 
+                   'Connector Offline'}
                 </span>
                 
                 {/* Tooltip */}
                 <div className="absolute top-full right-0 mt-2 w-48 bg-[#1a1a24] border border-white/10 p-3 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
                   <p className="text-[10px] text-slate-400 leading-relaxed font-medium">
-                    {(client as any).connectorStatus === 'ONLINE' 
-                      ? 'The desktop sync bridge is connected and ready to sync data from Tally Prime.' 
-                      : 'The desktop sync bridge is not detected. Please ensure the .exe connector is running on your Tally machine.'}
+                    {(client as any).connectorStatus === 'SYNCING' ? 'Data is currently being uploaded from your local Tally Prime machine.' :
+                     (client as any).connectorStatus === 'ONLINE' ? 'The desktop sync bridge is connected and ready to sync.' : 
+                     'The desktop sync bridge is not detected. Please ensure the .exe connector is running.'}
                   </p>
                 </div>
               </div>
