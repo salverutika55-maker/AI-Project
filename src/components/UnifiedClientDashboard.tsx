@@ -130,7 +130,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
 
       const data = await response.json();
       if (!response.ok || data.error) {
-        throw new Error(data.error || `Server returned ${response.status}`);
+        throw new Error(data.message || data.error || `Server returned ${response.status}`);
       }
       
       setTopBalancesSample(data.topBalances || []);
