@@ -382,11 +382,22 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
 
             <button 
               onClick={handleSync} 
-              disabled={isSyncing} 
+              disabled={isSyncing || (client as any).connectorStatus === 'SYNCING'} 
               className={`flex items-center gap-2 px-4 py-1.5 ${softwareConfig.bg} border ${softwareConfig.border} rounded-lg text-xs font-black ${softwareConfig.color} hover:opacity-80 transition-all disabled:opacity-50`}
             >
-              {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <softwareConfig.icon className="w-3 h-3" />}
-              Sync {softwareConfig.label}
+              {isSyncing || (client as any).connectorStatus === 'SYNCING' ? (
+                <RefreshCw className="w-3 h-3 animate-spin" />
+              ) : client.software === 'TALLY' && (client as any).connectorStatus === 'OFFLINE' ? (
+                <Download className="w-3 h-3" />
+              ) : (
+                <softwareConfig.icon className="w-3 h-3" />
+              )}
+              
+              {client.software === 'TALLY' && (client as any).connectorStatus === 'OFFLINE' 
+                ? 'Download Connector' 
+                : (client as any).connectorStatus === 'SYNCING' 
+                  ? 'Syncing...' 
+                  : `Sync ${softwareConfig.label}`}
             </button>
           </div>
         </div>
