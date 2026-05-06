@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(
   req: Request,
@@ -20,16 +21,27 @@ export async function POST(
       }, { status: 412 });
     }
 
-    // Set to syncing state
-    await prisma.client.update({
-      where: { id },
-      data: { connectorStatus: "SYNCING" }
+    // Create a background sync task
+    const task = await prisma.syncTask.create({
+      data: {
+        clientId: id,
+        type: "TALLY_SYNC",
+        status: "PENDING"
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Sync task initiated successfully. Waiting for desktop connector to process...",
+      taskId: task.id,
+      status: "PENDING",
+      integration: "TALLY"
     });
   }
 
   return NextResponse.json({
     success: false,
-    message: `${type} integration is currently in the setup phase. A local desktop connector or secure tunnel is required for this software.`,
+    message: `${type} integration is currently in the setup phase.`,
     errorCode: "INTEGRATION_PENDING",
     integration: type.toUpperCase()
   }, { status: 501 });
