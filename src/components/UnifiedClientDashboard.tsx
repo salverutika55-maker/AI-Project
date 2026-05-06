@@ -727,7 +727,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                     <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center"><RefreshCw className="w-6 h-6 text-emerald-400" /></div>
                     <div>
                       <h3 className="text-xl font-black text-white">Sync Diagnostics</h3>
-                      <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Live data tracing from Zoho Books</p>
+                      <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Live data tracing from {softwareConfig.label}</p>
                     </div>
                   </div>
                   <div className="flex gap-4 text-right">
