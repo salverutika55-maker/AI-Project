@@ -185,11 +185,11 @@ model SyncTask {
   id        String   @id @default(cuid())
   clientId  String
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  type      String   // e.g., " TALLY_SYNC\
- status String @default(\PENDING\) // PENDING, PROCESSING, COMPLETED, FAILED
- payload Json?
- result Json?
- error String?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  type      String   // e.g., "TALLY_SYNC"
+  status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  payload   Json?
+  result    Json?
+  error     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
