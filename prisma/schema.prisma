@@ -44,6 +44,8 @@ model Client {
   software             AccountingSoftware @default(TALLY)
   sector               Sector            @default(TRADING)
   oauthToken           String?
+  connectorStatus      String            @default("OFFLINE") // OFFLINE, ONLINE, SYNCING
+  lastHeartbeat        DateTime?
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   financialRecords     FinancialRecord[]
   pnlMappings          PNLMapping[]
