@@ -55,6 +55,8 @@ model Client {
   handshakeCodes       HandshakeCode[]
   customSubHeads       CustomSubHead[]
   syncTasks            SyncTask[]
+  devices              Device[]
+  pairingCodes         PairingCode[]
   createdAt            DateTime          @default(now())
 }
 
@@ -192,4 +194,26 @@ model SyncTask {
   error     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Device {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String   // e.g., "ADITYA-PC"
+  deviceId  String   @unique // Machine fingerprint
+  token     String   @unique // Encrypted device token
+  status    String   @default("ACTIVE") // ACTIVE, REVOKED
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
+}
+
+model PairingCode {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code      String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
