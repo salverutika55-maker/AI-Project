@@ -349,6 +349,25 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
             <div className="h-4 w-[1px] bg-white/10 hidden md:block" />
             <button onClick={exportPDF} className="p-2 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-colors" title="Export PDF"><FileText className="w-4 h-4" /></button>
             <button onClick={exportExcel} className="p-2 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-colors" title="Export CSV"><FileSpreadsheet className="w-4 h-4" /></button>
+            
+            {client.software === 'TALLY' && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg group relative">
+                <div className={`w-2 h-2 rounded-full ${(client as any).connectorStatus === 'ONLINE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {(client as any).connectorStatus === 'ONLINE' ? 'Connector Active' : 'Connector Offline'}
+                </span>
+                
+                {/* Tooltip */}
+                <div className="absolute top-full right-0 mt-2 w-48 bg-[#1a1a24] border border-white/10 p-3 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                  <p className="text-[10px] text-slate-400 leading-relaxed font-medium">
+                    {(client as any).connectorStatus === 'ONLINE' 
+                      ? 'The desktop sync bridge is connected and ready to sync data from Tally Prime.' 
+                      : 'The desktop sync bridge is not detected. Please ensure the .exe connector is running on your Tally machine.'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <button 
               onClick={handleSync} 
               disabled={isSyncing} 
