@@ -116,11 +116,22 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      const dataRes = await fetch(`/api/clients/${client.id}${softwareConfig.syncEndpoint}?year=${selectedYear}&fyType=${fyType}`, { 
+      const response = await fetch(`/api/clients/${client.id}${softwareConfig.syncEndpoint}?year=${selectedYear}&fyType=${fyType}`, { 
         method: "POST" 
       });
-      const data = await dataRes.json();
-      if (!dataRes.ok || data.error) throw new Error(data.error);
+
+      // Check if response is HTML (Error page) instead of JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON Response:", text);
+        throw new Error(`${softwareConfig.label} integration is currently being configured or the server returned an error page.`);
+      }
+
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || `Server returned ${response.status}`);
+      }
       
       setTopBalancesSample(data.topBalances || []);
       setSyncDiagnostic({ 
@@ -133,7 +144,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
       await fetchAllData();
       alert(`✅ ${softwareConfig.label} Sync Complete! Updated ${data.count} months.`);
     } catch (err: any) {
-      alert("Sync Error: " + err.message);
+      console.error("Sync Error Details:", err);
+      alert(`Sync Error: ${err.message}`);
     } finally {
       setIsSyncing(false);
     }
