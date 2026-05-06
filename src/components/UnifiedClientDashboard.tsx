@@ -139,22 +139,61 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
         throw new Error(data.message || data.error || `Server returned ${response.status}`);
       }
       
-      setTopBalancesSample(data.topBalances || []);
-      setSyncDiagnostic({ 
-        orgName: data.orgName, 
-        apiBaseUsed: data.apiBaseUsed, 
-        allNames: data.allNames, 
-        rawSnippet: data.rawSnippet 
-      });
-      
-      await fetchAllData();
-      alert(`✅ ${softwareConfig.label} Sync Complete! Updated ${data.count} months.`);
+      if (data.taskId) {
+        // Tally Background Sync initiated
+        pollTaskStatus(data.taskId);
+      } else {
+        // Direct Sync (Zoho, etc.)
+        setTopBalancesSample(data.topBalances || []);
+        setSyncDiagnostic({ 
+          orgName: data.orgName, 
+          apiBaseUsed: data.apiBaseUsed, 
+          allNames: data.allNames, 
+          rawSnippet: data.rawSnippet 
+        });
+        await fetchAllData();
+        alert(`✅ ${softwareConfig.label} Sync Complete! Updated ${data.count} months.`);
+      }
     } catch (err: any) {
       console.error("Sync Error Details:", err);
       alert(`Sync Error: ${err.message}`);
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const pollTaskStatus = async (taskId: string) => {
+    let attempts = 0;
+    const maxAttempts = 30;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sync/tasks/${taskId}`);
+        const data = await res.json();
+
+        if (data.status === "COMPLETED") {
+          clearInterval(interval);
+          await fetchAllData();
+          setIsSyncing(false);
+          alert("Sync completed successfully!");
+        } else if (data.status === "FAILED") {
+          clearInterval(interval);
+          alert(`Sync Failed: ${data.message || "Unknown error"}`);
+          setIsSyncing(false);
+        }
+        
+        attempts++;
+        if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          alert("Sync timed out. Please check your connector.");
+          setIsSyncing(false);
+        }
+      } catch (error: any) {
+        clearInterval(interval);
+        alert(`Polling Error: ${error.message}`);
+        setIsSyncing(false);
+      }
+    }, 2000);
   };
 
   const formatCurrency = (val: number, compact = false) => {
