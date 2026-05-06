@@ -29,14 +29,18 @@ export async function POST(req: Request) {
       data: { used: true }
     });
 
-    // Generate a long-term secure device token (Encrypted/Hashed)
+    // Generate tokens
     const deviceToken = randomBytes(32).toString("hex");
+    const refreshToken = randomBytes(64).toString("hex");
+    const refreshExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
     // Create or update device registration
     const device = await prisma.device.upsert({
       where: { deviceId },
       update: {
         token: deviceToken,
+        refreshToken,
+        refreshExpiresAt,
         status: "ACTIVE",
         lastSeen: new Date(),
         name: deviceName
@@ -46,11 +50,13 @@ export async function POST(req: Request) {
         deviceId,
         name: deviceName,
         token: deviceToken,
+        refreshToken,
+        refreshExpiresAt,
         status: "ACTIVE"
       }
     });
 
-    // Generate a short-lived session JWT for immediate use
+    // Generate short-lived JWT for immediate use
     const accessToken = sign(
       { deviceId: device.deviceId, clientId: device.clientId },
       JWT_SECRET,
@@ -60,7 +66,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ 
       success: true, 
       accessToken,
-      deviceToken, // This should be stored securely by the .exe
+      refreshToken, // Long-lived token for silent renewal
+      deviceToken, 
       clientName: pairingCode.client.name 
     });
   } catch (error) {
