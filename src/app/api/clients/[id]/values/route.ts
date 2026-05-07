@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { decrypt } from "@/lib/encryption";
 import { logSecurityEvent } from "@/lib/logger";
+import { authorizeClientAction } from "@/lib/rbac";
 
 export async function GET(
   req: Request,
@@ -25,13 +26,7 @@ export async function GET(
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     // 2. Authorization & Ownership Check
-    const client = await prisma.client.findUnique({ where: { id } });
-    if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
-
-    if (user.role !== "ADMIN" && client.userId !== user.id) {
-      await logSecurityEvent(user.id, "UNAUTHORIZED_READ_ATTEMPT", id, `Attempted to read values for client ${id}`, req);
-      return NextResponse.json({ error: "Access Denied" }, { status: 403 });
-    }
+    await authorizeClientAction(user.id, id, "READ_ONLY");
 
     // Determine the exact years to query based on Fiscal Year type
     const queryYears = fyType === "APR_MAR" ? [year, year + 1] : [year];

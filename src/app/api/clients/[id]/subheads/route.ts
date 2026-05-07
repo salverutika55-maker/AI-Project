@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authorizeClientAction } from "@/lib/rbac";
 
 export async function GET(
   req: Request,
@@ -7,7 +10,15 @@ export async function GET(
 ) {
   const { id: clientId } = await params;
   
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    await authorizeClientAction(user.id, clientId, "READ_ONLY");
+
     const subheads = await prisma.customSubHead.findMany({
       where: { clientId },
       orderBy: { order: "asc" }
@@ -25,11 +36,15 @@ export async function POST(
   const { id: clientId } = await params;
   const { name, headName } = await req.json();
 
-  if (!name || !headName) {
-    return NextResponse.json({ error: "Name and Head Name are required" }, { status: 400 });
-  }
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    await authorizeClientAction(user.id, clientId, "ACCOUNTANT");
+
     const subhead = await prisma.customSubHead.create({
       data: {
         clientId,
@@ -54,11 +69,15 @@ export async function DELETE(
   const { searchParams } = new URL(req.url);
   const subheadId = searchParams.get("id");
 
-  if (!subheadId) {
-    return NextResponse.json({ error: "Subhead ID is required" }, { status: 400 });
-  }
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    await authorizeClientAction(user.id, clientId, "ACCOUNTANT");
+
     // 1. Fetch the subhead to know its name
     const subhead = await prisma.customSubHead.findUnique({
       where: { id: subheadId }
