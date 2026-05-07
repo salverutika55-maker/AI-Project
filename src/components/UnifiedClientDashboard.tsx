@@ -179,7 +179,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
 
   const pollTaskStatus = async (taskId: string) => {
     let attempts = 0;
-    const maxAttempts = 60; // 120 seconds max
+    const maxAttempts = 150; // 5 minutes max (150 * 2s)
 
     const interval = setInterval(async () => {
       try {
@@ -193,29 +193,36 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           await fetchAllData();
           setIsSyncing(false);
           setSyncProgress("");
-          alert("Sync completed successfully!");
+          alert("✅ Sync completed successfully!");
         } else if (data.status === "FAILED") {
           clearInterval(interval);
           localStorage.removeItem(`sync_task_${client.id}`);
-          alert(`Sync Failed: ${data.message || "Unknown error"}`);
+          alert(`❌ Sync Failed: ${data.message || "Unknown error"}`);
           setIsSyncing(false);
           setSyncProgress("");
         } else {
           // Still pending or in progress
-          setSyncProgress(attempts > 5 ? "Tally is generating data..." : "Connecting to bridge...");
+          if (attempts > 60) {
+            setSyncProgress("Processing large dataset... almost there...");
+          } else if (attempts > 30) {
+            setSyncProgress("Tally is generating financial data...");
+          } else if (attempts > 10) {
+            setSyncProgress("Establishing connection with Tally bridge...");
+          } else {
+            setSyncProgress("Initiating task...");
+          }
         }
         
         attempts++;
         if (attempts >= maxAttempts) {
           clearInterval(interval);
           localStorage.removeItem(`sync_task_${client.id}`);
-          alert("Sync timed out. Please ensure your Tally connector is online and try again.");
+          alert("⏱️ Sync timed out after 5 minutes. Large data might still be processing on your machine. Please check back in a moment or ensure your Tally connector is online.");
           setIsSyncing(false);
           setSyncProgress("");
         }
       } catch (error: any) {
         console.error("Polling Error:", error);
-        // We don't clear the interval on network error, we retry
       }
     }, 2000);
   };
