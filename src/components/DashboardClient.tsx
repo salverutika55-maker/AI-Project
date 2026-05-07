@@ -374,108 +374,73 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
           <div className="text-center py-20 animate-in fade-in slide-in-from-bottom-8 duration-700">
             <CloudRain className="w-20 h-20 text-cyan-500 mx-auto mb-6 opacity-80" />
             <h2 className="text-3xl font-bold text-white mb-2">Connect {activeClientName}&apos;s Financials</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 max-w-2xl mx-auto mt-10">
-              {activeClient?.software === "TALLY" ? (
-                <a href="/downloads/FinAnalyzerSync.exe" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer md:col-span-2">
-                  <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl"><UploadCloud className="w-6 h-6" /></div>
-                  <span className="font-semibold tracking-wide text-lg">Desktop Sync Agent</span>
-                  <span className="text-sm text-slate-500 text-center px-4">Download .exe to connect Tally Prime</span>
-                </a>
-              ) : (
-                <div className="md:col-span-2 space-y-4">
-                  {activeClient?.oauthToken ? (
-                    <div className="p-8 rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-center">
-                      <div className="w-12 h-12 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-bold text-xl mx-auto mb-4"><Zap className="w-6 h-6" /></div>
-                      <h3 className="text-xl font-bold text-white mb-2">{activeClient?.software} Linked Successfully!</h3>
-                      {syncSuccess && <div className="bg-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm mb-4">Connection established! You can now sync.</div>}
-                      {syncError && <div className="bg-red-500/20 text-red-400 p-3 rounded-lg text-sm mb-4 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {syncError}</div>}
-                      <p className="text-sm text-emerald-400/80 mb-6">FinAnalyzer is securely connected to your live {activeClient?.software} account.</p>
-                      
-                      <button 
-                        onClick={async () => {
-                          setLoading(true);
-                          try {
-                            const cid = String(activeClientId || "").trim();
-                            if (!cid || cid === "undefined") throw new Error("Please select a client first.");
+            
+            <ErrorBoundary title="Integration Panel Error">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 max-w-2xl mx-auto mt-10">
+                {activeClient?.software === "TALLY" ? (
+                  <a href="/downloads/FinAnalyzerSync.exe" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer md:col-span-2">
+                    <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl"><UploadCloud className="w-6 h-6" /></div>
+                    <span className="font-semibold tracking-wide text-lg">Desktop Sync Agent</span>
+                    <span className="text-sm text-slate-500 text-center px-4">Download .exe to connect Tally Prime</span>
+                  </a>
+                ) : (
+                  <div className="md:col-span-2 space-y-4">
+                    {activeClient?.oauthToken ? (
+                      <div className="p-8 rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-center">
+                        <div className="w-12 h-12 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-bold text-xl mx-auto mb-4"><Zap className="w-6 h-6" /></div>
+                        <h3 className="text-xl font-bold text-white mb-2">{activeClient?.software} Linked Successfully!</h3>
+                        {syncSuccess && <div className="bg-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm mb-4">Connection established! You can now sync.</div>}
+                        {syncError && <div className="bg-red-500/20 text-red-400 p-3 rounded-lg text-sm mb-4 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {syncError}</div>}
+                        <p className="text-sm text-emerald-400/80 mb-6">FinAnalyzer is securely connected to your live {activeClient?.software} account.</p>
+                        
+                        <button 
+                          onClick={async () => {
+                            setLoading(true);
+                            try {
+                              const cid = String(activeClientId || "").trim();
+                              if (!cid || cid === "undefined") throw new Error("Please select a client first.");
 
-                            // Step 1: Fail-Safe Sync
-                            console.log("🚀 Starting Fail-Safe Sync for:", cid);
-                            
-                            const dataRes = await fetch(`/api/clients/${cid}/sync/data?t=${Date.now()}`, { 
-                              method: "POST"
-                            }).catch(e => {
-                              throw new Error(`[Network Error] Connection interrupted: ${e.message}`);
-                            });
-
-                            const data = await dataRes.json().catch(() => ({ error: "Server returned unreadable response" }));
-                            if (!dataRes.ok || data.error) {
-                              throw new Error(data.error || `Server Error ${dataRes.status}`);
-                            }
-                            
-                            const { accounts, mappings } = data;
-                            if (!accounts || !mappings) throw new Error("Zoho data packet is empty.");
-                            
-                            // Step 2: Map Data
-                            const results: Record<string, number> = {};
-                            const now = new Date();
-                            const month = now.toLocaleString('default', { month: 'short' });
-                            const year = now.getFullYear();
-
-                            mappings.forEach((m: any) => {
-                              const account = accounts.find((a: any) => a.account_name === m.softwareLedgerName);
-                              if (account) {
-                                const balance = (account.credit_amount || 0) - (account.debit_amount || 0);
-                                results[m.sectorHead] = (results[m.sectorHead] || 0) + Math.abs(balance);
-                              }
-                            });
-
-                            // Step 3: Save Data
-                            const saveRes = await fetch(`/api/clients/${cid}/sync/save?t=${Date.now()}`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ results, month, year })
-                            }).catch(e => {
-                              throw new Error(`[Save Error] Network failed during save: ${e.message}`);
-                            });
-
-                            const saveData = await saveRes.json().catch(() => ({}));
-                            if (saveRes.ok && !saveData.error) {
+                              // Sync Logic
+                              const dataRes = await fetch(`/api/clients/${cid}/sync/data?t=${Date.now()}`, { method: "POST" });
+                              const data = await dataRes.json();
+                              if (!dataRes.ok) throw new Error(data.error || "Sync Failed");
+                              
                               setSyncSuccess(true);
-                              alert("✅ Sync Successful! Your P&L is now up to date.");
+                              alert("✅ Sync Successful!");
                               window.location.reload();
-                            } else {
-                              throw new Error(saveData.error || `Failed to save (Error ${saveRes.status})`);
+                            } catch (err: any) {
+                              setSyncError(err.message);
+                              setSyncSuccess(false);
+                            } finally {
+                              setLoading(false);
                             }
-                          } catch (err: any) {
-                            console.error("🏁 Sync Final Failure:", err);
-                            alert("SYNC ERROR REPORT:\n" + err.message);
-                          }
-                          setLoading(false);
-                        }}
-                        disabled={loading}
-                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-                        {loading ? "Syncing..." : "Sync Live Actual Data"}
+                          }}
+                          disabled={loading}
+                          className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                          {loading ? "SYNCING LIVE DATA..." : "SYNC NOW"}
+                        </button>
+                        
+                        <button 
+                          onClick={() => { window.location.href = `/api/oauth/${activeClient?.software?.toLowerCase()}?clientId=${activeClientId}`; }}
+                          className="mt-4 text-xs text-slate-500 hover:text-white underline"
+                        >
+                          Reconnect or change account
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setLoading(true); window.location.href = `/api/oauth/${activeClient?.software?.toLowerCase()}?clientId=${activeClientId}`; }} className="w-full flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all text-white group cursor-pointer">
+                        <div className="w-12 h-12 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-xl"><Link2 className="w-6 h-6" /></div>
+                        <span className="font-semibold tracking-wide text-lg">Connect to {activeClient?.software}</span>
+                        <span className="text-sm text-cyan-400/80 text-center px-4">Click to authenticate securely via OAuth2</span>
                       </button>
-                      
-                      <button 
-                        onClick={() => { window.location.href = `/api/oauth/${activeClient?.software?.toLowerCase()}?clientId=${activeClientId}`; }}
-                        className="mt-4 text-xs text-slate-500 hover:text-white underline"
-                      >
-                        Reconnect or change account
-                      </button>
-                    </div>
-                  ) : (
-                    <button onClick={() => { setLoading(true); window.location.href = `/api/oauth/${activeClient?.software?.toLowerCase()}?clientId=${activeClientId}`; }} className="w-full flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all text-white group cursor-pointer">
-                      <div className="w-12 h-12 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-xl"><Link2 className="w-6 h-6" /></div>
-                      <span className="font-semibold tracking-wide text-lg">Connect to {activeClient?.software}</span>
-                      <span className="text-sm text-cyan-400/80 text-center px-4">Click to authenticate securely via OAuth2</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </ErrorBoundary>
+
             {records.length > 0 && (
               <button onClick={() => setShowIntegrations(false)} className="mt-6 text-sm text-slate-500 hover:text-white">Close Without Changing</button>
             )}

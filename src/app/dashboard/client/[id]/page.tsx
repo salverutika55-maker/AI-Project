@@ -13,26 +13,27 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
   const session = await getServerSession(authOptions);
   if (!session || !session.user?.email) redirect("/login");
 
-  try {
-    const client = await prisma.client.findUnique({
-      where: { id },
-      include: {
-        devices: {
-          orderBy: { lastSeen: "desc" },
-          take: 1
-        }
+  const client = await prisma.client.findUnique({
+    where: { id },
+    include: {
+      devices: {
+        orderBy: { lastSeen: "desc" },
+        take: 1
       }
-    });
-
-    if (!client) {
-      redirect("/dashboard");
     }
+  });
 
-    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-    if (!user) redirect("/login");
+  if (!client) {
+    redirect("/dashboard");
+  }
 
-    const userRole = await getUserRoleInOrg(user.id, client.organizationId);
-    if (!userRole) redirect("/dashboard"); // Not in this org
+  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  if (!user) redirect("/login");
+
+  const userRole = await getUserRoleInOrg(user.id, client.organizationId);
+  if (!userRole) redirect("/dashboard"); // Not in this org
+
+  try {
 
     const config = SECTOR_CONFIGS[client.sector as Sector];
 

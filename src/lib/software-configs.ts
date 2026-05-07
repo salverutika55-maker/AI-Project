@@ -12,6 +12,7 @@ export interface SoftwareConfig {
   bg: string;
   border: string;
   syncEndpoint: string;
+  softwareType?: string;
 }
 
 export const SOFTWARE_CONFIGS: Record<AccountingSoftware, SoftwareConfig> = {
