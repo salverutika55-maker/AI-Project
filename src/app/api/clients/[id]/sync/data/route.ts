@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { checkRateLimit, logSecurityEvent } from "@/lib/logger";
+import { authorizeClientAction } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
