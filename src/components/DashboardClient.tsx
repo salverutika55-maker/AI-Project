@@ -16,7 +16,7 @@ import {
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-export default function DashboardClient({ initialRecords, clients, activeClientId }: any) {
+export default function DashboardClient({ initialRecords, clients, activeClientId, memberships = [] }: any) {
   const [records, setRecords] = useState(initialRecords);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -72,6 +72,15 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   }, []);
 
   const router = useRouter();
+  
+  // Enterprise RBAC: Determine User's Role for the Active Organization
+  const activeClient = clients.find((c: any) => c.id === activeClientId);
+  const currentMembership = activeClient 
+    ? memberships?.find((m: any) => m.organizationId === activeClient.organizationId)
+    : memberships?.[0];
+    
+  const userRole = currentMembership?.role || 'READ_ONLY';
+  const isAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(userRole);
 
   const CURRENCY_LOCALES: Record<string, string> = {
     USD: 'en-US',
@@ -228,9 +237,11 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
             </div>
             <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">Client Hub</h1>
           </div>
-          <button onClick={() => setShowNewClient(true)} className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all">
-            <Plus className="w-5 h-5" /> Add New Client
-          </button>
+          {isAdmin && (
+            <button onClick={() => setShowNewClient(true)} className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all">
+              <Plus className="w-5 h-5" /> Add New Client
+            </button>
+          )}
         </div>
         <div className="space-y-12 max-w-7xl mx-auto w-full pb-20">
           {["MANUFACTURING", "TRADING", "SERVICE"].map((sector) => {
@@ -274,15 +285,27 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                         
                         <div className="flex flex-col items-end gap-1">
                           <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Sector</span>
-                          <select 
-                            value={client.sector || "TRADING"} 
-                            onChange={(e) => updateClientSector(client.id, e.target.value)}
-                            className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black text-cyan-400 hover:border-cyan-500/50 transition-all focus:outline-none focus:ring-1 focus:ring-cyan-500 appearance-none cursor-pointer text-center min-w-[110px]"
-                          >
-                            <option value="MANUFACTURING">MANUFACTURING</option>
-                            <option value="TRADING">TRADING</option>
-                            <option value="SERVICE">SERVICE</option>
-                          </select>
+                          {(() => {
+                            const clientMembership = memberships?.find((m: any) => m.organizationId === client.organizationId);
+                            const clientRole = clientMembership?.role || 'READ_ONLY';
+                            const isClientAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(clientRole);
+                            
+                            return isClientAdmin ? (
+                              <select 
+                                value={client.sector || "TRADING"} 
+                                onChange={(e) => updateClientSector(client.id, e.target.value)}
+                                className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black text-cyan-400 hover:border-cyan-500/50 transition-all focus:outline-none focus:ring-1 focus:ring-cyan-500 appearance-none cursor-pointer text-center min-w-[110px]"
+                              >
+                                <option value="MANUFACTURING">MANUFACTURING</option>
+                                <option value="TRADING">TRADING</option>
+                                <option value="SERVICE">SERVICE</option>
+                              </select>
+                            ) : (
+                              <div className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black text-cyan-400 text-center min-w-[110px]">
+                                {client.sector || "TRADING"}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>

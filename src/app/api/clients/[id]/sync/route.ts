@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authorizeClientAction } from "@/lib/rbac";
+import { encrypt, decrypt } from "@/lib/encryption";
 
 export const maxDuration = 60; // Extend to 60s for Zoho Sync
 
@@ -11,16 +15,32 @@ export async function POST(
   const { id } = await params;
 
   try {
-    const client = await prisma.client.findUnique({
-      where: { id },
-      include: { pnlMappings: true }
-    });
-
-    if (!client || !client.oauthToken) {
-      return NextResponse.json({ error: "Client not linked to any software" }, { status: 400 });
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const tokens = JSON.parse(client.oauthToken);
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    // 1. RBAC Authorization: User must be at least STAFF
+    await authorizeClientAction(user.id, id, "STAFF");
+
+    const client = await prisma.client.findUnique({
+      where: { id },
+      include: { 
+        pnlMappings: true,
+        credentials: true
+      }
+    });
+
+    if (!client || !client.credentials?.encryptedOauthToken) {
+      return NextResponse.json({ error: "Client not linked to any software or credentials missing" }, { status: 400 });
+    }
+
+    // 2. Vault Decryption (In-Memory Only)
+    const rawTokenString = decrypt(client.credentials.encryptedOauthToken);
+    const tokens = JSON.parse(rawTokenString);
     
     // Use the accounts server from the token if available, otherwise fallback to .in
     const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
@@ -50,9 +70,12 @@ export async function POST(
     let accessToken = tokens.access_token;
     if (newTokens.access_token) {
       accessToken = newTokens.access_token;
-      await prisma.client.update({
-        where: { id },
-        data: { oauthToken: JSON.stringify({ ...tokens, ...newTokens }) },
+      
+      // Re-encrypt and store in Vault
+      const updatedTokenString = JSON.stringify({ ...tokens, ...newTokens });
+      await prisma.integrationCredential.update({
+        where: { clientId: id },
+        data: { encryptedOauthToken: encrypt(updatedTokenString) },
       });
     }
 
@@ -66,10 +89,11 @@ export async function POST(
       orgId = orgsData.organizations?.[0]?.organization_id;
       if (!orgId) throw new Error("No Zoho organization found");
       
-      // Update tokens with orgId for future use
-      await prisma.client.update({
-        where: { id },
-        data: { oauthToken: JSON.stringify({ ...tokens, ...newTokens, organization_id: orgId }) },
+      // Update vault with orgId for future use
+      const updatedTokenString = JSON.stringify({ ...tokens, ...(newTokens.access_token ? newTokens : {}), organization_id: orgId });
+      await prisma.integrationCredential.update({
+        where: { clientId: id },
+        data: { encryptedOauthToken: encrypt(updatedTokenString) },
       });
     }
 

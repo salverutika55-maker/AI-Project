@@ -3,6 +3,9 @@ import UnifiedClientDashboard from "@/components/UnifiedClientDashboard";
 import { SECTOR_CONFIGS } from "@/lib/sector-configs";
 import { redirect } from "next/navigation";
 import { Sector } from "@prisma/client";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getUserRoleInOrg } from "@/lib/rbac";
 
 export default async function ClientPNLPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,6 +23,15 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
   if (!client) {
     redirect("/dashboard");
   }
+
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user?.email) redirect("/login");
+
+  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  if (!user) redirect("/login");
+
+  const userRole = await getUserRoleInOrg(user.id, client.organizationId);
+  if (!userRole) redirect("/dashboard"); // Not in this org
 
   const config = SECTOR_CONFIGS[client.sector as Sector];
 
@@ -45,6 +57,7 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
       client={client}
       allClients={allClients}
       sections={config.sections}
+      userRole={userRole}
     />
   );
 }

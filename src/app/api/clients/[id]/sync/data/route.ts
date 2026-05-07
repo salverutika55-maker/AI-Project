@@ -35,24 +35,21 @@ export async function POST(
     }
 
     // 3. Authorization & Ownership Check
+    const { role } = await authorizeClientAction(user.id, id, "STAFF");
+
     const client = await prisma.client.findUnique({
       where: { id },
-      include: { user: true }
+      include: { credentials: true }
     });
 
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
-    if (user.role !== "ADMIN" && client.userId !== user.id) {
-      await logSecurityEvent(user.id, "UNAUTHORIZED_SYNC_ATTEMPT", id, `Attempted to sync client ${id}`, req);
-      return NextResponse.json({ error: "Access Denied" }, { status: 403 });
-    }
-
-    if (!client.oauthToken) {
+    if (!client.credentials?.encryptedOauthToken) {
       return NextResponse.json({ error: "Zoho account not linked" }, { status: 400 });
     }
 
     // 4. DECRYPT Tokens before use
-    const decryptedTokenString = decrypt(client.oauthToken);
+    const decryptedTokenString = decrypt(client.credentials.encryptedOauthToken);
     
     // Safety check: Attempt to parse, fallback to original if it's already an object string
     let tokens;
@@ -87,9 +84,9 @@ export async function POST(
         accessToken = newTokens.access_token;
         const updatedTokens = { ...tokens, ...newTokens };
         const newlyEncrypted = encrypt(JSON.stringify(updatedTokens));
-        await prisma.client.update({
-          where: { id },
-          data: { oauthToken: newlyEncrypted },
+        await prisma.integrationCredential.update({
+          where: { clientId: id },
+          data: { encryptedOauthToken: newlyEncrypted },
         }).catch(console.error);
         return true;
       }

@@ -22,8 +22,6 @@ model User {
   email            String                   @unique
   password         String
   lastLogin        DateTime?
-  role             String                   @default("USER") // Legacy field
-  clients          Client[]                 // Legacy relation
   memberships      OrganizationMembership[]
   auditLogs        AuditLog[]
   createdAt        DateTime                 @default(now())
@@ -79,10 +77,7 @@ enum Sector {
 model Client {
   id                   String            @id @default(cuid())
   name                 String
-  userId               String?           // Legacy field
-  apiKey               String?           @unique // Legacy field
-  oauthToken           String?           // Legacy field
-  organizationId       String?
+  organizationId       String
   fiscalYearStartMonth Int               @default(4) // 4 = April, 1 = January
   baseCurrency         String            @default("USD")
   software             AccountingSoftware @default(TALLY)
@@ -90,8 +85,7 @@ model Client {
   connectorStatus      String            @default("OFFLINE") // OFFLINE, ONLINE, SYNCING
   lastHeartbeat        DateTime?
   
-  user                 User?             @relation(fields: [userId], references: [id], onDelete: SetNull) // Legacy relation
-  organization         Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   credentials          IntegrationCredential?
   financialRecords     FinancialRecord[]
   pnlMappings          PNLMapping[]

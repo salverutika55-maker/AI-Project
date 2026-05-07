@@ -23,9 +23,12 @@ interface UnifiedDashboardProps {
   client: any;
   allClients: any[];
   sections: any[];
+  userRole?: string;
 }
 
-export default function UnifiedClientDashboard({ client, allClients, sections }: UnifiedDashboardProps) {
+export default function UnifiedClientDashboard({ client, allClients, sections, userRole = 'READ_ONLY' }: UnifiedDashboardProps) {
+  const isAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(userRole);
+
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"insights" | "pnl" | "diagnostics">("insights");
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
@@ -635,9 +638,13 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                     <button onClick={() => setViewMode("STANDARD")} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === "STANDARD" ? 'bg-cyan-500 text-slate-950' : 'text-slate-500 hover:text-white'}`}>Standard</button>
                     <button onClick={() => setViewMode("MONTHLY_BUDGET")} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === "MONTHLY_BUDGET" ? 'bg-purple-500 text-white' : 'text-slate-500 hover:text-white'}`}>Vs Budget</button>
                   </div>
-                  <button onClick={() => setIsMappingOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-cyan-400 hover:bg-cyan-500/10 transition-all"><Link2 className="w-3 h-3" /> Map Ledgers</button>
-                  <button onClick={() => setIsManagingStructure(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-emerald-400 hover:bg-emerald-500/10 transition-all"><Settings2 className="w-3 h-3" /> Manage Structure</button>
-                  <button onClick={() => setIsBudgetOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-[10px] font-black text-purple-400 hover:bg-purple-500/20 transition-all"><UploadCloud className="w-3 h-3" /> Budget</button>
+                  {isAdmin && (
+                    <>
+                      <button onClick={() => setIsMappingOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-cyan-400 hover:bg-cyan-500/10 transition-all"><Link2 className="w-3 h-3" /> Map Ledgers</button>
+                      <button onClick={() => setIsManagingStructure(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-emerald-400 hover:bg-emerald-500/10 transition-all"><Settings2 className="w-3 h-3" /> Manage Structure</button>
+                      <button onClick={() => setIsBudgetOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-[10px] font-black text-purple-400 hover:bg-purple-500/20 transition-all"><UploadCloud className="w-3 h-3" /> Budget</button>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="overflow-x-auto">

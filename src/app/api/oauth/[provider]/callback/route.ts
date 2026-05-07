@@ -45,12 +45,16 @@ export async function GET(
     // ENCRYPT Tokens before saving to database
     const encryptedTokenString = encrypt(JSON.stringify(tokens));
 
-    // Save tokens to database
-    await prisma.client.update({
-      where: { id: internalClientId },
-      data: {
-        oauthToken: encryptedTokenString,
+    // Save tokens to database Secure Vault
+    await prisma.integrationCredential.upsert({
+      where: { clientId: internalClientId },
+      update: {
+        encryptedOauthToken: encryptedTokenString,
       },
+      create: {
+        clientId: internalClientId,
+        encryptedOauthToken: encryptedTokenString,
+      }
     });
 
     // Redirect back to dashboard with success

@@ -31,15 +31,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       );
     }
 
-    let whereClause = {};
-    if (user.role !== "ADMIN") {
-      whereClause = { userId: user.id };
-    }
+    // Fetch User's Memberships
+    const memberships = await prisma.organizationMembership.findMany({
+      where: { userId: user.id },
+      include: { organization: true }
+    });
 
+    const orgIds = memberships.map(m => m.organizationId);
+
+    // Fetch Clients belonging to those organizations
     const clients = await prisma.client.findMany({
-      where: whereClause,
+      where: { organizationId: { in: orgIds } },
       orderBy: { createdAt: "desc" },
     });
+
 
     // Only select a client if it's explicitly in the URL
     const activeClientId = params.client || null;
@@ -56,7 +61,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <DashboardClient 
         initialRecords={records} 
         clients={clients} 
-        activeClientId={activeClientId} 
+        activeClientId={activeClientId}
+        memberships={memberships}
       />
     );
   } catch (error: any) {

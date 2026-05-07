@@ -5,12 +5,17 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { decrypt, encrypt } from "@/lib/encryption";
 
+import { authorizeClientAction } from "@/lib/rbac";
+
 // Helper to get Zoho Access Token (Secured and Encrypted)
 async function getZohoAccessToken(clientId: string) {
-  const client = await prisma.client.findUnique({ where: { id: clientId } });
-  if (!client || !client.oauthToken) throw new Error("No Zoho account linked.");
+  const client = await prisma.client.findUnique({ 
+    where: { id: clientId },
+    include: { credentials: true }
+  });
+  if (!client || !client.credentials?.encryptedOauthToken) throw new Error("No Zoho account linked.");
 
-  const decryptedTokenString = decrypt(client.oauthToken);
+  const decryptedTokenString = decrypt(client.credentials.encryptedOauthToken);
   const tokens = JSON.parse(decryptedTokenString);
   
   const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
@@ -34,9 +39,9 @@ async function getZohoAccessToken(clientId: string) {
     if (newTokens.access_token) {
       const updatedTokens = { ...tokens, ...newTokens };
       const newlyEncrypted = encrypt(JSON.stringify(updatedTokens));
-      await prisma.client.update({
-        where: { id: clientId },
-        data: { oauthToken: newlyEncrypted },
+      await prisma.integrationCredential.update({
+        where: { clientId },
+        data: { encryptedOauthToken: newlyEncrypted },
       });
       return { token: newTokens.access_token, tokens: updatedTokens };
     }
@@ -65,24 +70,27 @@ export async function GET(
 
   try {
     // 2. Authorization & Ownership Check
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    await authorizeClientAction(user.id, id, "ACCOUNTANT");
+
     const client = await prisma.client.findUnique({
       where: { id },
-      include: { pnlMappings: true }
+      include: { 
+        pnlMappings: true,
+        credentials: true
+      }
     });
 
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
-
-    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-    if (user?.role !== "ADMIN" && client.userId !== user?.id) {
-      return NextResponse.json({ error: "Access Denied" }, { status: 403 });
-    }
 
     let chartOfAccounts: any[] = [];
     let error: string | null = null;
     let debug: any = {};
 
     if (client.software === "ZOHO") {
-      if (!client.oauthToken) {
+      if (!client.credentials?.encryptedOauthToken) {
         error = "Zoho account not linked.";
       } else {
         try {
@@ -163,7 +171,9 @@ export async function POST(
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
     const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-    if (user?.role !== "ADMIN" && client.userId !== user?.id) return NextResponse.json({ error: "Access Denied" }, { status: 403 });
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    await authorizeClientAction(user.id, id, "ACCOUNTANT");
 
     await prisma.pNLMapping.deleteMany({ where: { clientId: id } });
     await prisma.pNLMapping.createMany({
