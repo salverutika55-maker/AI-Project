@@ -8,16 +8,58 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-model User {
-  id               String            @id @default(cuid())
-  email            String            @unique
-  password         String
-  role             String            @default("USER") // 'USER' or 'ADMIN'
-  lastLogin        DateTime?
-  clients          Client[]
-  auditLogs        AuditLog[]
-  createdAt        DateTime          @default(now())
+enum Role {
+  SUPER_ADMIN
+  ORG_ADMIN
+  FINANCE_MANAGER
+  ACCOUNTANT
+  STAFF
+  READ_ONLY
 }
+
+model User {
+  id               String                   @id @default(cuid())
+  email            String                   @unique
+  password         String
+  lastLogin        DateTime?
+  role             String                   @default("USER") // Legacy field
+  clients          Client[]                 // Legacy relation
+  memberships      OrganizationMembership[]
+  auditLogs        AuditLog[]
+  createdAt        DateTime                 @default(now())
+}
+
+model Organization {
+  id               String                   @id @default(cuid())
+  name             String
+  members          OrganizationMembership[]
+  clients          Client[]                 // The integrations belonging to this Org
+  createdAt        DateTime                 @default(now())
+}
+
+model OrganizationMembership {
+  id               String       @id @default(cuid())
+  userId           String
+  organizationId   String
+  role             Role         @default(STAFF)
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt        DateTime     @default(now())
+
+  @@unique([userId, organizationId])
+}
+
+model IntegrationCredential {
+  id               String       @id @default(cuid())
+  clientId         String       @unique
+  client           Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  encryptedOauthToken String?      // For Zoho, SAP, etc. (Encrypted)
+  encryptedApiKey     String?      // General API Key (Encrypted)
+  tallyRefreshToken   String?      // For Tally Connector (Encrypted)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
 
 enum AccountingSoftware {
   TALLY
@@ -35,18 +77,22 @@ enum Sector {
 }
 
 model Client {
-  id               String            @id @default(cuid())
-  name             String
-  userId           String
-  apiKey               String            @default(cuid()) @unique
+  id                   String            @id @default(cuid())
+  name                 String
+  userId               String?           // Legacy field
+  apiKey               String?           @unique // Legacy field
+  oauthToken           String?           // Legacy field
+  organizationId       String?
   fiscalYearStartMonth Int               @default(4) // 4 = April, 1 = January
   baseCurrency         String            @default("USD")
   software             AccountingSoftware @default(TALLY)
   sector               Sector            @default(TRADING)
-  oauthToken           String?
   connectorStatus      String            @default("OFFLINE") // OFFLINE, ONLINE, SYNCING
   lastHeartbeat        DateTime?
-  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  user                 User?             @relation(fields: [userId], references: [id], onDelete: SetNull) // Legacy relation
+  organization         Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  credentials          IntegrationCredential?
   financialRecords     FinancialRecord[]
   pnlMappings          PNLMapping[]
   pnlValues            PNLValue[]
