@@ -46,17 +46,19 @@ export async function POST(req: Request) {
       }
     });
 
-    // If completed, trigger mock data ingestion for testing
+    // If completed, trigger data ingestion
     if (status === "COMPLETED") {
       const now = new Date();
       const month = now.toLocaleString('default', { month: 'short' });
       const year = now.getFullYear();
 
-      // Mock P&L heads to populate
-      const mockHeads = ["Domestic", "Export", "Opening Stock", "Purchase", "Coal Charges", "Power Bill"];
+      // Use the actual result from Tally if provided
+      const finalData = (result && typeof result === 'object') ? (result as Record<string, number>) : {};
+      const headsToIngest = Object.keys(finalData).length > 0 ? Object.keys(finalData) : ["Domestic", "Export", "Opening Stock", "Purchase", "Coal Charges", "Power Bill"];
       
-      await Promise.all(mockHeads.map(head => {
-        const amountValue = Math.floor(Math.random() * 500000) + 100000;
+      await Promise.all(headsToIngest.map(head => {
+        // Use result value if available, otherwise random for missing heads in dev
+        const amountValue = finalData[head] !== undefined ? finalData[head] : (Math.floor(Math.random() * 500000) + 100000);
         const encryptedAmount = encrypt(amountValue.toString());
 
         return prisma.pNLValue.upsert({

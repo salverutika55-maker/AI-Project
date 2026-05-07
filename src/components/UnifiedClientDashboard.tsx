@@ -179,7 +179,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
 
   const pollTaskStatus = async (taskId: string) => {
     let attempts = 0;
-    const maxAttempts = 150; // 5 minutes max (150 * 2s)
+    const maxAttempts = 450; // 15 minutes max (450 * 2s)
 
     const interval = setInterval(async () => {
       try {
@@ -189,27 +189,29 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
         if (data.status === "COMPLETED") {
           clearInterval(interval);
           localStorage.removeItem(`sync_task_${client.id}`);
-          setSyncProgress("Data received! Updating view...");
+          setSyncProgress("Data received! Finalizing view...");
           await fetchAllData();
           setIsSyncing(false);
           setSyncProgress("");
-          alert("✅ Sync completed successfully!");
+          alert("✅ Sync completed successfully! The financial data has been updated.");
         } else if (data.status === "FAILED") {
           clearInterval(interval);
           localStorage.removeItem(`sync_task_${client.id}`);
-          alert(`❌ Sync Failed: ${data.message || "Unknown error"}`);
+          alert(`❌ Sync Failed: ${data.message || "The Tally connector reported an error while generating data."}`);
           setIsSyncing(false);
           setSyncProgress("");
         } else {
           // Still pending or in progress
-          if (attempts > 60) {
-            setSyncProgress("Processing large dataset... almost there...");
-          } else if (attempts > 30) {
-            setSyncProgress("Tally is generating financial data...");
+          if (attempts > 300) {
+            setSyncProgress("Processing extreme data volume... please do not close this window.");
+          } else if (attempts > 150) {
+            setSyncProgress("Tally is still uploading data... almost there.");
+          } else if (attempts > 60) {
+            setSyncProgress("Crunching large dataset from Tally Prime...");
           } else if (attempts > 10) {
-            setSyncProgress("Establishing connection with Tally bridge...");
+            setSyncProgress("Establishing secure bridge to local Tally machine...");
           } else {
-            setSyncProgress("Initiating task...");
+            setSyncProgress("Waking up Tally connector...");
           }
         }
         
@@ -217,7 +219,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
         if (attempts >= maxAttempts) {
           clearInterval(interval);
           localStorage.removeItem(`sync_task_${client.id}`);
-          alert("⏱️ Sync timed out after 5 minutes. Large data might still be processing on your machine. Please check back in a moment or ensure your Tally connector is online.");
+          alert("⏱️ Sync timed out after 15 minutes. This usually means the Tally company is exceptionally large or the local machine is busy. The data might still appear in a few minutes, but please ensure your Tally Prime is open and the company is active.");
           setIsSyncing(false);
           setSyncProgress("");
         }
