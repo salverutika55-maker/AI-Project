@@ -468,6 +468,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                   {syncProgress}
                 </span>
               )}
+              {client.software !== 'TALLY' && (
+                <button 
+                  onClick={() => { window.location.href = `/api/oauth/${client.software.toLowerCase()}?clientId=${client.id}`; }}
+                  className="text-[9px] text-slate-500 hover:text-white underline font-bold uppercase tracking-widest mt-1"
+                >
+                  Reconnect Account
+                </button>
+              )}
             </div>
 
           </div>
