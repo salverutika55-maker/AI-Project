@@ -16,6 +16,9 @@ async function getZohoAccessToken(clientId: string) {
   if (!client || !client.credentials?.encryptedOauthToken) throw new Error("No Zoho account linked.");
 
   const decryptedTokenString = decrypt(client.credentials.encryptedOauthToken);
+  if (!decryptedTokenString || decryptedTokenString === "undefined") {
+    throw new Error("Zoho credentials corrupted. Please re-link account.");
+  }
   const tokens = JSON.parse(decryptedTokenString);
   
   const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";

@@ -52,13 +52,15 @@ export async function POST(
     // 4. DECRYPT Tokens before use
     const decryptedTokenString = decrypt(client.credentials.encryptedOauthToken);
     
-    // Safety check: Attempt to parse, fallback to original if it's already an object string
+    if (!decryptedTokenString || decryptedTokenString === "undefined") {
+      return NextResponse.json({ error: "Invalid or corrupted credentials. Please re-link your Zoho account." }, { status: 400 });
+    }
+
     let tokens;
     try {
       tokens = JSON.parse(decryptedTokenString);
     } catch (e) {
-      // If parsing fails, it might already be an object from a previous partial sync
-      tokens = typeof decryptedTokenString === 'object' ? decryptedTokenString : JSON.parse(client.oauthToken);
+      return NextResponse.json({ error: "Failed to parse Zoho credentials. Please re-link your account." }, { status: 400 });
     }
     
     const accountsUrl = tokens.accounts_url || "https://accounts.zoho.in";
