@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import ErrorBoundary from "./ErrorBoundary";
 
 export default function DashboardClient({ initialRecords, clients, activeClientId, memberships = [] }: any) {
   const [records, setRecords] = useState(initialRecords);
@@ -107,7 +108,6 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
     }).format(finalAmount);
   };
 
-  const activeClient = clients.find((c: any) => c.id === activeClientId);
   const activeClientName = activeClient?.name || "Client";
 
   // TOOLS IMPLEMENTATION
@@ -258,57 +258,59 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {sectorClients.map((client: any) => (
-                    <div key={client.id} className="bg-[#13131A] border border-white/5 hover:border-cyan-500/30 p-8 rounded-2xl text-left transition-all hover:bg-[#1a1a24] group relative overflow-hidden flex flex-col justify-between">
-                      <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                      <div>
-                        <div className="flex justify-between items-start mb-6">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center border border-white/10 group-hover:border-cyan-500/30 transition-colors">
-                            <span className="text-xl font-bold text-white">{client.name.charAt(0)}</span>
-                          </div>
-                          {client.oauthToken && (
-                            <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5">
-                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Linked</span>
+                    <ErrorBoundary key={client.id} title={`${client.name} Interface Error`}>
+                      <div className="bg-[#13131A] border border-white/5 hover:border-cyan-500/30 p-8 rounded-2xl text-left transition-all hover:bg-[#1a1a24] group relative overflow-hidden flex flex-col justify-between h-full">
+                        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                        <div>
+                          <div className="flex justify-between items-start mb-6">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center border border-white/10 group-hover:border-cyan-500/30 transition-colors">
+                              <span className="text-xl font-bold text-white">{client.name.charAt(0)}</span>
                             </div>
-                          )}
-                        </div>
-                        <h3 className="text-xl font-bold text-white mb-2">{client.name}</h3>
-                      </div>
-
-                      <div className="flex items-center justify-between mt-8 pt-6 border-t border-white/5">
-                        <button 
-                          onClick={() => router.push(`/dashboard/client/${client.id}`)}
-                          className="text-slate-400 hover:text-cyan-400 text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-2"
-                        >
-                          View Actuals &rarr;
-                        </button>
-                        
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Sector</span>
-                          {(() => {
-                            const clientMembership = memberships?.find((m: any) => m.organizationId === client.organizationId);
-                            const clientRole = clientMembership?.role || 'READ_ONLY';
-                            const isClientAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(clientRole);
-                            
-                            return isClientAdmin ? (
-                              <select 
-                                value={client.sector || "TRADING"} 
-                                onChange={(e) => updateClientSector(client.id, e.target.value)}
-                                className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black text-cyan-400 hover:border-cyan-500/50 transition-all focus:outline-none focus:ring-1 focus:ring-cyan-500 appearance-none cursor-pointer text-center min-w-[110px]"
-                              >
-                                <option value="MANUFACTURING">MANUFACTURING</option>
-                                <option value="TRADING">TRADING</option>
-                                <option value="SERVICE">SERVICE</option>
-                              </select>
-                            ) : (
-                              <div className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black text-cyan-400 text-center min-w-[110px]">
-                                {client.sector || "TRADING"}
+                            {client.oauthToken && (
+                              <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Linked</span>
                               </div>
-                            );
-                          })()}
+                            )}
+                          </div>
+                          <h3 className="text-xl font-bold text-white mb-2">{client.name}</h3>
+                        </div>
+
+                        <div className="flex items-center justify-between mt-8 pt-6 border-t border-white/5">
+                          <button 
+                            onClick={() => router.push(`/dashboard/client/${client.id}`)}
+                            className="text-slate-400 hover:text-cyan-400 text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-2"
+                          >
+                            View Actuals &rarr;
+                          </button>
+                          
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Sector</span>
+                            {(() => {
+                              const clientMembership = memberships?.find((m: any) => m.organizationId === client.organizationId);
+                              const clientRole = clientMembership?.role || 'READ_ONLY';
+                              const isClientAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(clientRole);
+                              
+                              return isClientAdmin ? (
+                                <select 
+                                  value={client.sector || "TRADING"} 
+                                  onChange={(e) => updateClientSector(client.id, e.target.value)}
+                                  className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black text-cyan-400 hover:border-cyan-500/50 transition-all focus:outline-none focus:ring-1 focus:ring-cyan-500 appearance-none cursor-pointer text-center min-w-[110px]"
+                                >
+                                  <option value="MANUFACTURING">MANUFACTURING</option>
+                                  <option value="TRADING">TRADING</option>
+                                  <option value="SERVICE">SERVICE</option>
+                                </select>
+                              ) : (
+                                <div className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black text-cyan-400 text-center min-w-[110px]">
+                                  {client.sector || "TRADING"}
+                                </div>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </ErrorBoundary>
                   ))}
                 </div>
               </div>

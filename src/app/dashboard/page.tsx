@@ -7,13 +7,14 @@ import DashboardClient from "@/components/DashboardClient";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ client?: string }> }) {
-  try {
-    const params = await searchParams;
-    const session = await getServerSession(authOptions);
+  const params = await searchParams;
+  const session = await getServerSession(authOptions);
 
-    if (!session || !session.user?.email) {
-      redirect("/login");
-    }
+  if (!session || !session.user?.email) {
+    redirect("/login");
+  }
+
+  try {
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
@@ -78,9 +79,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           {error.stack}
         </pre>
         <div className="mt-8">
-          <button onClick={() => window.location.reload()} className="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-lg">
+          <a href="/dashboard" className="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-lg inline-block">
             Retry Loading
-          </button>
+          </a>
         </div>
       </div>
     );

@@ -18,6 +18,7 @@ import { SOFTWARE_CONFIGS, AccountingSoftware } from "@/lib/software-configs";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import Papa from "papaparse";
+import ErrorBoundary from "./ErrorBoundary";
 
 interface UnifiedDashboardProps {
   client: any;
@@ -492,7 +493,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           
           {activeTab === "insights" && (
-            <div className="space-y-8">
+            <ErrorBoundary title="Insights Module Error">
+              <div className="space-y-8">
               {/* KPIs */}
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 {[
@@ -623,11 +625,12 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                   </div>
                 </div>
               </div>
-            </div>
+            </ErrorBoundary>
           )}
 
           {activeTab === "pnl" && (
-            <div className="bg-[#13131A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+            <ErrorBoundary title="P&L Report Error">
+              <div className="bg-[#13131A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
               <div className="p-6 border-b border-white/5 flex flex-wrap justify-between items-center gap-4 bg-[#181821]">
                 <div className="flex items-center gap-3">
                   <TableIcon className="w-5 h-5 text-cyan-400" />
@@ -752,10 +755,12 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                 </table>
               </div>
             </div>
-          )}
+          </ErrorBoundary>
+        )}
 
           {activeTab === "diagnostics" && (
-            <div className="space-y-8">
+            <ErrorBoundary title="Diagnostics Module Error">
+              <div className="space-y-8">
               <div className="bg-[#13131A] border border-white/5 rounded-3xl p-8 shadow-xl">
                 <div className="flex items-center justify-between mb-8">
                   <div className="flex items-center gap-4">
@@ -814,7 +819,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                   </div>
                 )}
               </div>
-            </div>
+            </ErrorBoundary>
           )}
         </div>
       </main>
