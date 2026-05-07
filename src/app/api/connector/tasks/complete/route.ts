@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { verify } from "jsonwebtoken";
+import { encrypt } from "@/lib/encryption";
 
 const JWT_SECRET = process.env.JWT_SECRET || "default_secret_for_dev_only";
 
@@ -45,8 +46,39 @@ export async function POST(req: Request) {
       }
     });
 
-    // If completed, we would normally trigger data ingestion here
-    // For now, we just mark it as done.
+    // If completed, trigger mock data ingestion for testing
+    if (status === "COMPLETED") {
+      const now = new Date();
+      const month = now.toLocaleString('default', { month: 'short' });
+      const year = now.getFullYear();
+
+      // Mock P&L heads to populate
+      const mockHeads = ["Domestic", "Export", "Opening Stock", "Purchase", "Coal Charges", "Power Bill"];
+      
+      await Promise.all(mockHeads.map(head => {
+        const amountValue = Math.floor(Math.random() * 500000) + 100000;
+        const encryptedAmount = encrypt(amountValue.toString());
+
+        return prisma.pNLValue.upsert({
+          where: {
+            clientId_headName_month_year: {
+              clientId,
+              headName: head,
+              month,
+              year
+            }
+          },
+          update: { amount: encryptedAmount },
+          create: {
+            clientId,
+            headName: head,
+            month,
+            year,
+            amount: encryptedAmount
+          }
+        });
+      }));
+    }
 
     return NextResponse.json({ 
       success: true, 

@@ -9,6 +9,12 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
   
   const client = await prisma.client.findUnique({
     where: { id },
+    include: {
+      devices: {
+        orderBy: { lastSeen: "desc" },
+        take: 1
+      }
+    }
   });
 
   if (!client) {

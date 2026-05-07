@@ -36,6 +36,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"STANDARD" | "MONTHLY_BUDGET">("STANDARD");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   // Data States
@@ -59,6 +60,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
   useEffect(() => {
     if (client?.id) {
       fetchAllData();
+      
+      // Check for active sync task on mount
+      const savedTaskId = localStorage.getItem(`sync_task_${client.id}`);
+      if (savedTaskId) {
+        console.log("Resuming sync polling for task:", savedTaskId);
+        setIsSyncing(true);
+        pollTaskStatus(savedTaskId);
+      }
     }
   }, [client?.id, selectedYear, fyType]);
 
@@ -141,6 +150,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
       
       if (data.taskId) {
         // Tally Background Sync initiated
+        localStorage.setItem(`sync_task_${client.id}`, data.taskId);
+        setSyncProgress("Task initiated...");
         pollTaskStatus(data.taskId);
       } else {
         // Direct Sync (Zoho, etc.)
@@ -164,7 +175,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
 
   const pollTaskStatus = async (taskId: string) => {
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 60; // 120 seconds max
 
     const interval = setInterval(async () => {
       try {
@@ -173,25 +184,34 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
 
         if (data.status === "COMPLETED") {
           clearInterval(interval);
+          localStorage.removeItem(`sync_task_${client.id}`);
+          setSyncProgress("Data received! Updating view...");
           await fetchAllData();
           setIsSyncing(false);
+          setSyncProgress("");
           alert("Sync completed successfully!");
         } else if (data.status === "FAILED") {
           clearInterval(interval);
+          localStorage.removeItem(`sync_task_${client.id}`);
           alert(`Sync Failed: ${data.message || "Unknown error"}`);
           setIsSyncing(false);
+          setSyncProgress("");
+        } else {
+          // Still pending or in progress
+          setSyncProgress(attempts > 5 ? "Tally is generating data..." : "Connecting to bridge...");
         }
         
         attempts++;
         if (attempts >= maxAttempts) {
           clearInterval(interval);
-          alert("Sync timed out. Please check your connector.");
+          localStorage.removeItem(`sync_task_${client.id}`);
+          alert("Sync timed out. Please ensure your Tally connector is online and try again.");
           setIsSyncing(false);
+          setSyncProgress("");
         }
       } catch (error: any) {
-        clearInterval(interval);
-        alert(`Polling Error: ${error.message}`);
-        setIsSyncing(false);
+        console.error("Polling Error:", error);
+        // We don't clear the interval on network error, we retry
       }
     }, 2000);
   };
@@ -418,26 +438,34 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                 </div>
               </div>
             )}
-
-            <button 
-              onClick={handleSync} 
-              disabled={isSyncing || (client as any).connectorStatus === 'SYNCING'} 
-              className={`flex items-center gap-2 px-4 py-1.5 ${softwareConfig.bg} border ${softwareConfig.border} rounded-lg text-xs font-black ${softwareConfig.color} hover:opacity-80 transition-all disabled:opacity-50`}
-            >
-              {isSyncing || (client as any).connectorStatus === 'SYNCING' ? (
-                <RefreshCw className="w-3 h-3 animate-spin" />
-              ) : client.software === 'TALLY' && (client as any).connectorStatus === 'OFFLINE' ? (
-                <Download className="w-3 h-3" />
-              ) : (
-                <softwareConfig.icon className="w-3 h-3" />
+            
+            <div className="flex flex-col items-end gap-1">
+              <button 
+                onClick={handleSync} 
+                disabled={isSyncing || (client as any).connectorStatus === 'SYNCING'} 
+                className={`flex items-center gap-2 px-4 py-1.5 ${softwareConfig.bg} border ${softwareConfig.border} rounded-lg text-xs font-black ${softwareConfig.color} hover:opacity-80 transition-all disabled:opacity-50`}
+              >
+                {isSyncing || (client as any).connectorStatus === 'SYNCING' ? (
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                ) : client.software === 'TALLY' && (client as any).connectorStatus === 'OFFLINE' ? (
+                  <Download className="w-3 h-3" />
+                ) : (
+                  <softwareConfig.icon className="w-3 h-3" />
+                )}
+                
+                {client.software === 'TALLY' && (client as any).connectorStatus === 'OFFLINE' 
+                  ? 'Download Connector' 
+                  : (client as any).connectorStatus === 'SYNCING' || isSyncing
+                    ? 'Syncing...' 
+                    : `Sync ${softwareConfig.label}`}
+              </button>
+              {syncProgress && (
+                <span className="text-[9px] font-black text-cyan-400 uppercase tracking-tighter animate-pulse">
+                  {syncProgress}
+                </span>
               )}
-              
-              {client.software === 'TALLY' && (client as any).connectorStatus === 'OFFLINE' 
-                ? 'Download Connector' 
-                : (client as any).connectorStatus === 'SYNCING' 
-                  ? 'Syncing...' 
-                  : `Sync ${softwareConfig.label}`}
-            </button>
+            </div>
+
           </div>
         </div>
       </header>
@@ -731,6 +759,13 @@ export default function UnifiedClientDashboard({ client, allClients, sections }:
                     </div>
                   </div>
                   <div className="flex gap-4 text-right">
+                    {client.devices?.[0] && (
+                      <div className="px-6 py-2 bg-cyan-500/5 border border-cyan-500/20 rounded-2xl">
+                        <p className="text-[10px] text-cyan-500 font-black uppercase tracking-widest mb-1">Active Device</p>
+                        <p className="text-sm text-white font-black">{client.devices[0].name}</p>
+                        <p className="text-[9px] text-slate-500 font-bold mt-0.5">Last Seen: {new Date(client.devices[0].lastSeen).toLocaleString()}</p>
+                      </div>
+                    )}
                     <div className="px-6 py-2 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl">
                       <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest mb-1">Organization</p>
                       <p className="text-sm text-white font-black">{syncDiagnostic?.orgName || "Not Synced"}</p>
