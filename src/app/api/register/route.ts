@@ -37,21 +37,32 @@ export async function POST(req: Request) {
       where: { name: orgName }
     });
 
+    let isNewOrg = false;
     if (!organization) {
       organization = await prisma.organization.create({
         data: { name: orgName }
       });
+      isNewOrg = true;
     }
 
     // 3. Create the membership with the selected role
     const validRoles = ["SUPER_ADMIN", "ORG_ADMIN", "FINANCE_MANAGER", "ACCOUNTANT", "STAFF", "READ_ONLY"];
-    const finalOrgRole = validRoles.includes(orgRole) ? orgRole : "STAFF";
+    
+    // If it's a new organization, the creator is automatically the SUPER_ADMIN and APPROVED
+    let finalOrgRole = validRoles.includes(orgRole) ? orgRole : "STAFF";
+    let finalStatus = "PENDING";
+
+    if (isNewOrg) {
+      finalOrgRole = "SUPER_ADMIN";
+      finalStatus = "APPROVED";
+    }
 
     await prisma.organizationMembership.create({
       data: {
         userId: user.id,
         organizationId: organization.id,
         role: finalOrgRole as any,
+        status: finalStatus,
       }
     });
 

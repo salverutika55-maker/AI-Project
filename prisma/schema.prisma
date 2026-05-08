@@ -41,6 +41,7 @@ model OrganizationMembership {
   userId           String
   organizationId   String
   role             Role         @default(STAFF)
+  status           String       @default("PENDING") // PENDING, APPROVED, REJECTED
   user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt        DateTime     @default(now())

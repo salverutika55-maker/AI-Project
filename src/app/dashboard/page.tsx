@@ -33,12 +33,41 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     }
 
     // Fetch User's Memberships
-    const memberships = await prisma.organizationMembership.findMany({
+    const allMemberships = await prisma.organizationMembership.findMany({
       where: { userId: user.id },
       include: { organization: true }
     });
 
-    const orgIds = memberships.map(m => m.organizationId);
+    const approvedMemberships = allMemberships.filter(m => m.status === "APPROVED");
+    const pendingMemberships = allMemberships.filter(m => m.status === "PENDING");
+
+    if (approvedMemberships.length === 0) {
+      if (pendingMemberships.length > 0) {
+        return (
+          <div className="min-h-screen bg-[#0A0A0C] flex items-center justify-center p-6 text-center">
+            <div className="max-w-md bg-[#13131A] p-8 rounded-2xl border border-amber-500/20 shadow-2xl shadow-amber-500/10">
+              <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-6">
+                <span className="text-2xl font-bold text-amber-500">⏳</span>
+              </div>
+              <h1 className="text-2xl font-bold text-white mb-4">Approval Pending</h1>
+              <p className="text-slate-400 mb-6">Your access request for <b>{pendingMemberships[0].organization.name}</b> is currently under review by the administrator. Please check back later.</p>
+              <a href="/api/auth/signout" className="text-amber-400 hover:text-amber-300 transition-colors text-sm font-medium">Log out</a>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="min-h-screen bg-[#0A0A0C] flex items-center justify-center p-6 text-center">
+          <div className="max-w-md bg-[#13131A] p-8 rounded-2xl border border-white/10 shadow-2xl">
+            <h1 className="text-2xl font-bold text-white mb-4">No Access</h1>
+            <p className="text-slate-400 mb-6">You do not belong to any organizations yet.</p>
+            <a href="/api/auth/signout" className="text-cyan-400 hover:text-cyan-300 transition-colors text-sm font-medium">Log out</a>
+          </div>
+        </div>
+      );
+    }
+
+    const orgIds = approvedMemberships.map(m => m.organizationId);
 
     // Fetch Clients belonging to those organizations
     const clients = await prisma.client.findMany({
@@ -63,7 +92,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         initialRecords={records} 
         clients={clients} 
         activeClientId={activeClientId}
-        memberships={memberships}
+        memberships={approvedMemberships}
       />
     );
   } catch (error: any) {

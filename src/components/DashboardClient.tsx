@@ -7,7 +7,7 @@ import Papa from "papaparse";
 import { 
   CloudRain, UploadCloud, AlertCircle, RefreshCw, BarChart3, TrendingDown, GitMerge, WalletCards, 
   Plus, Search, Settings, Zap, Link2, Building2, Download, FileText, FileSpreadsheet, BrainCircuit, Activity,
-  PieChart
+  PieChart, Users
 } from "lucide-react";
 import {
   LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -18,6 +18,7 @@ import jsPDF from "jspdf";
 import ErrorBoundary from "./ErrorBoundary";
 
 export default function DashboardClient({ initialRecords, clients, activeClientId, memberships = [] }: any) {
+  const isAdmin = memberships.some((m: any) => ["SUPER_ADMIN", "ORG_ADMIN"].includes(m.role));
   const [records, setRecords] = useState(initialRecords);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -561,6 +562,14 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
             <button onClick={generateMIS} className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 hover:bg-indigo-500/30 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all">
               <BrainCircuit className="w-4 h-4" /> AI MIS Report
             </button>
+            {isAdmin && (
+              <button 
+                onClick={() => router.push("/dashboard/team")}
+                className="bg-white/5 hover:bg-indigo-500/10 border border-white/10 hover:border-indigo-500/30 text-white hover:text-indigo-400 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all"
+              >
+                <Users className="w-4 h-4" /> Team
+              </button>
+            )}
             <button onClick={exportPDF} className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all">
               <FileText className="w-4 h-4" /> Export PDF
             </button>
