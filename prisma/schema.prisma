@@ -21,6 +21,7 @@ model User {
   id               String                   @id @default(cuid())
   email            String                   @unique
   password         String
+  role             String                   @default("USER") // Global platform role (e.g. ADMIN)
   lastLogin        DateTime?
   memberships      OrganizationMembership[]
   auditLogs        AuditLog[]
