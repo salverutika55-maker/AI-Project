@@ -80,6 +80,12 @@ export async function POST(req: Request) {
           }
         });
       }));
+
+      // Update lastSyncedAt on client
+      await prisma.client.update({
+        where: { id: clientId },
+        data: { lastSyncedAt: new Date() }
+      });
     }
 
     return NextResponse.json({ 
