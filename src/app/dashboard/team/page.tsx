@@ -24,7 +24,9 @@ export default async function TeamManagementPage() {
     include: { organization: true }
   });
 
-  if (adminMemberships.length === 0) {
+  const isGlobalAdmin = user.role === "ADMIN";
+
+  if (adminMemberships.length === 0 && !isGlobalAdmin) {
     return (
       <div className="min-h-screen bg-[#0A0A0C] p-10 flex flex-col items-center justify-center text-center">
         <ShieldAlert className="w-16 h-16 text-rose-500 mb-4" />
@@ -35,7 +37,14 @@ export default async function TeamManagementPage() {
     );
   }
 
-  const orgIds = adminMemberships.map(m => m.organizationId);
+  // Global Admin sees all requests, Org Admin sees only their own
+  let orgIds: string[] = [];
+  if (isGlobalAdmin) {
+    const allOrgs = await prisma.organization.findMany({ select: { id: true } });
+    orgIds = allOrgs.map(o => o.id);
+  } else {
+    orgIds = adminMemberships.map(m => m.organizationId);
+  }
 
   const pendingRequests = await prisma.organizationMembership.findMany({
     where: {

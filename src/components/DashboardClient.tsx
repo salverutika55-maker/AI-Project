@@ -17,8 +17,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ErrorBoundary from "./ErrorBoundary";
 
-export default function DashboardClient({ initialRecords, clients, activeClientId, memberships = [] }: any) {
-  const isAnyOrgAdmin = memberships.some((m: any) => ["SUPER_ADMIN", "ORG_ADMIN"].includes(m.role));
+export default function DashboardClient({ initialRecords, clients, activeClientId, memberships = [], isGlobalAdmin = false }: any) {
+  const isAnyOrgAdmin = isGlobalAdmin || memberships.some((m: any) => ["SUPER_ADMIN", "ORG_ADMIN"].includes(m.role));
   const [records, setRecords] = useState(initialRecords);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);

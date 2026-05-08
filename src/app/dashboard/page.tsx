@@ -38,10 +38,26 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       include: { organization: true }
     });
 
+    // Global Admins (like salverutika55@gmail.com) bypass the approval process
+    const isGlobalAdmin = user.role === "ADMIN";
+
+    if (isGlobalAdmin) {
+      const pendingAdminMemberships = allMemberships.filter(m => m.status === "PENDING");
+      if (pendingAdminMemberships.length > 0) {
+        // Auto-approve the global admin's own memberships
+        await prisma.organizationMembership.updateMany({
+          where: { userId: user.id, status: "PENDING" },
+          data: { status: "APPROVED" }
+        });
+        // Update local state to reflect approval
+        pendingAdminMemberships.forEach(m => m.status = "APPROVED");
+      }
+    }
+
     const approvedMemberships = allMemberships.filter(m => m.status === "APPROVED");
     const pendingMemberships = allMemberships.filter(m => m.status === "PENDING");
 
-    if (approvedMemberships.length === 0) {
+    if (approvedMemberships.length === 0 && !isGlobalAdmin) {
       if (pendingMemberships.length > 0) {
         return (
           <div className="min-h-screen bg-[#0A0A0C] flex items-center justify-center p-6 text-center">
@@ -93,6 +109,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         clients={clients} 
         activeClientId={activeClientId}
         memberships={approvedMemberships}
+        isGlobalAdmin={isGlobalAdmin}
       />
     );
   } catch (error: any) {

@@ -10,16 +10,23 @@ export async function GET(req: Request) {
   const user = await prisma.user.findUnique({ where: { email: session.user.email } });
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Get orgs where the user is SUPER_ADMIN or ORG_ADMIN
-  const adminMemberships = await prisma.organizationMembership.findMany({
-    where: { 
-      userId: user.id, 
-      status: "APPROVED",
-      role: { in: ["SUPER_ADMIN", "ORG_ADMIN"] } 
-    }
-  });
+  const isGlobalAdmin = user.role === "ADMIN";
+  let orgIds: string[] = [];
 
-  const orgIds = adminMemberships.map(m => m.organizationId);
+  if (isGlobalAdmin) {
+    const allOrgs = await prisma.organization.findMany({ select: { id: true } });
+    orgIds = allOrgs.map(o => o.id);
+  } else {
+    // Get orgs where the user is SUPER_ADMIN or ORG_ADMIN
+    const adminMemberships = await prisma.organizationMembership.findMany({
+      where: { 
+        userId: user.id, 
+        status: "APPROVED",
+        role: { in: ["SUPER_ADMIN", "ORG_ADMIN"] } 
+      }
+    });
+    orgIds = adminMemberships.map(m => m.organizationId);
+  }
 
   const pendingRequests = await prisma.organizationMembership.findMany({
     where: {
@@ -56,17 +63,21 @@ export async function PATCH(req: Request) {
 
     if (!targetMembership) return NextResponse.json({ error: "Request not found" }, { status: 404 });
 
-    const adminCheck = await prisma.organizationMembership.findUnique({
-      where: {
-        userId_organizationId: {
-          userId: user.id,
-          organizationId: targetMembership.organizationId
-        }
-      }
-    });
+    const isGlobalAdmin = user.role === "ADMIN";
 
-    if (!adminCheck || adminCheck.status !== "APPROVED" || !["SUPER_ADMIN", "ORG_ADMIN"].includes(adminCheck.role)) {
-      return NextResponse.json({ error: "Forbidden: You do not have permission to approve for this organization" }, { status: 403 });
+    if (!isGlobalAdmin) {
+      const adminCheck = await prisma.organizationMembership.findUnique({
+        where: {
+          userId_organizationId: {
+            userId: user.id,
+            organizationId: targetMembership.organizationId
+          }
+        }
+      });
+
+      if (!adminCheck || adminCheck.status !== "APPROVED" || !["SUPER_ADMIN", "ORG_ADMIN"].includes(adminCheck.role)) {
+        return NextResponse.json({ error: "Forbidden: You do not have permission to approve for this organization" }, { status: 403 });
+      }
     }
 
     if (action === "APPROVE") {
