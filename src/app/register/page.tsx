@@ -10,6 +10,8 @@ export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [orgName, setOrgName] = useState("");
+  const [orgRole, setOrgRole] = useState("ORG_ADMIN");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,7 +26,7 @@ export default function RegisterPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, orgName, orgRole }),
       });
 
       if (res.ok) {
@@ -91,6 +93,32 @@ export default function RegisterPage() {
               className="w-full bg-[#0A0A0C] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500/50 transition-colors"
               placeholder="••••••••"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Organization Name</label>
+            <input
+              type="text"
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+              required
+              className="w-full bg-[#0A0A0C] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500/50 transition-colors"
+              placeholder="e.g. Acme Corp"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Organization Role</label>
+            <select
+              value={orgRole}
+              onChange={(e) => setOrgRole(e.target.value)}
+              className="w-full bg-[#0A0A0C] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500/50 transition-colors"
+            >
+              <option value="SUPER_ADMIN">Super Admin</option>
+              <option value="ORG_ADMIN">Organization Admin</option>
+              <option value="FINANCE_MANAGER">Finance Manager</option>
+              <option value="ACCOUNTANT">Accountant</option>
+              <option value="STAFF">Staff</option>
+              <option value="READ_ONLY">Read Only</option>
+            </select>
           </div>
           <button
             type="submit"

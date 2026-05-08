@@ -4,9 +4,9 @@ import bcrypt from "bcryptjs";
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
+    const { email, password, orgName, orgRole } = await req.json();
 
-    if (!email || !password) {
+    if (!email || !password || !orgName) {
       return NextResponse.json({ message: "Missing fields" }, { status: 400 });
     }
 
@@ -20,18 +20,42 @@ export async function POST(req: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // Auto-assign Admin role to specified email
-    const role = email.toLowerCase() === "salverutika55@gmail.com" ? "ADMIN" : "USER";
+    // Auto-assign global Admin role to specified email (do not change this)
+    const globalRole = email.toLowerCase() === "salverutika55@gmail.com" ? "ADMIN" : "USER";
 
+    // 1. Create the user
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
-        role,
+        role: globalRole,
       },
     });
 
-    return NextResponse.json({ message: "User created" }, { status: 201 });
+    // 2. Find or create the organization
+    let organization = await prisma.organization.findFirst({
+      where: { name: orgName }
+    });
+
+    if (!organization) {
+      organization = await prisma.organization.create({
+        data: { name: orgName }
+      });
+    }
+
+    // 3. Create the membership with the selected role
+    const validRoles = ["SUPER_ADMIN", "ORG_ADMIN", "FINANCE_MANAGER", "ACCOUNTANT", "STAFF", "READ_ONLY"];
+    const finalOrgRole = validRoles.includes(orgRole) ? orgRole : "STAFF";
+
+    await prisma.organizationMembership.create({
+      data: {
+        userId: user.id,
+        organizationId: organization.id,
+        role: finalOrgRole as any,
+      }
+    });
+
+    return NextResponse.json({ message: "User and Organization created" }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ message: "Internal Error" }, { status: 500 });
   }
