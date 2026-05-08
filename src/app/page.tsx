@@ -17,6 +17,23 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
+  
+  let isAnyAdmin = false;
+  const sessionRole = (session?.user as any)?.role;
+
+  if (sessionRole === 'ADMIN') {
+    isAnyAdmin = true;
+  } else if (session?.user?.email) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: { 
+        memberships: {
+          where: { role: { in: ['SUPER_ADMIN', 'ORG_ADMIN'] }, status: 'APPROVED' }
+        }
+      }
+    });
+    isAnyAdmin = (user?.memberships && user.memberships.length > 0);
+  }
 
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-slate-200 font-sans selection:bg-cyan-500/30 selection:text-cyan-100">
@@ -51,6 +68,11 @@ export default async function Home() {
                 <Link href="/dashboard" className="text-sm font-medium text-cyan-400 hover:text-cyan-300">
                   Main Dashboard
                 </Link>
+                {isAnyAdmin && (
+                  <Link href="/dashboard/team" className="text-sm font-medium text-indigo-400 hover:text-indigo-300">
+                    Team
+                  </Link>
+                )}
                 {(session.user as any)?.role === 'ADMIN' && (
                   <Link href="/admin" className="text-sm font-medium text-emerald-400 hover:text-emerald-300">
                     Admin Dashboard
