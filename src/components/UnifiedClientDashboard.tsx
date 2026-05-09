@@ -857,6 +857,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           isOpen={isTBUploadOpen} 
           onClose={() => setIsTBUploadOpen(false)} 
           clientId={client.id} 
+          sectorHeads={allSectorHeads}
         />
       </main>
 
