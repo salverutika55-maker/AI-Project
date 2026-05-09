@@ -14,6 +14,7 @@ import {
 import PNLMappingModal from "./PNLMappingModal";
 import BudgetUploadModal from "./BudgetUploadModal";
 import PNLStructureModal from "./PNLStructureModal";
+import TrialBalanceUploadModal from "./TrialBalanceUploadModal";
 import { SOFTWARE_CONFIGS, AccountingSoftware } from "@/lib/software-configs";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -38,6 +39,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const [displayCurrency, setDisplayCurrency] = useState("INR");
   const [isMappingOpen, setIsMappingOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
+  const [isTBUploadOpen, setIsTBUploadOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"STANDARD" | "MONTHLY_BUDGET">("STANDARD");
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<string>("");
@@ -487,6 +489,16 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
               )}
             </div>
 
+            {isAdmin && (
+              <button 
+                onClick={() => setIsTBUploadOpen(true)}
+                className="flex items-center gap-2 px-4 py-1.5 bg-cyan-500/10 border border-cyan-500/20 rounded-lg text-xs font-black text-cyan-400 hover:bg-cyan-500/20 transition-all"
+              >
+                <UploadCloud className="w-3 h-3" />
+                Upload Excel
+              </button>
+            )}
+
           </div>
         </div>
       </header>
@@ -841,6 +853,11 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
             </ErrorBoundary>
           )}
         </div>
+        <TrialBalanceUploadModal 
+          isOpen={isTBUploadOpen} 
+          onClose={() => setIsTBUploadOpen(false)} 
+          clientId={client.id} 
+        />
       </main>
 
       {/* MODALS */}

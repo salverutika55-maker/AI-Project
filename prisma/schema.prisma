@@ -25,6 +25,7 @@ model User {
   lastLogin        DateTime?
   memberships      OrganizationMembership[]
   auditLogs        AuditLog[]
+  tbUploads        TrialBalanceUpload[]
   createdAt        DateTime                 @default(now())
 }
 
@@ -100,6 +101,7 @@ model Client {
   syncTasks            SyncTask[]
   devices              Device[]
   pairingCodes         PairingCode[]
+  tbUploads            TrialBalanceUpload[]
   createdAt            DateTime          @default(now())
 }
 
@@ -149,6 +151,7 @@ model PNLMapping {
   client             Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   sectorHead         String   // e.g. "Domestic", "Power Bill"
   softwareLedgerName String   // Name from Zoho/Tally
+  source             String   @default("SYNC") // SYNC or UPLOAD
   createdAt          DateTime @default(now())
 }
 
@@ -265,3 +268,32 @@ model PairingCode {
 
 // Extend Device model for persistent sessions
 // (Note: We use multi_replace to merge this into the existing model)
+model TrialBalanceUpload {
+  id              String    @id @default(cuid())
+  clientId        String
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fileName        String
+  fileSize        Int
+  status          String    @default("PROCESSING") // PROCESSING, MAPPING_REQUIRED, COMPLETED, FAILED
+  detectedFormat  Json?     // Stores column indices for Ledger, Dr, Cr
+  period          String    // e.g. "2024-03"
+  uploadedById    String
+  uploadedBy      User      @relation(fields: [uploadedById], references: [id])
+  createdAt       DateTime  @default(now())
+  
+  rawRecords      RawLedgerRecord[]
+}
+
+model RawLedgerRecord {
+  id               String             @id @default(cuid())
+  uploadId         String
+  upload           TrialBalanceUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  ledgerName       String
+  groupName        String?
+  debit            Float              @default(0)
+  credit           Float              @default(0)
+  balance          Float              @default(0)
+  isMapped         Boolean            @default(false)
+  suggestedHead    String?            // AI predicted mapping
+  confidence       Float?             // AI confidence score
+}
