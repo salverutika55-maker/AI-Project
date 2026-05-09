@@ -18,8 +18,8 @@ export default function TrialBalanceUploadModal({ isOpen, onClose, clientId, sec
   const [error, setError] = useState<string | null>(null);
   
   // Period Selection
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState<number>(0);
+  const [selectedMonth, setSelectedMonth] = useState<number>(0);
 
   // Data States
   const [uploadId, setUploadId] = useState<string | null>(null);
@@ -28,6 +28,15 @@ export default function TrialBalanceUploadModal({ isOpen, onClose, clientId, sec
   const [searchTerm, setSearchTerm] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Hydration fix for dates
+  useState(() => {
+    if (typeof window !== 'undefined') {
+      const d = new Date();
+      setSelectedYear(d.getFullYear());
+      setSelectedMonth(d.getMonth() + 1);
+    }
+  });
 
   if (!isOpen) return null;
 

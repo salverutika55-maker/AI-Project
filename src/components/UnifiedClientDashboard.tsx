@@ -57,6 +57,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const [isManagingStructure, setIsManagingStructure] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
+  // Derived state for mapping modals
+  const allSectorHeads = useMemo(() => {
+    const softwareHeads = SECTOR_CONFIGS[client.sector as keyof typeof SECTOR_CONFIGS]?.sections
+      .flatMap((s: any) => s.items) || [];
+    const customHeads = customSubHeads.map(s => s.name);
+    return Array.from(new Set([...softwareHeads, ...customHeads]));
+  }, [client.sector, customSubHeads]);
+
   const dashboardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
