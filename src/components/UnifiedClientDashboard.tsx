@@ -136,7 +136,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     setLoading(false);
   };
 
-  const softwareConfig = SOFTWARE_CONFIGS[client.software as AccountingSoftware] || SOFTWARE_CONFIGS.ZOHO;
+  const softwareConfig = SOFTWARE_CONFIGS[(client?.software || 'TALLY') as AccountingSoftware] || SOFTWARE_CONFIGS.TALLY;
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -267,7 +267,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   // CALCULATION ENGINE (Copied from SectorDashboard)
   const calculateMetrics = (sourceGrid: Record<string, Record<string, number>>) => {
     const newData: Record<string, Record<string, number>> = {};
-    const type = client.sector.toLowerCase();
+    const type = (client?.sector || "TRADING").toLowerCase();
     
     months.forEach(month => {
       const v = { ...(sourceGrid[month] || {}) };
