@@ -16,6 +16,7 @@ import BudgetUploadModal from "./BudgetUploadModal";
 import PNLStructureModal from "./PNLStructureModal";
 import TrialBalanceUploadModal from "./TrialBalanceUploadModal";
 import { SOFTWARE_CONFIGS, AccountingSoftware } from "@/lib/software-configs";
+import { SECTOR_CONFIGS } from "@/lib/sector-configs";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import Papa from "papaparse";
