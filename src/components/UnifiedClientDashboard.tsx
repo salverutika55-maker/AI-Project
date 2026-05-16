@@ -244,6 +244,33 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     }, 2000);
   };
 
+  const handleResetSync = async () => {
+    if (!confirm("Are you sure you want to reset the sync? This will cancel any active tasks and allow you to restart the sync process.")) return;
+    
+    setLoading(true);
+    try {
+      const res = await fetch("/api/sync/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: client.id })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.removeItem(`sync_task_${client.id}`);
+        setIsSyncing(false);
+        setSyncProgress("");
+        alert("✅ Sync status reset! You can now trigger a fresh sync.");
+        router.refresh(); // Reload to get fresh client status
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (err: any) {
+      alert("Reset Failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatCurrency = (val: number, compact = false) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -830,7 +857,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                       <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Live data tracing from {softwareConfig.label}</p>
                     </div>
                   </div>
-                  <div className="flex gap-4 text-right">
+                  <div className="flex gap-4 items-center">
+                    <button 
+                      onClick={handleResetSync}
+                      className="px-4 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl text-[10px] font-black text-rose-400 hover:bg-rose-500/20 transition-all flex items-center gap-2"
+                    >
+                      <AlertCircle className="w-3 h-3" /> Force Reset Sync
+                    </button>
+                    <div className="flex gap-4 text-right">
                     {isMounted && client.devices?.[0] && (
                       <div className="px-6 py-2 bg-cyan-500/5 border border-cyan-500/20 rounded-2xl">
                         <p className="text-[10px] text-cyan-500 font-black uppercase tracking-widest mb-1">Active Device</p>

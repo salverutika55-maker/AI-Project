@@ -25,9 +25,9 @@ export async function GET(
     }
 
     // --- AUTO-TIMEOUT LOGIC ---
-    // If task is still PENDING/PROCESSING but is older than 1 hour, fail it.
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    if ((task.status === "PENDING" || task.status === "PROCESSING") && task.createdAt < oneHourAgo) {
+    // If task is still PENDING/PROCESSING but is older than 15 minutes, fail it.
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+    if ((task.status === "PENDING" || task.status === "PROCESSING") && task.createdAt < fifteenMinutesAgo) {
       const failedTask = await prisma.syncTask.update({
         where: { id: taskId },
         data: {

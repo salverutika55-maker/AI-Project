@@ -48,6 +48,7 @@ export async function POST(req: Request) {
     }
 
     // 4. Create Sync Task (Fire-and-Forget architecture)
+    console.log(`[Sync] Creating Tally task for client ${clientId}. lastAlterId: ${client.lastAlterId || "0"}`);
     const task = await prisma.syncTask.create({
       data: {
         clientId: clientId,
@@ -62,6 +63,7 @@ export async function POST(req: Request) {
         }
       }
     });
+    console.log(`[Sync] Task ${task.id} created successfully.`);
 
     // 5. Update Client Status to SYNCING immediately
     await prisma.client.update({
