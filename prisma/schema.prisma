@@ -88,6 +88,7 @@ model Client {
   connectorStatus      String            @default("OFFLINE") // OFFLINE, ONLINE, SYNCING
   lastHeartbeat        DateTime?
   lastSyncedAt         DateTime?
+  lastAlterId          String?           @default("0") // Tally's Incremental Marker
   
   organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   credentials          IntegrationCredential?
@@ -240,6 +241,8 @@ model SyncTask {
   error     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([clientId, status])
 }
 
 model Device {

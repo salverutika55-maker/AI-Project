@@ -81,10 +81,20 @@ export async function POST(req: Request) {
         });
       }));
 
-      // Update lastSyncedAt on client
+      // Update lastSyncedAt and lastAlterId on client
       await prisma.client.update({
         where: { id: clientId },
-        data: { lastSyncedAt: new Date() }
+        data: { 
+          lastSyncedAt: new Date(),
+          lastAlterId: result?.newAlterId?.toString() || undefined, // Update the marker for next delta
+          connectorStatus: "ONLINE" // Reset to online
+        }
+      });
+    } else {
+      // Even if failed, reset status to ONLINE so user can try again
+      await prisma.client.update({
+        where: { id: clientId },
+        data: { connectorStatus: "ONLINE" }
       });
     }
 

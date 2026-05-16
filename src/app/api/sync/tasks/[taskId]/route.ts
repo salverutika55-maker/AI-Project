@@ -24,6 +24,34 @@ export async function GET(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
+    // --- AUTO-TIMEOUT LOGIC ---
+    // If task is still PENDING/PROCESSING but is older than 1 hour, fail it.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    if ((task.status === "PENDING" || task.status === "PROCESSING") && task.createdAt < oneHourAgo) {
+      const failedTask = await prisma.syncTask.update({
+        where: { id: taskId },
+        data: {
+          status: "FAILED",
+          error: "Sync timed out (System detected inactivity for > 1 hour)"
+        }
+      });
+      
+      // Also reset client status
+      await prisma.client.update({
+        where: { id: task.clientId },
+        data: { connectorStatus: "ONLINE" }
+      });
+
+      return NextResponse.json({
+        success: true,
+        taskId: failedTask.id,
+        status: failedTask.status,
+        message: failedTask.error,
+        updatedAt: failedTask.updatedAt
+      });
+    }
+    // ---------------------------
+
     return NextResponse.json({
       success: true,
       taskId: task.id,

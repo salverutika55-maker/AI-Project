@@ -165,10 +165,11 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
       if (data.taskId) {
         // Tally Background Sync initiated
         localStorage.setItem(`sync_task_${client.id}`, data.taskId);
-        setSyncProgress("Task initiated...");
+        setSyncProgress("Sync requested...");
         pollTaskStatus(data.taskId);
+        // We DO NOT set isSyncing to false here; the poller will do it.
       } else {
-        // Direct Sync (Zoho, etc.)
+        // Direct Sync (Zoho, etc.) - these are fast/synchronous
         setTopBalancesSample(data.topBalances || []);
         setSyncDiagnostic({ 
           orgName: data.orgName, 
@@ -177,14 +178,15 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           rawSnippet: data.rawSnippet 
         });
         await fetchAllData();
+        setIsSyncing(false); // Done for synchronous syncs
         alert(`✅ ${softwareConfig.label} Sync Complete! Updated ${data.count} months.`);
       }
     } catch (err: any) {
       console.error("Sync Error Details:", err);
       alert(`Sync Error: ${err.message}`);
-    } finally {
-      setIsSyncing(false);
+      setIsSyncing(false); // Re-enable button on error
     }
+    // Removed finally block that was prematurely resetting isSyncing
   };
 
   const pollTaskStatus = async (taskId: string) => {
@@ -513,6 +515,26 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
 
       <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
         
+        {/* Background Sync Banner */}
+        {isSyncing && (
+          <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-2xl p-4 flex items-center justify-between animate-in slide-in-from-top-4 duration-500">
+            <div className="flex items-center gap-4">
+              <div className="w-8 h-8 bg-cyan-500/20 rounded-lg flex items-center justify-center">
+                <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin" />
+              </div>
+              <div>
+                <p className="text-xs font-black text-cyan-400 uppercase tracking-widest">Background Sync Active</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">
+                  {syncProgress || "Establishing connection..."}
+                </p>
+              </div>
+            </div>
+            <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              You can continue working while we fetch the latest data.
+            </div>
+          </div>
+        )}
+
         {/* 2. TAB NAVIGATION */}
         <div className="flex items-center gap-1 bg-[#13131A] p-1.5 rounded-2xl border border-white/5 w-fit shadow-lg">
           <button onClick={() => setActiveTab("insights")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "insights" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>

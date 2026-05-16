@@ -37,17 +37,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: error.message }, { status: 403 });
     }
 
-    // 3. Fetch Client to get lastSyncedAt
+    // 3. Fetch Client to get lastSyncedAt and lastAlterId
     const client = await prisma.client.findUnique({
       where: { id: clientId },
-      select: { lastSyncedAt: true, software: true }
+      select: { lastSyncedAt: true, lastAlterId: true, software: true, connectorStatus: true }
     });
 
     if (!client) {
       return NextResponse.json({ message: "Client not found" }, { status: 404 });
     }
 
-    // 4. Create Sync Task
+    // 4. Create Sync Task (Fire-and-Forget architecture)
     const task = await prisma.syncTask.create({
       data: {
         clientId: clientId,
@@ -56,10 +56,17 @@ export async function POST(req: Request) {
         payload: {
           source: source || "UI_TRIGGER",
           lastSyncedAt: client.lastSyncedAt,
+          lastAlterId: client.lastAlterId || "0",
           startDate: startDate || null,
           endDate: endDate || null
         }
       }
+    });
+
+    // 5. Update Client Status to SYNCING immediately
+    await prisma.client.update({
+      where: { id: clientId },
+      data: { connectorStatus: "SYNCING" }
     });
 
     return NextResponse.json({ 
