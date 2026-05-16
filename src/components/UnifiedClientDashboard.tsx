@@ -384,9 +384,6 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     cogs: calculatedData[month]?.["COGS"] || 0
   }));
 
-  const allSectorHeads = useMemo(() => {
-    return customSubHeads.map(s => s.name);
-  }, [customSubHeads]);
 
   const Icon = client?.sector === "MANUFACTURING" ? Factory : client?.sector === "TRADING" ? ArrowRightLeft : Briefcase;
 
