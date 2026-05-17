@@ -1,0 +1,12 @@
+{
+  "name": "tally-connector-prototype",
+  "version": "1.0.0",
+  "description": "Node.js based Tally Incremental Sync Connector",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.6.0"
+  }
+}
