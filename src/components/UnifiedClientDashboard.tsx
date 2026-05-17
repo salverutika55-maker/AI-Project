@@ -218,15 +218,15 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
         } else {
           // Still pending or in progress
           if (attempts > 300) {
-            setSyncProgress("Processing extreme data volume... please do not close this window.");
+            setSyncProgress("Processing extreme data volume in background... please do not close this window.");
           } else if (attempts > 150) {
-            setSyncProgress("Tally is still uploading data... almost there.");
+            setSyncProgress("Worker is streaming data chunks... almost there.");
           } else if (attempts > 60) {
-            setSyncProgress("Crunching large dataset from Tally Prime...");
+            setSyncProgress("Processing data chunks in the cloud...");
           } else if (attempts > 10) {
-            setSyncProgress("Establishing secure bridge to local Tally machine...");
+            setSyncProgress("Establishing secure streaming bridge to local Tally machine...");
           } else {
-            setSyncProgress("Waking up Tally connector...");
+            setSyncProgress("Waking up Tally connector and initializing queue...");
           }
         }
         
