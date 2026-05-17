@@ -876,6 +876,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                       <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest mb-1">Organization</p>
                       <p className="text-sm text-white font-black">{syncDiagnostic?.orgName || "Not Synced"}</p>
                     </div>
+                    </div>
                   </div>
                 </div>
 
