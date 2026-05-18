@@ -45,10 +45,13 @@ export const processTallyChunk = inngest.createFunction(
       for (const v of allVouchers) {
         const vchKey = v["@_VCHKEY"] || v.GUID || Math.random().toString();
         const altId = parseInt(v["@_ALTERID"] || "0");
-        const dateStr = v.DATE; // YYYYMMDD
+        const rawDate = v.DATE; // YYYYMMDD (could be number or string)
         let parsedDate = new Date();
-        if (dateStr && dateStr.length === 8) {
-          parsedDate = new Date(`${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`);
+        if (rawDate) {
+          const dateStr = String(rawDate).trim();
+          if (dateStr.length === 8) {
+            parsedDate = new Date(`${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`);
+          }
         }
 
         const entries = v["ALLLEDGERENTRIES.LIST"] || [];
