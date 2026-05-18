@@ -103,6 +103,7 @@ model Client {
   devices              Device[]
   pairingCodes         PairingCode[]
   tbUploads            TrialBalanceUpload[]
+  tallyVouchers        TallyVoucher[]
   createdAt            DateTime          @default(now())
 }
 
@@ -299,4 +300,23 @@ model RawLedgerRecord {
   isMapped         Boolean            @default(false)
   suggestedHead    String?            // AI predicted mapping
   confidence       Float?             // AI confidence score
+}
+
+model TallyVoucher {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  tallyGuid   String   @unique // Tally's unique voucher ID
+  alterId     Int      // To track the version
+  date        DateTime
+  voucherType String
+  ledgerName  String
+  amount      Float
+  isDebit     Boolean
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clientId, date])
 }
