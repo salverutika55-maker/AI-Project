@@ -253,8 +253,7 @@ export async function POST(
     const apiBase = finalApiBase;
 
     const now = new Date();
-    const searchParams = new URL(req.url).searchParams;
-    const targetYear = parseInt(searchParams.get("year") || String(now.getFullYear()));
+    // searchParams and targetYear already declared at the top of the route
     const fyType = searchParams.get("fyType") || "APR_MAR";
 
     // Determine date range for the full fiscal year
