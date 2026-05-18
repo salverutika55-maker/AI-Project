@@ -144,16 +144,33 @@ export async function GET(
       }
     } else if (client.software === "TALLY") {
       try {
-        const uniqueLedgers = await prisma.tallyVoucher.findMany({
-          where: { clientId: id },
-          select: { ledgerName: true },
-          distinct: ['ledgerName']
-        });
+        let uniqueLedgers: string[] = [];
         
-        chartOfAccounts = uniqueLedgers.map((l: any) => ({
-          account_name: l.ledgerName,
+        if (client.credentials?.encryptedApiKey) {
+          try {
+            const decryptedLedgers = decrypt(client.credentials.encryptedApiKey);
+            if (decryptedLedgers) {
+              uniqueLedgers = JSON.parse(decryptedLedgers);
+            }
+          } catch (err) {
+            console.error("Failed to decrypt Tally COA:", err);
+          }
+        }
+        
+        // Fallback to TallyVoucher if COA not synced/saved yet
+        if (uniqueLedgers.length === 0) {
+          const vouchers = await prisma.tallyVoucher.findMany({
+            where: { clientId: id },
+            select: { ledgerName: true },
+            distinct: ['ledgerName']
+          });
+          uniqueLedgers = vouchers.map(v => v.ledgerName);
+        }
+        
+        chartOfAccounts = uniqueLedgers.map((name: string) => ({
+          account_name: name,
           account_type: "Tally Ledger",
-          account_id: l.ledgerName
+          account_id: name
         }));
       } catch (e: any) {
         error = e.message;

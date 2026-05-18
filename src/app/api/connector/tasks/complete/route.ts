@@ -49,6 +49,16 @@ export async function POST(req: Request) {
     // If completed, trigger data ingestion
     if (status === "COMPLETED") {
       const now = new Date();
+
+      // Save Chart of Accounts if provided by Tally
+      if (result && Array.isArray((result as any).ledgers)) {
+        const encryptedLedgers = encrypt(JSON.stringify((result as any).ledgers));
+        await prisma.integrationCredential.upsert({
+          where: { clientId },
+          update: { encryptedApiKey: encryptedLedgers },
+          create: { clientId, encryptedApiKey: encryptedLedgers }
+        }).catch(console.error);
+      }
       const month = now.toLocaleString('default', { month: 'short' });
       const year = now.getFullYear();
 

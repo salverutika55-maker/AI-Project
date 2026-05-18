@@ -108,6 +108,62 @@ async function performIncrementalSync(task) {
       throw new Error(`Tally returned error: ${response.statusText}`);
     }
 
+    // --- CHART OF ACCOUNTS FETCH SECTION ---
+    console.log("Requesting Chart of Accounts from Tally Prime...");
+    const ledgersXmlReq = `
+<ENVELOPE>
+	<HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+	<BODY>
+		<EXPORTDATA>
+			<REQUESTDESC>
+				<REPORTNAME>List of Ledgers</REPORTNAME>
+				<STATICVARIABLES>
+					<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+				</STATICVARIABLES>
+			</REQUESTDESC>
+			<REQUESTCONTENT>
+				<COLLECTION NAME="AllLedgersList">
+					<TYPE>Ledger</TYPE>
+					<FETCH>NAME</FETCH>
+				</COLLECTION>
+			</REQUESTCONTENT>
+		</EXPORTDATA>
+	</BODY>
+</ENVELOPE>
+    `.trim();
+
+    let ledgers = [];
+    try {
+      const ledgersRes = await fetch(TALLY_URL, {
+        method: 'POST',
+        body: ledgersXmlReq,
+        headers: { 'Content-Type': 'text/xml' }
+      });
+      if (ledgersRes.ok) {
+        const ledgersXml = await ledgersRes.text();
+        const nameRegex = /<LEDGER[^>]*\bNAME="([^"]+)"/gi;
+        let match;
+        while ((match = nameRegex.exec(ledgersXml)) !== null) {
+          if (match[1] && !ledgers.includes(match[1])) {
+            ledgers.push(match[1]);
+          }
+        }
+        if (ledgers.length === 0) {
+          const fallbackRegex = /<NAME[^>]*>([^<]+)<\/NAME>/gi;
+          while ((match = fallbackRegex.exec(ledgersXml)) !== null) {
+            const name = match[1].trim();
+            if (name && !["Envelope", "Header", "Body", "Data", "Collection", "Ledger"].includes(name) && !ledgers.includes(name)) {
+              ledgers.push(name);
+            }
+          }
+        }
+      }
+      console.log(`Successfully fetched ${ledgers.length} ledgers from Tally Chart of Accounts.`);
+    } catch (err) {
+      console.error("Error fetching Tally COA:", err.message);
+    }
+    // ----------------------------------------
+
     console.log("Uploading directly using Vercel Blob...");
     const { put } = require('@vercel/blob');
     require('dotenv').config();
@@ -141,7 +197,10 @@ async function performIncrementalSync(task) {
       body: JSON.stringify({
         taskId: task.id,
         status: "COMPLETED",
-        result: { message: "Chunk synced successfully" }
+        result: { 
+          message: "Chunk synced successfully",
+          ledgers: ledgers
+        }
       })
     });
 
