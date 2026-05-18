@@ -203,6 +203,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
 
         if (data.status === "COMPLETED") {
           clearInterval(interval);
+          setSyncProgress("Aggregating Tally P&L data...");
+          try {
+            await fetch(`/api/clients/${client.id}/sync/data?year=${selectedYear}&fyType=${fyType}`, {
+              method: "POST"
+            });
+          } catch (err) {
+            console.error("P&L Aggregation Error:", err);
+          }
           localStorage.removeItem(`sync_task_${client.id}`);
           setSyncProgress("Data received! Finalizing view...");
           await fetchAllData();

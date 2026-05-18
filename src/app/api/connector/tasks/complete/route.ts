@@ -59,37 +59,39 @@ export async function POST(req: Request) {
           create: { clientId, encryptedApiKey: encryptedLedgers }
         }).catch(console.error);
       }
-      const month = now.toLocaleString('default', { month: 'short' });
-      const year = now.getFullYear();
+      if (!result || !(result as any).ledgers) {
+        const month = now.toLocaleString('default', { month: 'short' });
+        const year = now.getFullYear();
 
-      // Use the actual result from Tally if provided
-      const finalData = (result && typeof result === 'object') ? (result as Record<string, number>) : {};
-      const headsToIngest = Object.keys(finalData).length > 0 ? Object.keys(finalData) : ["Domestic", "Export", "Opening Stock", "Purchase", "Coal Charges", "Power Bill"];
-      
-      await Promise.all(headsToIngest.map(head => {
-        // Use result value if available, otherwise random for missing heads in dev
-        const amountValue = finalData[head] !== undefined ? finalData[head] : (Math.floor(Math.random() * 500000) + 100000);
-        const encryptedAmount = encrypt(amountValue.toString());
+        // Use the actual result from Tally if provided
+        const finalData = (result && typeof result === 'object') ? (result as Record<string, number>) : {};
+        const headsToIngest = Object.keys(finalData).length > 0 ? Object.keys(finalData) : ["Domestic", "Export", "Opening Stock", "Purchase", "Coal Charges", "Power Bill"];
+        
+        await Promise.all(headsToIngest.map(head => {
+          // Use result value if available, otherwise random for missing heads in dev
+          const amountValue = finalData[head] !== undefined ? finalData[head] : (Math.floor(Math.random() * 500000) + 100000);
+          const encryptedAmount = encrypt(amountValue.toString());
 
-        return prisma.pNLValue.upsert({
-          where: {
-            clientId_headName_month_year: {
+          return prisma.pNLValue.upsert({
+            where: {
+              clientId_headName_month_year: {
+                clientId,
+                headName: head,
+                month,
+                year
+              }
+            },
+            update: { amount: encryptedAmount },
+            create: {
               clientId,
               headName: head,
               month,
-              year
+              year,
+              amount: encryptedAmount
             }
-          },
-          update: { amount: encryptedAmount },
-          create: {
-            clientId,
-            headName: head,
-            month,
-            year,
-            amount: encryptedAmount
-          }
-        });
-      }));
+          });
+        }));
+      }
 
       // Update lastSyncedAt and lastAlterId on client
       await prisma.client.update({
