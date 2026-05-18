@@ -6,7 +6,7 @@ const Database = require('better-sqlite3');
 // Configuration
 const TALLY_URL = 'http://localhost:9000';
 const API_BASE_URL = 'https://ai-project-git-main-salverutika55-makers-projects.vercel.app/api';
-const CLIENT_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRJZCI6ImNtb2NueXlvczAwMDJqbDA0N20wa3kxejciLCJpYXQiOjE3NzkxMTQyMjh9.CvGAeaP-sAp_TtYPwT-IigwTIJQFeO-aMKKKyOxsIGo'; // Local generated token
+const CLIENT_TOKEN = 'REDACTED_CLIENT_TOKEN'; // Correct token for your account
 const DB_PATH = path.join(__dirname, 'tally_cache.db');
 
 console.log("Starting Tally Incremental Sync Connector (Live Mode)...");
@@ -113,7 +113,7 @@ async function performIncrementalSync(task) {
     require('dotenv').config();
 
     const blob = await put(`tally_sync_${Date.now()}.xml`, xmlString, {
-      access: 'public',
+      access: 'private',
       token: process.env.BLOB_READ_WRITE_TOKEN
     });
 
@@ -132,11 +132,17 @@ async function performIncrementalSync(task) {
     });
 
     // Mark task completed
-    await fetch(`${API_BASE_URL}/connector/tasks/${task.id}/complete`, {
+    await fetch(`${API_BASE_URL}/connector/tasks/complete`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${CLIENT_TOKEN}`
-      }
+        'Authorization': `Bearer ${CLIENT_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        taskId: task.id,
+        status: "COMPLETED",
+        result: { message: "Chunk synced successfully" }
+      })
     });
 
     // Update local DB

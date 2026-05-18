@@ -9,8 +9,12 @@ export const processTallyChunk = inngest.createFunction(
 
     // 1. Fetch the Blob from Vercel Blob
     const xmlData = await step.run("fetch-blob", async () => {
-      const response = await fetch(blobUrl);
-      if (!response.ok) throw new Error("Failed to fetch blob");
+      const response = await fetch(blobUrl, {
+        headers: {
+          'Authorization': `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`
+        }
+      });
+      if (!response.ok) throw new Error("Failed to fetch blob: " + response.statusText);
       return await response.text();
     });
 
