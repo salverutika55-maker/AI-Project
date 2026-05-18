@@ -356,6 +356,9 @@ export async function POST(
       where: { id },
       include: { pnlMappings: true }
     });
+    if (!clientWithMappings) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    }
 
     // 8. Map and Save to DB
     let recordsSaved = 0;
