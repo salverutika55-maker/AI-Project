@@ -142,6 +142,22 @@ export async function GET(
           else error = "Failed to connect to Zoho Books. Please ensure your organization name matches Zoho.";
         } catch (e: any) { error = e.message; }
       }
+    } else if (client.software === "TALLY") {
+      try {
+        const uniqueLedgers = await prisma.tallyVoucher.findMany({
+          where: { clientId: id },
+          select: { ledgerName: true },
+          distinct: ['ledgerName']
+        });
+        
+        chartOfAccounts = uniqueLedgers.map((l: any) => ({
+          account_name: l.ledgerName,
+          account_type: "Tally Ledger",
+          account_id: l.ledgerName
+        }));
+      } catch (e: any) {
+        error = e.message;
+      }
     }
 
     return NextResponse.json({
