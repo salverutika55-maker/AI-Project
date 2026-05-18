@@ -30,12 +30,19 @@ export const processTallyChunk = inngest.createFunction(
       });
       const jsonObj = parser.parse(xmlData);
       
-      const vouchers = jsonObj?.ENVELOPE?.BODY?.EXPORTDATA?.REQUESTCONTENT?.COLLECTION?.VOUCHER 
-                    || jsonObj?.ENVELOPE?.BODY?.DATA?.COLLECTION?.VOUCHER 
-                    || [];
+      const tallyMessages = jsonObj?.ENVELOPE?.BODY?.IMPORTDATA?.REQUESTDATA?.TALLYMESSAGE || [];
+      const vouchers = Array.isArray(tallyMessages) 
+        ? tallyMessages.flatMap((msg: any) => msg.VOUCHER || []) 
+        : [];
+      
+      const fallbackVouchers = jsonObj?.ENVELOPE?.BODY?.EXPORTDATA?.REQUESTCONTENT?.COLLECTION?.VOUCHER 
+                            || jsonObj?.ENVELOPE?.BODY?.DATA?.COLLECTION?.VOUCHER 
+                            || [];
+                            
+      const allVouchers = [...vouchers, ...fallbackVouchers].filter(v => v);
       
       const formattedVouchers: any[] = [];
-      for (const v of vouchers) {
+      for (const v of allVouchers) {
         const vchKey = v["@_VCHKEY"] || v.GUID || Math.random().toString();
         const altId = parseInt(v["@_ALTERID"] || "0");
         const dateStr = v.DATE; // YYYYMMDD
