@@ -162,6 +162,7 @@ export async function GET(
 
     return NextResponse.json({
       error,
+      software: client.software,
       mappings: client.pnlMappings,
       chartOfAccounts: chartOfAccounts.map(a => ({
         name: a.account_name,

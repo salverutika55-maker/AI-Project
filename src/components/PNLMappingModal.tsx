@@ -13,6 +13,7 @@ interface PNLMappingModalProps {
 export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads }: PNLMappingModalProps) {
   const [coa, setCoa] = useState<any[]>([]);
   const [mappings, setMappings] = useState<Record<string, string[]>>({});
+  const [software, setSoftware] = useState<string>("ZOHO");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
         setError(data.error);
       }
       
+      setSoftware(data.software || "ZOHO");
       setCoa(data.chartOfAccounts || []);
       
       // Convert flat array to grouped Record
@@ -88,7 +90,14 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
 
   if (!isOpen) return null;
 
-  const filteredCoa = coa.filter(a => a.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  // 1. Gather all mapped ledger names in a Set for fast lookup
+  const mappedLedgers = new Set(Object.values(mappings).flat());
+
+  // 2. Filter COA to only show unmapped ledgers matching the search term
+  const filteredCoa = coa.filter(a => 
+    !mappedLedgers.has(a.name) && 
+    a.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -99,7 +108,7 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
         <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#181821]">
           <div>
             <h2 className="text-xl font-black text-white">Smart P&L Mapping</h2>
-            <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-bold">Map Zoho Ledgers to Standard P&L Heads</p>
+            <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-bold">Map {software} Ledgers to Standard P&L Heads</p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl transition-colors"><X className="w-6 h-6 text-slate-400" /></button>
         </div>
@@ -192,7 +201,7 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
 
         {/* Footer */}
         <div className="p-6 border-t border-white/5 bg-[#181821] flex justify-between items-center">
-          <p className="text-xs text-slate-400">All data from Zoho will be aggregated based on these mappings during the next sync.</p>
+          <p className="text-xs text-slate-400">All data from {software} will be aggregated based on these mappings during the next sync.</p>
           <button 
             onClick={handleSave} 
             disabled={saving}
