@@ -93,9 +93,8 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
   // 1. Gather all mapped ledger names in a Set for fast lookup
   const mappedLedgers = new Set(Object.values(mappings).flat());
 
-  // 2. Filter COA to only show unmapped ledgers matching the search term
+  // 2. Filter COA to show all ledgers matching the search term
   const filteredCoa = coa.filter(a => 
-    !mappedLedgers.has(a.name) && 
     a.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -171,28 +170,37 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
               </div>
               <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 <div className="space-y-1">
-                  {filteredCoa.map(account => (
-                    <div key={account.id} className="group p-3 hover:bg-white/5 rounded-xl transition-all border border-transparent hover:border-white/10 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-bold text-slate-200">{account.name}</p>
-                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{account.type}</p>
+                  {filteredCoa.map(account => {
+                    const mappedHead = Object.entries(mappings).find(([_, ledgers]) => ledgers.includes(account.name))?.[0];
+                    return (
+                      <div key={account.id} className={`group p-3 hover:bg-white/5 rounded-xl transition-all border border-transparent hover:border-white/10 flex items-center justify-between ${mappedHead ? 'opacity-50' : ''}`}>
+                        <div>
+                          <p className="text-sm font-bold text-slate-200">{account.name}</p>
+                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{account.type}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {mappedHead ? (
+                            <span className="text-[9px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
+                              Mapped to {mappedHead}
+                            </span>
+                          ) : (
+                            <select 
+                              onChange={(e) => {
+                                if (e.target.value) toggleMapping(e.target.value, account.name);
+                                e.target.value = "";
+                              }}
+                              className="bg-black/40 border border-white/10 rounded-lg px-3 py-1 text-[10px] font-black text-cyan-500 hover:border-cyan-500/50 transition-all appearance-none cursor-pointer"
+                            >
+                              <option value="">Map to Head...</option>
+                              {sectorHeads.map(h => (
+                                <option key={h} value={h}>{h}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <select 
-                          onChange={(e) => {
-                            if (e.target.value) toggleMapping(e.target.value, account.name);
-                            e.target.value = "";
-                          }}
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-1 text-[10px] font-black text-cyan-500 hover:border-cyan-500/50 transition-all appearance-none cursor-pointer"
-                        >
-                          <option value="">Map to Head...</option>
-                          {sectorHeads.map(h => (
-                            <option key={h} value={h}>{h}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
