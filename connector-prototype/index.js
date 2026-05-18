@@ -116,17 +116,11 @@ async function performIncrementalSync(task) {
 	<BODY>
 		<EXPORTDATA>
 			<REQUESTDESC>
-				<REPORTNAME>List of Ledgers</REPORTNAME>
+				<REPORTNAME>List of Accounts</REPORTNAME>
 				<STATICVARIABLES>
 					<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
 				</STATICVARIABLES>
 			</REQUESTDESC>
-			<REQUESTCONTENT>
-				<COLLECTION NAME="AllLedgersList">
-					<TYPE>Ledger</TYPE>
-					<FETCH>NAME</FETCH>
-				</COLLECTION>
-			</REQUESTCONTENT>
 		</EXPORTDATA>
 	</BODY>
 </ENVELOPE>
@@ -144,16 +138,22 @@ async function performIncrementalSync(task) {
         const nameRegex = /<LEDGER[^>]*\bNAME="([^"]+)"/gi;
         let match;
         while ((match = nameRegex.exec(ledgersXml)) !== null) {
-          if (match[1] && !ledgers.includes(match[1])) {
-            ledgers.push(match[1]);
+          if (match[1]) {
+            const cleanName = match[1].replace(/&amp;/g, '&');
+            if (!ledgers.includes(cleanName)) {
+              ledgers.push(cleanName);
+            }
           }
         }
         if (ledgers.length === 0) {
           const fallbackRegex = /<NAME[^>]*>([^<]+)<\/NAME>/gi;
           while ((match = fallbackRegex.exec(ledgersXml)) !== null) {
             const name = match[1].trim();
-            if (name && !["Envelope", "Header", "Body", "Data", "Collection", "Ledger"].includes(name) && !ledgers.includes(name)) {
-              ledgers.push(name);
+            if (name && !["Envelope", "Header", "Body", "Data", "Collection", "Ledger"].includes(name)) {
+              const cleanName = name.replace(/&amp;/g, '&');
+              if (!ledgers.includes(cleanName)) {
+                ledgers.push(cleanName);
+              }
             }
           }
         }
