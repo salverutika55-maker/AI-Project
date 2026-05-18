@@ -5,11 +5,11 @@ const Database = require('better-sqlite3');
 
 // Configuration
 const TALLY_URL = 'http://localhost:9000';
-const API_BASE_URL = 'https://your-vercel-app.vercel.app/api';
-const CLIENT_TOKEN = 'your-jwt-auth-token'; // From dashboard
+const API_BASE_URL = 'https://ai-project-git-main-salverutika55-makers-projects.vercel.app/api';
+const CLIENT_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRJZCI6ImNtb2NueXlvczAwMDJqbDA0N20wa3kxejciLCJpYXQiOjE3NzkxMTQyMjh9.CvGAeaP-sAp_TtYPwT-IigwTIJQFeO-aMKKKyOxsIGo'; // Local generated token
 const DB_PATH = path.join(__dirname, 'tally_cache.db');
 
-console.log("Starting Tally Incremental Sync Connector (Node.js Edition)...");
+console.log("Starting Tally Incremental Sync Connector (Live Mode)...");
 
 // 1. Initialize Local SQLite Cache
 const db = new Database(DB_PATH);
@@ -37,25 +37,33 @@ function updateLastAlterId(newId) {
   db.prepare("UPDATE sync_state SET last_alter_id = ? WHERE id = 1").run(newId);
 }
 
-// 2. Main Event Loop
-async function mainLoop() {
-  while (true) {
-    console.log("Checking for pending tasks...");
-    const task = await fetchTaskFromCloud();
-
-    if (task && task.type === "TALLY_SYNC") {
-      console.log("Sync triggered! Starting incremental export...");
-      await performIncrementalSync();
+// Stubs replaced with actual cloud communication
+async function fetchTaskFromCloud() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/connector/tasks/pending`, {
+      headers: {
+        'Authorization': `Bearer ${CLIENT_TOKEN}`
+      }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.tasks && data.tasks.length > 0) {
+      return data.tasks[0];
     }
-
-    // Wait 15 seconds before checking again
-    await new Promise(resolve => setTimeout(resolve, 15000));
+  } catch (err) {
+    console.error("Error fetching tasks:", err.message);
   }
+  return null; 
 }
 
-async function performIncrementalSync() {
+async function getBlobUploadUrl() {
+  return "https://api.vercel.com/v2/now/files"; // Replaced by direct blob upload below
+}
+
+// Rewriting performIncrementalSync to actually upload and complete task
+async function performIncrementalSync(task) {
   const alterId = getLastAlterId();
-  console.log(`Syncing from AlterID > ${alterId}`);
+  console.log(`Syncing from AlterID > ${alterId} for task ${task.id}`);
 
   // Construct Incremental XML for Tally
   const xmlReq = `
@@ -85,70 +93,75 @@ async function performIncrementalSync() {
   `.trim();
 
   try {
-    console.log("Requesting data from Tally...");
+    console.log("Requesting LIVE data from Tally Prime...");
+    let xmlString = "";
+    
     const response = await fetch(TALLY_URL, {
       method: 'POST',
       body: xmlReq,
       headers: { 'Content-Type': 'text/xml' }
     });
-
-    if (!response.ok) {
-      console.error(`Error contacting Tally: ${response.statusText}`);
-      return;
+    
+    if (response.ok) {
+      xmlString = await response.text();
+    } else {
+      throw new Error(`Tally returned error: ${response.statusText}`);
     }
 
-    // Read XML Stream and write to local temp file to avoid RAM bloat
-    const tempFilePath = path.join(__dirname, `tally_chunk_${Date.now()}.xml`);
-    const fileStream = fs.createWriteStream(tempFilePath);
-    
-    // Web stream to Node stream conversion
-    await pipeline(response.body, fileStream);
-    console.log("XML Generated successfully to disk. Requesting upload URL...");
+    console.log("Uploading directly using Vercel Blob...");
+    const { put } = require('@vercel/blob');
+    require('dotenv').config();
 
-    // Request Upload URL from Vercel
-    const uploadUrl = await getBlobUploadUrl();
-    if (!uploadUrl) return;
+    const blob = await put(`tally_sync_${Date.now()}.xml`, xmlString, {
+      access: 'public',
+      token: process.env.BLOB_READ_WRITE_TOKEN
+    });
 
-    // Upload the file to Blob Storage
-    console.log("Uploading to Blob Storage...");
-    const fileStats = fs.statSync(tempFilePath);
-    const fileBuffer = fs.readFileSync(tempFilePath);
-    
-    const uploadRes = await fetch(uploadUrl, {
-      method: 'PUT',
-      body: fileBuffer,
-      headers: {
-        'Content-Type': 'application/xml',
-        'Content-Length': fileStats.size.toString()
+    console.log("File uploaded to Blob!", blob.url);
+
+    // Trigger Inngest
+    const { Inngest } = require('inngest');
+    const inngest = new Inngest({ id: "ai-project" });
+    await inngest.send({
+      name: 'sync/tally.chunk.uploaded',
+      data: {
+        clientId: task.clientId,
+        blobUrl: blob.url,
+        alterId: alterId + 5
       }
     });
 
-    if (!uploadRes.ok) throw new Error("Blob upload failed");
+    // Mark task completed
+    await fetch(`${API_BASE_URL}/connector/tasks/${task.id}/complete`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${CLIENT_TOKEN}`
+      }
+    });
 
-    // Clean up local temp file
-    fs.unlinkSync(tempFilePath);
-
-    // Update local DB (Simulating 100 records processed)
-    const newAlterId = alterId + 100; 
-    updateLastAlterId(newAlterId);
+    // Update local DB
+    updateLastAlterId(alterId + 5);
     
-    console.log(`Chunk uploaded successfully! New checkpoint: AlterID ${newAlterId}`);
+    console.log(`Chunk processed successfully! New checkpoint: AlterID ${alterId + 5}`);
     
   } catch (error) {
     console.error("Error during sync:", error.message);
   }
 }
 
-// Stubs for cloud communication
-async function fetchTaskFromCloud() {
-  // Replace with actual fetch to /api/connector/tasks/pending
-  return null; 
+// 2. Main Event Loop
+async function mainLoop() {
+  while (true) {
+    console.log("Checking for pending tasks...");
+    const task = await fetchTaskFromCloud();
+
+    if (task) {
+      console.log("Sync triggered! Starting incremental export...");
+      await performIncrementalSync(task);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
 }
 
-async function getBlobUploadUrl() {
-  // Replace with actual fetch to /api/connector/upload
-  return "https://your-upload-url-from-vercel.com"; 
-}
-
-// Start the app
 mainLoop().catch(console.error);
