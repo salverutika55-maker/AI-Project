@@ -24,7 +24,7 @@ export const processTallyChunk = inngest.createFunction(
         ignoreAttributes: false,
         attributeNamePrefix: "@_",
         isArray: (name) => {
-          if (name === "VOUCHER" || name === "ALLLEDGERENTRIES.LIST") return true;
+          if (name === "VOUCHER" || name === "ALLLEDGERENTRIES.LIST" || name === "LEDGERENTRIES.LIST") return true;
           return false;
         }
       });
@@ -54,11 +54,15 @@ export const processTallyChunk = inngest.createFunction(
           }
         }
 
-        const entries = v["ALLLEDGERENTRIES.LIST"] || [];
+        const entries = [
+          ...(v["ALLLEDGERENTRIES.LIST"] || []),
+          ...(v["LEDGERENTRIES.LIST"] || [])
+        ];
+        
         for (const entry of entries) {
           formattedVouchers.push({
             clientId,
-            tallyGuid: `${vchKey}-${entry.LEDGERNAME}`, // Unique per ledger line
+            tallyGuid: `${vchKey}-${entry.LEDGERNAME}-${entry.AMOUNT || '0'}`, // Unique per ledger line
             alterId: altId,
             date: parsedDate,
             voucherType: v.VOUCHERTYPENAME || "Unknown",
