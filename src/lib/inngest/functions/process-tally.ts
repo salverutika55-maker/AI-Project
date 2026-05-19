@@ -24,7 +24,15 @@ export const processTallyChunk = inngest.createFunction(
         ignoreAttributes: false,
         attributeNamePrefix: "@_",
         isArray: (name) => {
-          if (name === "VOUCHER" || name === "ALLLEDGERENTRIES.LIST" || name === "LEDGERENTRIES.LIST" || name === "ACCOUNTINGALLOCATIONS.LIST") return true;
+          if (
+            name === "VOUCHER" ||
+            name === "ALLLEDGERENTRIES.LIST" ||
+            name === "LEDGERENTRIES.LIST" ||
+            name === "ACCOUNTINGALLOCATIONS.LIST" ||
+            name === "ALLINVENTORYENTRIES.LIST"
+          ) {
+            return true;
+          }
           return false;
         }
       });
@@ -54,6 +62,7 @@ export const processTallyChunk = inngest.createFunction(
           }
         }
 
+        // 1. Root-level ledger entries
         const entries = [
           ...(v["ALLLEDGERENTRIES.LIST"] || []),
           ...(v["LEDGERENTRIES.LIST"] || [])
@@ -71,12 +80,30 @@ export const processTallyChunk = inngest.createFunction(
             isDebit: entry.ISDEEMEDPOSITIVE === "Yes",
           });
 
-          // Extract nested accounting allocations (like Purchase or Sales accounts)
+          // Extract nested accounting allocations (like Purchase or Sales accounts inside ledger entries)
           const allocations = entry["ACCOUNTINGALLOCATIONS.LIST"] || [];
           for (const alloc of allocations) {
             formattedVouchers.push({
               clientId,
               tallyGuid: `${vchKey}-${alloc.LEDGERNAME}-${alloc.AMOUNT || '0'}-alloc`,
+              alterId: altId,
+              date: parsedDate,
+              voucherType: v.VOUCHERTYPENAME || "Unknown",
+              ledgerName: alloc.LEDGERNAME || "Unknown",
+              amount: Math.abs(parseFloat(alloc.AMOUNT || "0")),
+              isDebit: alloc.ISDEEMEDPOSITIVE === "Yes",
+            });
+          }
+        }
+
+        // 2. Inventory-level ledger allocations (Standard for Tally item invoices)
+        const items = v["ALLINVENTORYENTRIES.LIST"] || [];
+        for (const item of items) {
+          const allocations = item["ACCOUNTINGALLOCATIONS.LIST"] || [];
+          for (const alloc of allocations) {
+            formattedVouchers.push({
+              clientId,
+              tallyGuid: `${vchKey}-${alloc.LEDGERNAME}-${alloc.AMOUNT || '0'}-item-alloc`,
               alterId: altId,
               date: parsedDate,
               voucherType: v.VOUCHERTYPENAME || "Unknown",
