@@ -83,7 +83,7 @@ export async function POST(
       // 4. Map and Save to PNLValue
       let recordsSaved = 0;
       for (const [mShort, accounts] of Object.entries(monthlyData)) {
-        const syncYearToSave = targetYear;
+        const syncYearToSave = ["Jan", "Feb", "Mar"].includes(mShort) ? targetYear + 1 : targetYear;
         const headBalances: Record<string, number> = {};
 
         for (const m of clientWithMappings.pnlMappings) {
