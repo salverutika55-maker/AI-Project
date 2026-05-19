@@ -24,7 +24,7 @@ export const processTallyChunk = inngest.createFunction(
         ignoreAttributes: false,
         attributeNamePrefix: "@_",
         isArray: (name) => {
-          if (name === "VOUCHER" || name === "ALLLEDGERENTRIES.LIST" || name === "LEDGERENTRIES.LIST") return true;
+          if (name === "VOUCHER" || name === "ALLLEDGERENTRIES.LIST" || name === "LEDGERENTRIES.LIST" || name === "ACCOUNTINGALLOCATIONS.LIST") return true;
           return false;
         }
       });
@@ -70,6 +70,21 @@ export const processTallyChunk = inngest.createFunction(
             amount: Math.abs(parseFloat(entry.AMOUNT || "0")),
             isDebit: entry.ISDEEMEDPOSITIVE === "Yes",
           });
+
+          // Extract nested accounting allocations (like Purchase or Sales accounts)
+          const allocations = entry["ACCOUNTINGALLOCATIONS.LIST"] || [];
+          for (const alloc of allocations) {
+            formattedVouchers.push({
+              clientId,
+              tallyGuid: `${vchKey}-${alloc.LEDGERNAME}-${alloc.AMOUNT || '0'}-alloc`,
+              alterId: altId,
+              date: parsedDate,
+              voucherType: v.VOUCHERTYPENAME || "Unknown",
+              ledgerName: alloc.LEDGERNAME || "Unknown",
+              amount: Math.abs(parseFloat(alloc.AMOUNT || "0")),
+              isDebit: alloc.ISDEEMEDPOSITIVE === "Yes",
+            });
+          }
         }
       }
       return formattedVouchers;
