@@ -59,6 +59,16 @@ export async function POST(req: Request) {
           create: { clientId, encryptedApiKey: encryptedLedgers }
         }).catch(console.error);
       }
+
+      // Save Trial Balance if provided by Tally
+      if (result && (result as any).trialBalance) {
+        const encryptedTB = encrypt(JSON.stringify((result as any).trialBalance));
+        await prisma.integrationCredential.upsert({
+          where: { clientId },
+          update: { encryptedOauthToken: encryptedTB },
+          create: { clientId, encryptedOauthToken: encryptedTB }
+        }).catch(console.error);
+      }
       if (!result || !(result as any).ledgers) {
         const month = now.toLocaleString('default', { month: 'short' });
         const year = now.getFullYear();

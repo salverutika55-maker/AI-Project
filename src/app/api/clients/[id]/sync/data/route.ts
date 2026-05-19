@@ -56,87 +56,165 @@ export async function POST(
       });
       if (!clientWithMappings) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
-      // 2. Fetch Vouchers for the Target Year
-      const vouchers = await prisma.tallyVoucher.findMany({
-        where: { 
-          clientId: id,
-          date: {
-            gte: new Date(`${targetYear}-04-01`),
-            lt: new Date(`${targetYear + 1}-04-01`),
+      // 2. Fetch Trial Balance from credentials if exists
+      let trialBalanceData: Record<string, number> = {};
+      if (client.credentials?.encryptedOauthToken) {
+        try {
+          const decryptedTB = decrypt(client.credentials.encryptedOauthToken);
+          if (decryptedTB) {
+            trialBalanceData = JSON.parse(decryptedTB);
           }
+        } catch (err) {
+          console.error("Failed to parse Tally Trial Balance credentials:", err);
         }
-      });
-
-      // 3. Aggregate Monthly Data by Ledger
-      const monthlyData: Record<string, Record<string, number>> = {};
-      const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
-      
-      for (const v of vouchers) {
-        const monthName = months[v.date.getMonth() >= 3 ? v.date.getMonth() - 3 : v.date.getMonth() + 9]; // Financial Year offset
-        const actualMonthStr = v.date.toLocaleString('default', { month: 'short' });
-        
-        if (!monthlyData[actualMonthStr]) monthlyData[actualMonthStr] = {};
-        if (!monthlyData[actualMonthStr][v.ledgerName]) monthlyData[actualMonthStr][v.ledgerName] = 0;
-        
-        // Use net absolute movement. In reality, Dr/Cr determines if it adds or subtracts. 
-        monthlyData[actualMonthStr][v.ledgerName] += Math.abs(v.amount);
       }
 
-      // 4. Map and Save to PNLValue
+      const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
       let recordsSaved = 0;
-      for (const [mShort, accounts] of Object.entries(monthlyData)) {
-        const syncYearToSave = targetYear; // Simplification
-        const headBalances: Record<string, number> = {};
+      let allNames: string[] = [];
 
-        for (const m of clientWithMappings.pnlMappings) {
-          const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
-          let balance = 0;
-          
-          for (const alias of aliases) {
-            const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
-            if (exactMatchKey) {
-              balance += accounts[exactMatchKey];
-            } else {
-              const fuzzyMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase().includes(alias));
-              if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
+      if (Object.keys(trialBalanceData).length > 0) {
+        console.log("Found Tally Trial Balance, aggregating directly into all P&L months...");
+        allNames = Object.keys(trialBalanceData);
+
+        for (const mShort of months) {
+          const syncYearToSave = targetYear;
+          const headBalances: Record<string, number> = {};
+
+          for (const m of clientWithMappings.pnlMappings) {
+            const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
+            let balance = 0;
+            
+            for (const alias of aliases) {
+              const exactMatchKey = Object.keys(trialBalanceData).find(k => k.trim().toLowerCase() === alias);
+              if (exactMatchKey) {
+                balance += trialBalanceData[exactMatchKey];
+              } else {
+                const fuzzyMatchKey = Object.keys(trialBalanceData).find(k => {
+                  const lowerK = k.trim().toLowerCase();
+                  return lowerK.includes(alias) || alias.includes(lowerK);
+                });
+                if (fuzzyMatchKey) balance += trialBalanceData[fuzzyMatchKey];
+              }
+            }
+
+            if (balance !== 0) {
+              headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
             }
           }
 
-          if (balance !== 0) {
-            headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
+          const finalEntries = Object.entries(headBalances).map(([headName, balance]) => ({
+            clientId: id,
+            headName,
+            month: mShort,
+            year: syncYearToSave,
+            amount: encrypt(balance.toString())
+          }));
+
+          if (finalEntries.length > 0) {
+            await prisma.pNLValue.deleteMany({
+              where: { clientId: id, month: mShort, year: syncYearToSave }
+            });
+            await prisma.pNLValue.createMany({ data: finalEntries });
           }
+          recordsSaved++;
         }
 
-        const finalEntries = Object.entries(headBalances).map(([headName, balance]) => ({
-          clientId: id,
-          headName,
-          month: mShort,
-          year: syncYearToSave,
-          amount: encrypt(balance.toString())
-        }));
+        await logSecurityEvent(user.id, "SYNC_TALLY_DATA_SUCCESS", id, `Mapped Trial Balance values to P&L for ${recordsSaved} months`, req);
 
-        if (finalEntries.length > 0) {
-          await prisma.pNLValue.deleteMany({
-            where: { clientId: id, month: mShort, year: syncYearToSave }
-          });
-          await prisma.pNLValue.createMany({ data: finalEntries });
+        return NextResponse.json({ 
+          success: true, 
+          message: `Successfully mapped Trial Balance values for ${recordsSaved} months for FY ${targetYear}.`,
+          count: recordsSaved,
+          topBalances: [],
+          allNames,
+          orgName: client.name,
+          apiBaseUsed: "Tally Trial Balance",
+          rawSnippet: "Trial Balance imported successfully",
+          ts: new Date().toISOString()
+        });
+
+      } else {
+        // Fallback to incremental Voucher Register aggregation
+        console.log("No Trial Balance present, falling back to Voucher Register aggregation...");
+        // 2. Fetch Vouchers for the Target Year
+        const vouchers = await prisma.tallyVoucher.findMany({
+          where: { 
+            clientId: id,
+            date: {
+              gte: new Date(`${targetYear}-04-01`),
+              lt: new Date(`${targetYear + 1}-04-01`),
+            }
+          }
+        });
+
+        // 3. Aggregate Monthly Data by Ledger
+        const monthlyData: Record<string, Record<string, number>> = {};
+        
+        for (const v of vouchers) {
+          const actualMonthStr = v.date.toLocaleString('default', { month: 'short' });
+          
+          if (!monthlyData[actualMonthStr]) monthlyData[actualMonthStr] = {};
+          if (!monthlyData[actualMonthStr][v.ledgerName]) monthlyData[actualMonthStr][v.ledgerName] = 0;
+          
+          monthlyData[actualMonthStr][v.ledgerName] += Math.abs(v.amount);
         }
-        recordsSaved++;
+
+        // 4. Map and Save to PNLValue
+        for (const [mShort, accounts] of Object.entries(monthlyData)) {
+          const syncYearToSave = targetYear; 
+          const headBalances: Record<string, number> = {};
+
+          for (const m of clientWithMappings.pnlMappings) {
+            const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
+            let balance = 0;
+            
+            for (const alias of aliases) {
+              const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
+              if (exactMatchKey) {
+                balance += accounts[exactMatchKey];
+              } else {
+                const fuzzyMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase().includes(alias));
+                if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
+              }
+            }
+
+            if (balance !== 0) {
+              headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
+            }
+          }
+
+          const finalEntries = Object.entries(headBalances).map(([headName, balance]) => ({
+            clientId: id,
+            headName,
+            month: mShort,
+            year: syncYearToSave,
+            amount: encrypt(balance.toString())
+          }));
+
+          if (finalEntries.length > 0) {
+            await prisma.pNLValue.deleteMany({
+              where: { clientId: id, month: mShort, year: syncYearToSave }
+            });
+            await prisma.pNLValue.createMany({ data: finalEntries });
+          }
+          recordsSaved++;
+        }
+
+        await logSecurityEvent(user.id, "SYNC_TALLY_DATA_SUCCESS", id, `Aggregated Tally PNL from vouchers for ${recordsSaved} months`, req);
+
+        return NextResponse.json({ 
+          success: true, 
+          message: `Successfully aggregated Tally data for ${recordsSaved} months for FY ${targetYear}.`,
+          count: recordsSaved,
+          topBalances: [],
+          allNames: Object.keys(monthlyData).length > 0 ? Object.keys(monthlyData[Object.keys(monthlyData)[0]]) : [],
+          orgName: client.name,
+          apiBaseUsed: "Tally DB",
+          rawSnippet: "Aggregated from TallyVoucher",
+          ts: new Date().toISOString()
+        });
       }
-
-      await logSecurityEvent(user.id, "SYNC_TALLY_DATA_SUCCESS", id, `Aggregated Tally PNL for ${recordsSaved} months`, req);
-
-      return NextResponse.json({ 
-        success: true, 
-        message: `Successfully aggregated Tally data for ${recordsSaved} months for FY ${targetYear}.`,
-        count: recordsSaved,
-        topBalances: [],
-        allNames: Object.keys(monthlyData).length > 0 ? Object.keys(monthlyData[Object.keys(monthlyData)[0]]) : [],
-        orgName: client.name,
-        apiBaseUsed: "Tally DB",
-        rawSnippet: "Aggregated from TallyVoucher",
-        ts: new Date().toISOString()
-      });
     }
 
     if (!client.credentials?.encryptedOauthToken) {

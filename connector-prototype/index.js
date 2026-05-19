@@ -162,6 +162,77 @@ async function performIncrementalSync(task) {
     } catch (err) {
       console.error("Error fetching Tally COA:", err.message);
     }
+    // --- TRIAL BALANCE FETCH SECTION ---
+    console.log("Requesting Ledger-wise Trial Balance from Tally Prime...");
+    const tbXmlReq = `
+<ENVELOPE>
+	<HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+	<BODY>
+		<EXPORTDATA>
+			<REQUESTDESC>
+				<REPORTNAME>Trial Balance</REPORTNAME>
+				<STATICVARIABLES>
+					<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+					<ISLEDGERWISE>Yes</ISLEDGERWISE>
+				</STATICVARIABLES>
+			</REQUESTDESC>
+		</EXPORTDATA>
+	</BODY>
+</ENVELOPE>
+    `.trim();
+
+    let trialBalance = {};
+    try {
+      const tbRes = await fetch(TALLY_URL, {
+        method: 'POST',
+        body: tbXmlReq,
+        headers: { 'Content-Type': 'text/xml' }
+      });
+      if (tbRes.ok) {
+        const tbXml = await tbRes.text();
+        // Regex to parse DSPACCNAME and DSPACCINFO
+        const accRegex = /<DSPACCNAME>\s*<DSPDISPNAME>([^<]+)<\/DSPDISPNAME>\s*<\/DSPACCNAME>\s*<DSPACCINFO>\s*<DSPCLDRAMT>\s*<DSPCLDRAMTA>([^<]*)/gi;
+        let match;
+        while ((match = accRegex.exec(tbXml)) !== null) {
+          const ledgerName = match[1].trim().replace(/&amp;/g, '&');
+          const drAmtStr = match[2].trim();
+          let balance = 0;
+          if (drAmtStr) {
+            balance = parseFloat(drAmtStr);
+          } else {
+            const subXml = tbXml.substring(match.index, match.index + 1000);
+            const crMatch = subXml.match(/<DSPCLCRAMTA>([^<]*)/i);
+            if (crMatch && crMatch[1].trim()) {
+              balance = -parseFloat(crMatch[1].trim());
+            }
+          }
+          trialBalance[ledgerName] = balance;
+        }
+        
+        if (Object.keys(trialBalance).length === 0) {
+          const segments = tbXml.split("<DSPACCNAME>");
+          for (const segment of segments) {
+            const dispNameMatch = segment.match(/<DSPDISPNAME>([^<]+)<\/DSPDISPNAME>/i);
+            if (dispNameMatch) {
+              const ledgerName = dispNameMatch[1].trim().replace(/&amp;/g, '&');
+              let balance = 0;
+              const drMatch = segment.match(/<DSPCLDRAMTA>([^<]*)/i);
+              const crMatch = segment.match(/<DSPCLCRAMTA>([^<]*)/i);
+              
+              if (drMatch && drMatch[1].trim()) {
+                balance = parseFloat(drMatch[1].trim());
+              } else if (crMatch && crMatch[1].trim()) {
+                balance = -parseFloat(crMatch[1].trim());
+              }
+              trialBalance[ledgerName] = balance;
+            }
+          }
+        }
+      }
+      console.log(`Successfully parsed ${Object.keys(trialBalance).length} trial balance ledger entries.`);
+    } catch (err) {
+      console.error("Error fetching Tally Trial Balance:", err.message);
+    }
     // ----------------------------------------
 
     console.log("Uploading directly using Vercel Blob...");
@@ -199,7 +270,8 @@ async function performIncrementalSync(task) {
         status: "COMPLETED",
         result: { 
           message: "Chunk synced successfully",
-          ledgers: ledgers
+          ledgers: ledgers,
+          trialBalance: trialBalance
         }
       })
     });
