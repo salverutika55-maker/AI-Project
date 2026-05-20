@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { 
   Factory, Briefcase, ArrowRightLeft, Download, Link2, UploadCloud, RefreshCw,
   TrendingDown, BarChart3, WalletCards, GitMerge, BrainCircuit, Activity,
-  FileText, FileSpreadsheet, Zap, LayoutDashboard, Table as TableIcon, Search, AlertCircle, Settings2, Users
+  FileText, FileSpreadsheet, Zap, LayoutDashboard, Table as TableIcon, Search, AlertCircle, Settings2, Users, ShieldAlert
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   LineChart as RechartsLineChart, Line
 } from "recharts";
 import AnalyticsDashboard from "./AnalyticsDashboard";
+import ComplianceDashboard from "./ComplianceDashboard";
 import PNLMappingModal from "./PNLMappingModal";
 import BudgetUploadModal from "./BudgetUploadModal";
 import PNLStructureModal from "./PNLStructureModal";
@@ -34,7 +35,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const isAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(userRole);
 
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"insights" | "pnl" | "analytics" | "diagnostics">("insights");
+  const [activeTab, setActiveTab] = useState<"insights" | "pnl" | "analytics" | "compliance" | "diagnostics">("insights");
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedMonth, setSelectedMonth] = useState("May");
@@ -582,6 +583,9 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           <button onClick={() => setActiveTab("analytics")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "analytics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Users className="w-4 h-4" /> Business Analytics
           </button>
+          <button onClick={() => setActiveTab("compliance")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "compliance" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <ShieldAlert className="w-4 h-4" /> Compliance Audit
+          </button>
           <button onClick={() => setActiveTab("diagnostics")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "diagnostics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Activity className="w-4 h-4" /> Sync Diagnostics
           </button>
@@ -860,6 +864,16 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           {activeTab === "analytics" && (
             <ErrorBoundary title="Business Analytics Error">
               <AnalyticsDashboard 
+                clientId={client.id} 
+                selectedYear={selectedYear} 
+                displayCurrency={displayCurrency} 
+              />
+            </ErrorBoundary>
+          )}
+
+          {activeTab === "compliance" && (
+            <ErrorBoundary title="Compliance Module Error">
+              <ComplianceDashboard 
                 clientId={client.id} 
                 selectedYear={selectedYear} 
                 displayCurrency={displayCurrency} 

@@ -26,6 +26,7 @@ model User {
   memberships      OrganizationMembership[]
   auditLogs        AuditLog[]
   tbUploads        TrialBalanceUpload[]
+  resolvedAlerts   ComplianceAlert[]
   createdAt        DateTime                 @default(now())
 }
 
@@ -104,6 +105,8 @@ model Client {
   pairingCodes         PairingCode[]
   tbUploads            TrialBalanceUpload[]
   tallyVouchers        TallyVoucher[]
+  complianceRules      ComplianceRule[]
+  complianceAlerts     ComplianceAlert[]
   createdAt            DateTime          @default(now())
 }
 
@@ -319,4 +322,43 @@ model TallyVoucher {
   updatedAt   DateTime @updatedAt
 
   @@index([clientId, date])
+}
+
+model ComplianceRule {
+  id             String   @id @default(cuid())
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  category       String   // "TDS", "DEPRECIATION", "PREPAID"
+  ruleCode       String   // e.g. "TDS_RATE_CHECK", "DEP_MONTHLY_CHECK"
+  name           String
+  description    String
+  config         Json     // Configurable parameters (e.g. TDS rate thresholds, FA ledger prefixes)
+  isActive       Boolean  @default(true)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([clientId, ruleCode])
+}
+
+model ComplianceAlert {
+  id             String   @id @default(cuid())
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  category       String   // "TDS", "DEPRECIATION", "PREPAID"
+  severity       String   // "HIGH", "MEDIUM", "LOW"
+  title          String
+  description    String
+  ledgerName     String?  // Affected ledger
+  voucherId      String?  // Reference voucher if applicable
+  impactAmount   Float    @default(0)
+  status         String   @default("PENDING") // PENDING, UNDER_REVIEW, RESOLVED, MUTED
+  commentary     String?  @db.Text
+  resolvedById   String?
+  resolvedBy     User?    @relation(fields: [resolvedById], references: [id])
+  metadata       Json?    // Detailed audit sequence trace
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([clientId, category, status])
 }
