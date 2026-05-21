@@ -27,6 +27,7 @@ model User {
   auditLogs        AuditLog[]
   tbUploads        TrialBalanceUpload[]
   resolvedAlerts   ComplianceAlert[]
+  resolvedScrutinyAlerts ScrutinyAlert[]
   createdAt        DateTime                 @default(now())
 }
 
@@ -107,6 +108,11 @@ model Client {
   tallyVouchers        TallyVoucher[]
   complianceRules      ComplianceRule[]
   complianceAlerts     ComplianceAlert[]
+  scrutinyRules        ScrutinyRule[]
+  scrutinyAlerts       ScrutinyAlert[]
+  normalizedLedgers    NormalizedLedger[]
+  normalizedVouchers   NormalizedVoucher[]
+  reconStates          ReconciliationState[]
   createdAt            DateTime          @default(now())
 }
 
@@ -361,4 +367,108 @@ model ComplianceAlert {
   updatedAt      DateTime @updatedAt
 
   @@index([clientId, category, status])
+}
+
+model NormalizedLedger {
+  id             String                @id @default(cuid())
+  clientId       String
+  client         Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name           String
+  groupName      String                // e.g. "Fixed Assets", "Indirect Expenses", "Duties & Taxes"
+  openingBalance Float                 @default(0.0)
+  closingBalance Float                 @default(0.0)
+  nature         String                // DEBIT, CREDIT
+  isActive       Boolean               @default(true)
+  
+  voucherLines   NormalizedVoucherLine[]
+  alerts         ScrutinyAlert[]
+  
+  @@unique([clientId, name])
+  @@index([clientId, groupName])
+}
+
+model NormalizedVoucher {
+  id             String                @id @default(cuid())
+  clientId       String
+  client         Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  voucherNumber  String
+  date           DateTime
+  type           String                // JOURNAL, PAYMENT, RECEIPT, CONTRA, PURCHASE, SALES
+  narration      String?               @db.Text
+  totalAmount    Float
+  referenceNo    String?
+  isManual       Boolean               @default(false)
+  
+  lines          NormalizedVoucherLine[]
+  alerts         ScrutinyAlert[]
+  
+  createdAt      DateTime              @default(now())
+  
+  @@index([clientId, date])
+  @@index([clientId, type])
+}
+
+model NormalizedVoucherLine {
+  id                  String            @id @default(cuid())
+  voucherId           String
+  voucher             NormalizedVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  ledgerId            String
+  ledger              NormalizedLedger  @relation(fields: [ledgerId], references: [id])
+  amount              Float             // Positive for Debit, Negative for Credit
+  entryType           String            // DEBIT, CREDIT
+  
+  @@index([voucherId])
+  @@index([ledgerId])
+}
+
+model ScrutinyRule {
+  id             String                @id @default(cuid())
+  clientId       String
+  client         Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code           String                // e.g., "ACC_FLOW_BYPASS", "STATUTORY_PF_LIMIT"
+  name           String
+  category       String                // FLOW, CLASSIFICATION, STATUTORY, TIMING, FORENSIC
+  description    String
+  config         Json                  // Rule-specific parameters (e.g. rate tolerances, keywords)
+  severity       String                // HIGH, MEDIUM, LOW
+  isActive       Boolean               @default(true)
+  
+  @@unique([clientId, code])
+}
+
+model ScrutinyAlert {
+  id             String                @id @default(cuid())
+  clientId       String
+  client         Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ruleCode       String
+  category       String
+  severity       String                // HIGH, MEDIUM, LOW
+  title          String
+  description    String                @db.Text
+  ledgerId       String?
+  ledger         NormalizedLedger?     @relation(fields: [ledgerId], references: [id])
+  voucherId      String?
+  voucher        NormalizedVoucher?    @relation(fields: [voucherId], references: [id])
+  impactAmount   Float                 @default(0.0)
+  status         String                @default("PENDING") // PENDING, UNDER_REVIEW, RESOLVED, MUTED
+  commentary     String?               @db.Text
+  resolvedById   String?
+  resolvedBy     User?                 @relation(fields: [resolvedById], references: [id])
+  metadata       Json?                 // Technical details, execution logs, and timelines
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  
+  @@index([clientId, category, status])
+  @@index([clientId, severity])
+}
+
+model ReconciliationState {
+  id             String                @id @default(cuid())
+  clientId       String
+  client         Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type           String                // BANK, GST_2B, GST_1
+  statementPeriod String               // "2026-05"
+  mismatchAmount Float                 @default(0.0)
+  lastRun        DateTime              @default(now())
+  metadata       Json?                 // Reconciliation parameters and match logs
 }
