@@ -18,10 +18,45 @@ export async function POST(req: Request) {
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
+      include: {
+        memberships: {
+          where: { status: "APPROVED" }
+        }
+      }
     });
 
     if (!user) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
+
+    let organizationId = "";
+
+    if (user.memberships && user.memberships.length > 0) {
+      organizationId = user.memberships[0].organizationId;
+    } else {
+      const anyMembership = await prisma.organizationMembership.findFirst({
+        where: { userId: user.id }
+      });
+      if (anyMembership) {
+        organizationId = anyMembership.organizationId;
+      }
+    }
+
+    if (!organizationId) {
+      const orgName = `${user.email.split('@')[0]}'s Organization`;
+      const org = await prisma.organization.create({
+        data: {
+          name: orgName,
+          members: {
+            create: {
+              userId: user.id,
+              role: 'SUPER_ADMIN',
+              status: 'APPROVED'
+            }
+          }
+        }
+      });
+      organizationId = org.id;
     }
 
     const newClient = await prisma.client.create({
@@ -29,7 +64,7 @@ export async function POST(req: Request) {
         name: name.trim(),
         software: software || "TALLY",
         sector: sector || "TRADING",
-        userId: user.id,
+        organizationId: organizationId,
       },
     });
 
@@ -57,10 +92,27 @@ export async function PUT(req: Request) {
     // Verify ownership
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      include: { clients: true }
+      include: {
+        memberships: {
+          where: { status: "APPROVED" }
+        }
+      }
     });
 
-    if (!user || !user.clients.find(c => c.id === clientId)) {
+    if (!user) {
+      return NextResponse.json({ message: "Unauthorized client access" }, { status: 403 });
+    }
+
+    const orgIds = user.memberships.map(m => m.organizationId);
+
+    const client = await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        organizationId: { in: orgIds }
+      }
+    });
+
+    if (!client) {
       return NextResponse.json({ message: "Unauthorized client access" }, { status: 403 });
     }
 
