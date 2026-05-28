@@ -133,3 +133,57 @@ export async function PUT(req: Request) {
     return NextResponse.json({ message: "Internal Error" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const clientId = searchParams.get("clientId");
+
+    if (!clientId) {
+      return NextResponse.json({ message: "Missing clientId" }, { status: 400 });
+    }
+
+    // Verify ownership
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: {
+        memberships: {
+          where: { status: "APPROVED" }
+        }
+      }
+    });
+
+    if (!user) {
+      return NextResponse.json({ message: "Unauthorized client access" }, { status: 403 });
+    }
+
+    const orgIds = user.memberships.map(m => m.organizationId);
+
+    const client = await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        organizationId: { in: orgIds }
+      }
+    });
+
+    if (!client) {
+      return NextResponse.json({ message: "Unauthorized client access" }, { status: 403 });
+    }
+
+    // Perform Cascade Delete
+    await prisma.client.delete({
+      where: { id: clientId }
+    });
+
+    return NextResponse.json({ message: "Client deleted successfully" }, { status: 200 });
+
+  } catch (error) {
+    console.error("Client Deletion Error:", error);
+    return NextResponse.json({ message: "Internal Error" }, { status: 500 });
+  }
+}
