@@ -38,7 +38,7 @@ async function getActiveTallyCompanyName() {
   try {
     const res = await axios.post("http://localhost:9000", xmlPayload, {
       headers: { "Content-Type": "text/xml" },
-      timeout: 2000
+      timeout: 8000
     });
     const match = res.data.match(/<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/i);
     if (match && match[1]) {
@@ -198,10 +198,18 @@ async function startBackgroundSync(config) {
   }
 
   async function performSync() {
-    const activeCompany = await getActiveTallyCompanyName();
+    let activeCompany = await getActiveTallyCompanyName();
+
+    // If the live check timed out but we know the company from a previous successful check,
+    // use the cached name rather than aborting the entire sync.
     if (!activeCompany) {
-      console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
-      return;
+      if (tallyActiveCompanyName) {
+        console.log(`[AGENT] Tally check timed out — using last known company: "${tallyActiveCompanyName}". Retrying sync...`);
+        activeCompany = tallyActiveCompanyName;
+      } else {
+        console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
+        return;
+      }
     }
     
     tallyActiveCompanyName = activeCompany;
