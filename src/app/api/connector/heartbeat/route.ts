@@ -61,11 +61,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 
+    const pendingTask = client ? await prisma.syncTask.findFirst({
+      where: { clientId: client.id, status: "PENDING" }
+    }) : null;
+
     return NextResponse.json({ 
       success: true, 
-      client: client.name,
-      status: client.connectorStatus,
-      authType: clientId ? "SECURE_TOKEN" : "API_KEY"
+      client: client?.name,
+      status: client?.connectorStatus,
+      authType: clientId ? "SECURE_TOKEN" : "API_KEY",
+      pendingSync: !!pendingTask
     });
   } catch (error) {
     console.error("Heartbeat Error:", error);
