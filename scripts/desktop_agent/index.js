@@ -395,7 +395,7 @@ async function startBackgroundSync(config) {
         const res = await axios.post(`${VERCEL_API}/connector/heartbeat`, {
           apiKey: companyConfig.apiKey,
           status: 'ONLINE'
-        }, { timeout: 3000 });
+        }, { timeout: 15000 });
 
         if (res.data && res.data.pendingSync) {
            console.log("\n[AGENT] ⚡ Cloud requested an immediate Force Sync! Starting now...");
