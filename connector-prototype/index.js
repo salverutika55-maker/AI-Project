@@ -175,18 +175,6 @@ async function performIncrementalSync(task) {
 
     console.log("File uploaded to Blob!", blob.url);
 
-    // Trigger Inngest
-    const { Inngest } = require('inngest');
-    const inngest = new Inngest({ id: "ai-project" });
-    await inngest.send({
-      name: 'sync/tally.chunk.uploaded',
-      data: {
-        clientId: task.clientId,
-        blobUrl: blob.url,
-        alterId: alterId + 5
-      }
-    });
-
     // Mark task completed
     await fetch(`${API_BASE_URL}/connector/tasks/complete`, {
       method: 'POST',
@@ -199,7 +187,9 @@ async function performIncrementalSync(task) {
         status: "COMPLETED",
         result: { 
           message: "Chunk synced successfully",
-          ledgers: ledgers
+          ledgers: ledgers,
+          blobUrl: blob.url,
+          alterId: alterId + 5
         }
       })
     });

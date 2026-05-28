@@ -50,6 +50,24 @@ export async function POST(req: Request) {
     if (status === "COMPLETED") {
       const now = new Date();
 
+      // Trigger Inngest queue processing if blobUrl is provided
+      if (result && (result as any).blobUrl) {
+        try {
+          const { inngest } = await import("@/lib/inngest/client");
+          await inngest.send({
+            name: 'sync/tally.chunk.uploaded',
+            data: {
+              clientId,
+              blobUrl: (result as any).blobUrl,
+              alterId: (result as any).alterId || 0,
+            },
+          });
+          console.log(`[TasksComplete] Fired Inngest event for ${clientId}. Blob: ${(result as any).blobUrl}`);
+        } catch (inngestErr) {
+          console.error("Could not trigger Inngest event in tasks/complete:", inngestErr);
+        }
+      }
+
       // Save Chart of Accounts if provided by Tally
       if (result && Array.isArray((result as any).ledgers)) {
         const encryptedLedgers = encrypt(JSON.stringify((result as any).ledgers));
