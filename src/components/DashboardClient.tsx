@@ -439,7 +439,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                             <span className="text-3xl font-black font-mono text-cyan-400 tracking-wider">{syncCode}</span>
                             <span className="text-[10px] text-slate-500 font-bold block mt-2">Expires in 15 minutes</span>
                           </div>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-relaxed">Unzip the file and enter this code inside the browser window opened by your FinAnalyzerSync.exe</p>
+                          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-relaxed">Unzip the folder and double-click <b>Start_Connector.bat</b> to enter this code</p>
                         </div>
                       ) : (
                         <button

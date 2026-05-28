@@ -547,7 +547,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                       });
                       const data = await res.json();
                       if (!res.ok) throw new Error(data.message || "Failed to generate code");
-                      alert(`🔑 Sync Connection Code:\n\n      ${data.code}\n\nUnzip the downloaded file and enter this code inside the browser window opened by your FinAnalyzerSync.exe to link your Tally company.`);
+                      alert(`🔑 Sync Connection Code:\n\n      ${data.code}\n\nUnzip the downloaded folder and double-click Start_Connector.bat to link your Tally company.`);
                     } catch (err: any) {
                       alert("Code Generation Failed: " + err.message);
                     }
