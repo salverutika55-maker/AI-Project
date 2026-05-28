@@ -15,6 +15,7 @@ let syncInterval;
 let heartbeatInterval;
 let guiServer = null;
 let tallyActiveCompanyName = null;
+let isSyncing = false;
 
 async function getActiveTallyCompanyName() {
   const xmlPayload = `
@@ -198,19 +199,26 @@ async function startBackgroundSync(config) {
   }
 
   async function performSync() {
-    let activeCompany = await getActiveTallyCompanyName();
-
-    // If the live check timed out but we know the company from a previous successful check,
-    // use the cached name rather than aborting the entire sync.
-    if (!activeCompany) {
-      if (tallyActiveCompanyName) {
-        console.log(`[AGENT] Tally check timed out — using last known company: "${tallyActiveCompanyName}". Retrying sync...`);
-        activeCompany = tallyActiveCompanyName;
-      } else {
-        console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
-        return;
-      }
+    if (isSyncing) {
+      console.log("[AGENT] Sync already in progress, skipping...");
+      return;
     }
+    
+    isSyncing = true;
+    try {
+      let activeCompany = await getActiveTallyCompanyName();
+
+      // If the live check timed out but we know the company from a previous successful check,
+      // use the cached name rather than aborting the entire sync.
+      if (!activeCompany) {
+        if (tallyActiveCompanyName) {
+          console.log(`[AGENT] Tally check timed out — using last known company: "${tallyActiveCompanyName}". Retrying sync...`);
+          activeCompany = tallyActiveCompanyName;
+        } else {
+          console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
+          return;
+        }
+      }
     
     tallyActiveCompanyName = activeCompany;
     
@@ -360,6 +368,9 @@ async function startBackgroundSync(config) {
             }
         }
     }
+    } finally {
+      isSyncing = false;
+    }
   }
 
   async function sendHeartbeat() {
@@ -379,10 +390,15 @@ async function startBackgroundSync(config) {
       }
       
       if (companyConfig && companyConfig.apiKey) {
-        await axios.post(`${VERCEL_API}/connector/heartbeat`, {
+        const res = await axios.post(`${VERCEL_API}/connector/heartbeat`, {
           apiKey: companyConfig.apiKey,
           status: 'ONLINE'
         }, { timeout: 3000 });
+
+        if (res.data && res.data.pendingSync) {
+           console.log("\n[AGENT] ⚡ Cloud requested an immediate Force Sync! Starting now...");
+           performSync(); // trigger immediately
+        }
       }
     } catch (err) {
       // Fail silently for background heartbeats
