@@ -4,7 +4,7 @@ import { SECTOR_CONFIGS } from "@/lib/sector-configs";
 import { redirect } from "next/navigation";
 import { Sector } from "@prisma/client";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { getUserRoleInOrg } from "@/lib/rbac";
 
 export default async function ClientPNLPage({ params }: { params: Promise<{ id: string }> }) {

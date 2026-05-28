@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { decrypt, encrypt } from "@/lib/encryption";
 
 import { authorizeClientAction } from "@/lib/rbac";

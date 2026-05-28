@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 // Generate a random 6-character alphanumeric code
@@ -30,6 +30,7 @@ export async function POST(req: Request) {
     // Verify ownership or ADMIN role
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
+      include: { memberships: { where: { status: "APPROVED" } } }
     });
 
     if (!user) {
@@ -42,7 +43,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Client not found" }, { status: 404 });
     }
 
-    if (user.role !== "ADMIN" && client.userId !== user.id) {
+    const orgIds = user.memberships.map(m => m.organizationId);
+    const hasAccess = user.role === "ADMIN" || orgIds.includes(client.organizationId);
+
+    if (!hasAccess) {
       return NextResponse.json({ message: "Unauthorized access to client" }, { status: 403 });
     }
 
@@ -91,7 +95,7 @@ export async function PUT(req: Request) {
     }
 
     // Success! Return the API Key
-    const apiKey = handshake.client.apiKey;
+    const apiKey = handshake.client.id;
 
     // Delete the code so it cannot be used again
     await prisma.handshakeCode.delete({ where: { id: handshake.id } });

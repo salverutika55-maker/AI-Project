@@ -64,7 +64,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
     setRecords(initialRecords);
     const newAvailablePeriods = Array.from(new Set(initialRecords.map((r: any) => r.period))).sort();
     if (newAvailablePeriods.length > 0) {
-      const latest = newAvailablePeriods[newAvailablePeriods.length - 1];
+      const latest = newAvailablePeriods[newAvailablePeriods.length - 1] as string;
       const [y, m] = latest.split('-');
       setSelectedYear(y);
       setSelectedMonth(m);
@@ -703,7 +703,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                     <XAxis dataKey="periodLabel" stroke="#ffffff50" interval={0} tick={{fill: '#ffffff50', fontSize: 10}} />
                     <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} tickFormatter={(v) => formatMoney(v, true)} />
-                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => formatMoney(v)} />
+                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: any) => formatMoney(Number(v))} />
                     <Area type="monotone" name="Sales" dataKey="revenue" stroke="#10B981" fillOpacity={1} fill="url(#colorRev)" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -722,7 +722,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                     <XAxis dataKey="periodLabel" stroke="#ffffff50" interval={0} tick={{fill: '#ffffff50', fontSize: 10}} />
                     <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} tickFormatter={(v) => formatMoney(v, true)} />
-                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => formatMoney(v)} />
+                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: any) => formatMoney(Number(v))} />
                     <Area type="monotone" name="COGS" dataKey="cogs" stroke="#F59E0B" fillOpacity={1} fill="url(#colorCogs)" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -738,7 +738,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                     <XAxis dataKey="periodLabel" stroke="#ffffff50" interval={0} tick={{fill: '#ffffff50', fontSize: 10}} />
                     <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
-                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => `${v} days`} />
+                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: any) => `${v} days`} />
                     <Line type="monotone" name="DSO" dataKey="dsoTrend" stroke="#06B6D4" strokeWidth={3} dot={{r: 3, fill: '#06B6D4'}} />
                   </RechartsLineChart>
                 </ResponsiveContainer>
@@ -754,7 +754,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                     <XAxis dataKey="periodLabel" stroke="#ffffff50" interval={0} tick={{fill: '#ffffff50', fontSize: 10}} />
                     <YAxis stroke="#ffffff50" tick={{fill: '#ffffff50', fontSize: 10}} />
-                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: number) => `${v} days`} />
+                    <RechartsTooltip contentStyle={{backgroundColor: '#0A0A0C', borderColor: '#ffffff20', borderRadius: '8px'}} formatter={(v: any) => `${v} days`} />
                     <Line type="monotone" name="DPO" dataKey="dpoTrend" stroke="#8B5CF6" strokeWidth={3} dot={{r: 3, fill: '#8B5CF6'}} />
                   </RechartsLineChart>
                 </ResponsiveContainer>

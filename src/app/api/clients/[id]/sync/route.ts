@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OAUTH_CONFIGS } from "@/lib/oauth-configs";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { authorizeClientAction } from "@/lib/rbac";
 import { encrypt, decrypt } from "@/lib/encryption";
 
@@ -127,8 +127,9 @@ export async function POST(
     });
 
     // 5. Save to PNLValue in parallel for speed
-    await Promise.all(Object.entries(results).map(([head, amount]) => 
-      prisma.pNLValue.upsert({
+    await Promise.all(Object.entries(results).map(([head, amount]) => {
+      const encryptedAmount = encrypt(amount.toString());
+      return prisma.pNLValue.upsert({
         where: {
           clientId_headName_month_year: {
             clientId: id,
@@ -137,16 +138,16 @@ export async function POST(
             year: year
           }
         },
-        update: { amount },
+        update: { amount: encryptedAmount },
         create: {
           clientId: id,
           headName: head,
           month: monthName,
           year: year,
-          amount
+          amount: encryptedAmount
         }
-      })
-    ));
+      });
+    }));
 
     return NextResponse.json({ 
       success: true, 

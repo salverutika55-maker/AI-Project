@@ -1,5 +1,4 @@
 import * as XLSX from 'xlsx';
-import { stringSimilarity } from 'string-similarity';
 
 export interface RawLedger {
   ledgerName: string;

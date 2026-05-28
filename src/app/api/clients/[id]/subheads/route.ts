@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { authorizeClientAction } from "@/lib/rbac";
 
 export async function GET(
@@ -77,6 +77,10 @@ export async function DELETE(
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     await authorizeClientAction(user.id, clientId, "ACCOUNTANT");
+
+    if (!subheadId) {
+      return NextResponse.json({ error: "Missing subhead id" }, { status: 400 });
+    }
 
     // 1. Fetch the subhead to know its name
     const subhead = await prisma.customSubHead.findUnique({

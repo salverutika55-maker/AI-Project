@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { encrypt } from "@/lib/encryption";
 import { logSecurityEvent } from "@/lib/logger";
 
@@ -19,14 +19,20 @@ export async function POST(
   }
 
   try {
-    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    const user = await prisma.user.findUnique({ 
+      where: { email: session.user.email },
+      include: { memberships: { where: { status: "APPROVED" } } }
+    });
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     // 2. Authorization & Ownership Check
     const client = await prisma.client.findUnique({ where: { id } });
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
-    if (user.role !== "ADMIN" && client.userId !== user.id) {
+    const orgIds = user.memberships.map(m => m.organizationId);
+    const hasAccess = user.role === "ADMIN" || orgIds.includes(client.organizationId);
+
+    if (!hasAccess) {
       await logSecurityEvent(user.id, "UNAUTHORIZED_SAVE_ATTEMPT", id, `Attempted to save to client ${id}`, req);
       return NextResponse.json({ error: "Access Denied" }, { status: 403 });
     }

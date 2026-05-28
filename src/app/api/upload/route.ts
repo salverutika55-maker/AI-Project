@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
@@ -12,6 +12,7 @@ export async function POST(req: Request) {
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
+      include: { memberships: { where: { status: "APPROVED" } } }
     });
 
     if (!user) {
@@ -24,8 +25,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid CSV payload or missing Client ID" }, { status: 400 });
     }
 
+    const orgIds = user.memberships.map(m => m.organizationId);
+
     const client = await prisma.client.findFirst({
-      where: { id: clientId, userId: user.id },
+      where: { 
+        id: clientId, 
+        organizationId: { in: orgIds } 
+      },
     });
 
     if (!client) {

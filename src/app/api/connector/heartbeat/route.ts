@@ -44,8 +44,14 @@ export async function POST(req: Request) {
       });
     } else if (apiKey) {
       // Legacy API Key Heartbeat
+      const existingClient = await prisma.client.findFirst({
+        where: { id: apiKey }
+      });
+      if (!existingClient) {
+        return NextResponse.json({ error: "Client not found for this API key" }, { status: 404 });
+      }
       client = await prisma.client.update({
-        where: { apiKey },
+        where: { id: existingClient.id },
         data: {
           connectorStatus: status || "ONLINE",
           lastHeartbeat: new Date(),

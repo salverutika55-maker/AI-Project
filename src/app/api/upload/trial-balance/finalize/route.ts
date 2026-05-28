@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { encrypt } from "@/lib/encryption";
 
 /**
  * GET: Fetch raw records for a specific upload to review/map.
@@ -70,11 +71,11 @@ export async function POST(req: Request) {
     await prisma.$transaction(async (tx) => {
       // Save new mappings (upsert logic simplified here)
       for (const m of newMappingsToCreate) {
-        const existing = await tx.pnlMapping.findFirst({
+        const existing = await tx.pNLMapping.findFirst({
           where: { clientId: m.clientId, softwareLedgerName: m.softwareLedgerName }
         });
         if (!existing) {
-          await tx.pnlMapping.create({ data: m });
+          await tx.pNLMapping.create({ data: m });
         }
       }
 
@@ -88,7 +89,8 @@ export async function POST(req: Request) {
 
       // Upsert PNL Values
       for (const [head, amount] of Object.entries(aggregated)) {
-        await tx.pnlValue.upsert({
+        const encryptedAmount = encrypt(amount.toString());
+        await tx.pNLValue.upsert({
           where: {
             clientId_headName_month_year: {
               clientId: upload.clientId,
@@ -97,13 +99,13 @@ export async function POST(req: Request) {
               year: parseInt(yearStr)
             }
           },
-          update: { amount },
+          update: { amount: encryptedAmount },
           create: {
             clientId: upload.clientId,
             headName: head,
             month: monthName,
             year: parseInt(yearStr),
-            amount
+            amount: encryptedAmount
           }
         });
       }

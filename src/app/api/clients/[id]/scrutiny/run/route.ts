@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { authorizeClientAction } from "@/lib/rbac";
 import { normalizeClientAccountingData } from "@/lib/services/ingestion";
 import { runAllScrutinyRules } from "@/lib/services/scrutiny-rules";

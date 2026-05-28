@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
@@ -32,7 +33,7 @@ export default async function Home() {
         }
       }
     });
-    isAnyAdmin = (user?.memberships && user.memberships.length > 0);
+    isAnyAdmin = !!(user?.memberships && user.memberships.length > 0);
   }
 
   return (

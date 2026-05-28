@@ -13,7 +13,7 @@ export async function POST(req: Request) {
 
     // 2. Find the client by API Key
     const client = await prisma.client.findUnique({
-      where: { apiKey }
+      where: { id: apiKey }
     });
 
     if (!client) {
