@@ -1,0 +1,29 @@
+{
+  "ENVELOPE": {
+    "DSPACCNAME": [
+      {
+        "DSPDISPNAME": "Sales Accounts"
+      },
+      {
+        "DSPDISPNAME": "Indirect Incomes"
+      },
+      {
+        "DSPDISPNAME": "Indirect Expenses"
+      }
+    ],
+    "PLAMT": [
+      {
+        "PLSUBAMT": "",
+        "BSMAINAMT": "170770.00"
+      },
+      {
+        "PLSUBAMT": "",
+        "BSMAINAMT": ""
+      },
+      {
+        "PLSUBAMT": "",
+        "BSMAINAMT": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,206 @@
+{
+  "ENVELOPE": {
+    "DSPACCNAME": [
+      {
+        "DSPDISPNAME": "Capital Account"
+      },
+      {
+        "DSPDISPNAME": "Drawing"
+      },
+      {
+        "DSPDISPNAME": "Loans (Liability)"
+      },
+      {
+        "DSPDISPNAME": "Rajesh Shinde"
+      },
+      {
+        "DSPDISPNAME": "Supriya Shinde"
+      },
+      {
+        "DSPDISPNAME": "Current Liabilities"
+      },
+      {
+        "DSPDISPNAME": "Duties & Taxes"
+      },
+      {
+        "DSPDISPNAME": "Current Assets"
+      },
+      {
+        "DSPDISPNAME": "Sundry Debtors"
+      },
+      {
+        "DSPDISPNAME": "Cash-in-hand"
+      },
+      {
+        "DSPDISPNAME": "Bank Accounts"
+      },
+      {
+        "DSPDISPNAME": "Suspense A/c"
+      },
+      {
+        "DSPDISPNAME": "Suspense Account"
+      },
+      {
+        "DSPDISPNAME": "Sales Accounts"
+      },
+      {
+        "DSPDISPNAME": "Accounting Chargres"
+      },
+      {
+        "DSPDISPNAME": "GST Registrarion"
+      },
+      {
+        "DSPDISPNAME": "Property TDS"
+      },
+      {
+        "DSPDISPNAME": "Profit & Loss A/c"
+      }
+    ],
+    "DSPACCINFO": [
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-241890.00"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": ""
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-241890.00"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": ""
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-3884287.00"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": ""
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-303250.00"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": ""
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-3581037.00"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": ""
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-85712.90"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": "153637.00"
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-85712.90"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": "153637.00"
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-470215.06"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": "19790.00"
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-404115.00"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": "19790.00"
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-18000.00"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": ""
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-48100.06"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": ""
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-25035.00"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": ""
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": "-25035.00"
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": ""
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": ""
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": "51000.00"
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": ""
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": "44500.00"
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": ""
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": "2000.00"
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": ""
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": "4500.00"
+        }
+      },
+      {
+        "DSPCLDRAMT": {
+          "DSPCLDRAMTA": ""
+        },
+        "DSPCLCRAMT": {
+          "DSPCLCRAMTA": "4449705.96"
+        }
+      }
+    ]
+  }
+}
