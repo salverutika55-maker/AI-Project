@@ -189,7 +189,15 @@ async function startBackgroundSync(config) {
     tallyActiveCompanyName = activeCompany;
     
     const currentConfig = loadConfig() || { companies: {} };
-    const companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
+    let companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
+    
+    // Fallback: If not paired by active Tally company name, but exactly one company is paired, use it!
+    if (!companyConfig && currentConfig.companies) {
+      const keys = Object.keys(currentConfig.companies);
+      if (keys.length === 1) {
+        companyConfig = currentConfig.companies[keys[0]];
+      }
+    }
     
     if (!companyConfig || !companyConfig.apiKey) {
       console.log(`[AGENT] Executing Sync: Active Tally company "${activeCompany}" is not paired yet.`);
@@ -334,7 +342,15 @@ async function startBackgroundSync(config) {
       if (!activeCompany) return;
       
       const currentConfig = loadConfig();
-      const companyConfig = currentConfig && currentConfig.companies && currentConfig.companies[activeCompany];
+      let companyConfig = currentConfig && currentConfig.companies && currentConfig.companies[activeCompany];
+      
+      // Fallback: If not paired by active Tally company name, but exactly one company is paired, use it!
+      if (!companyConfig && currentConfig && currentConfig.companies) {
+        const keys = Object.keys(currentConfig.companies);
+        if (keys.length === 1) {
+          companyConfig = currentConfig.companies[keys[0]];
+        }
+      }
       
       if (companyConfig && companyConfig.apiKey) {
         await axios.post(`${VERCEL_API}/connector/heartbeat`, {
@@ -435,26 +451,48 @@ async function init() {
   const activeCompany = await getActiveTallyCompanyName();
   tallyActiveCompanyName = activeCompany;
 
-  if (!activeCompany) {
-    console.log("[AGENT] ⚠️  Tally Prime is offline or unreachable.");
-    console.log("[AGENT] Please ensure Tally Prime is running on port 9000 and a company is open.");
-    console.log("[AGENT] Retrying connection in 5 seconds...\n");
-    setTimeout(init, 5000);
-    return;
+  const currentConfig = loadConfig() || { companies: {} };
+
+  if (activeCompany) {
+    console.log(`[AGENT] Connected to Tally Prime. Active Tally Company: "${activeCompany}"`);
+    
+    let companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
+    
+    // Fallback: If not paired by active Tally company name, but exactly one company is paired, use it!
+    if (!companyConfig && currentConfig.companies) {
+      const keys = Object.keys(currentConfig.companies);
+      if (keys.length === 1) {
+        companyConfig = currentConfig.companies[keys[0]];
+      }
+    }
+
+    if (companyConfig && companyConfig.apiKey) {
+      console.log(`[AGENT] Found paired credentials for "${activeCompany}" (Client: "${companyConfig.clientName}").`);
+      console.log(`[AGENT] Initializing background sync engine...\n`);
+      startBackgroundSync(companyConfig);
+      return;
+    } else {
+      console.log(`[AGENT] Active Tally company "${activeCompany}" is not paired yet.`);
+      console.log(`[AGENT] Launching setup interface. Please pair it in your browser...\n`);
+      startLocalGUI();
+      return;
+    }
   }
 
-  console.log(`[AGENT] Connected to Tally Prime. Active Tally Company: "${activeCompany}"`);
-
-  const currentConfig = loadConfig() || { companies: {} };
-  const companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
-
-  if (companyConfig && companyConfig.apiKey) {
-    console.log(`[AGENT] Found paired credentials for "${activeCompany}" (Client: "${companyConfig.clientName}").`);
-    console.log(`[AGENT] Initializing background sync engine...\n`);
-    startBackgroundSync(companyConfig);
+  // Tally is offline/unreachable
+  console.log("[AGENT] ⚠️  Tally Prime is offline or unreachable.");
+  console.log("[AGENT] Please ensure Tally Prime is running on port 9000 and a company is open.");
+  
+  // Check if we have any paired companies in registry
+  const keys = currentConfig.companies ? Object.keys(currentConfig.companies) : [];
+  if (keys.length > 0) {
+    console.log(`[AGENT] Registry has ${keys.length} paired company configuration(s).`);
+    console.log("[AGENT] Starting background sync engine in standby/retry mode...\n");
+    // Start background sync using the first configuration as standby
+    startBackgroundSync(currentConfig.companies[keys[0]]);
   } else {
-    console.log(`[AGENT] Active Tally company "${activeCompany}" is not paired yet.`);
-    console.log(`[AGENT] Launching setup interface. Please pair it in your browser...\n`);
+    console.log("[AGENT] No paired companies found in local registry.");
+    console.log("[AGENT] Launching setup interface. Please pair it in your browser...\n");
     startLocalGUI();
   }
 }
