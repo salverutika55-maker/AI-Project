@@ -12,23 +12,89 @@ const VERCEL_API = 'https://ai-project-salverutika55-makers-projects.vercel.app/
 const configDir = path.join(os.homedir(), 'AppData', 'Roaming', 'FinAnalyzer');
 const configPath = path.join(configDir, 'config.json');
 let syncInterval;
+let guiServer = null;
+let tallyActiveCompanyName = null;
+
+async function getActiveTallyCompanyName() {
+  const xmlPayload = `
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Export Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>List of Accounts</REPORTNAME>
+        <STATICVARIABLES>
+          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+    </EXPORTDATA>
+  </BODY>
+</ENVELOPE>
+  `.trim();
+
+  try {
+    const res = await axios.post("http://localhost:9000", xmlPayload, {
+      headers: { "Content-Type": "text/xml" },
+      timeout: 2000
+    });
+    const match = res.data.match(/<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/i);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  } catch (err) {
+    // Tally not running or unreachable
+  }
+  return null;
+}
 
 function loadConfig() {
   if (fs.existsSync(configPath)) {
     try {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (parsed && parsed.apiKey && parsed.clientName) {
+        return {
+          companies: {
+            [parsed.clientName]: {
+              apiKey: parsed.apiKey,
+              clientName: parsed.clientName,
+              software: parsed.software || 'tally'
+            }
+          }
+        };
+      }
+      return parsed || { companies: {} };
     } catch (e) {
-      return null;
+      return { companies: {} };
     }
   }
-  return null;
+  return { companies: {} };
 }
 
 function saveConfig(config) {
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
   }
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  
+  let current = loadConfig() || { companies: {} };
+  if (!current.companies) {
+    current.companies = {};
+  }
+  
+  const entry = {
+    apiKey: config.apiKey,
+    clientName: config.clientName,
+    software: config.software
+  };
+  
+  current.companies[config.clientName] = entry;
+  
+  if (tallyActiveCompanyName) {
+    current.companies[tallyActiveCompanyName] = entry;
+  }
+  
+  fs.writeFileSync(configPath, JSON.stringify(current, null, 2));
 }
 
 // ==========================================
@@ -113,7 +179,25 @@ async function startBackgroundSync(config) {
   }
 
   async function performSync() {
-    console.log(`[AGENT] Executing Sync at ${new Date().toISOString()}`);
+    const activeCompany = await getActiveTallyCompanyName();
+    if (!activeCompany) {
+      console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
+      return;
+    }
+    
+    tallyActiveCompanyName = activeCompany;
+    
+    const currentConfig = loadConfig() || { companies: {} };
+    const companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
+    
+    if (!companyConfig || !companyConfig.apiKey) {
+      console.log(`[AGENT] Executing Sync: Active Tally company "${activeCompany}" is not paired yet.`);
+      console.log(`[AGENT] Launching setup interface. Please enter the handshake code in your browser.`);
+      startLocalGUI();
+      return;
+    }
+    
+    console.log(`[AGENT] Executing Sync for client: "${companyConfig.clientName}" (Active Tally: "${activeCompany}")`);
     
     // Calculate last 24 months
     const periodsToSync = [];
@@ -210,7 +294,7 @@ async function startBackgroundSync(config) {
                 {
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${config.apiKey}`
+                        'Authorization': `Bearer ${companyConfig.apiKey}`
                     }
                 }
             );
@@ -219,17 +303,17 @@ async function startBackgroundSync(config) {
             console.error(`[AGENT] Error pushing to Vercel: ${err.message}`);
             if (err.response?.status === 401) {
                 console.log(`\n[AGENT] ⚠️  UNAUTHORIZED ACCESS (401)`);
-                console.log(`[AGENT] The local sync credentials for "${config.clientName}" are invalid or belong to a different organization.`);
-                console.log(`[AGENT] Resetting configuration and launching pairing wizard...\n`);
+                console.log(`[AGENT] The local sync credentials for "${companyConfig.clientName}" are invalid or belong to a different organization.`);
+                console.log(`[AGENT] Removing paired credentials for "${activeCompany}" and launching pairing wizard...\n`);
                 try {
-                    if (fs.existsSync(configPath)) {
-                        fs.unlinkSync(configPath);
+                    let current = loadConfig();
+                    if (current && current.companies) {
+                        delete current.companies[activeCompany];
+                        delete current.companies[companyConfig.clientName];
+                        fs.writeFileSync(configPath, JSON.stringify(current, null, 2));
                     }
                 } catch (e) {
-                    console.error("[AGENT] Error deleting config file:", e.message);
-                }
-                if (syncInterval) {
-                    clearInterval(syncInterval);
+                    console.error("[AGENT] Error updating config file:", e.message);
                 }
                 startLocalGUI();
             }
@@ -247,6 +331,13 @@ async function startBackgroundSync(config) {
 // LOCAL GUI SERVER
 // ==========================================
 function startLocalGUI() {
+  if (guiServer) {
+    // Already running, just reopen user's browser
+    const { exec } = require('child_process');
+    exec(`start http://localhost:${PORT}`);
+    return;
+  }
+
   const app = express();
   app.use(express.json());
 
@@ -273,11 +364,18 @@ function startLocalGUI() {
 
       res.json({ success: true, clientName });
 
-      // After successful connection, start background sync and close server
+      // After successful connection, start background sync if not already running
       setTimeout(() => {
-        console.log('[AGENT] Connection successful. Shutting down GUI server and starting background daemon.');
+        console.log('[AGENT] Connection successful. Shutting down GUI server...');
         server.close();
-        startBackgroundSync(config);
+        guiServer = null;
+        
+        if (!syncInterval) {
+          console.log('[AGENT] Starting background sync daemon...');
+          startBackgroundSync(config);
+        } else {
+          console.log('[AGENT] Sync daemon already running. It will automatically pick up the new pairing.');
+        }
       }, 2000);
 
     } catch (err) {
@@ -292,17 +390,43 @@ function startLocalGUI() {
     const { exec } = require('child_process');
     exec(`start http://localhost:${PORT}`);
   });
+  
+  guiServer = server;
 }
 
 // ==========================================
 // INIT
 // ==========================================
-const currentConfig = loadConfig();
+async function init() {
+  console.log("\n=======================================================");
+  console.log("Starting Tally Multi-Company Sync Connector (Live Engine)");
+  console.log("=======================================================\n");
 
-if (currentConfig && currentConfig.apiKey) {
-  // If we already have an API key, don't show the GUI, just start syncing silently.
-  startBackgroundSync(currentConfig);
-} else {
-  // If no config exists, start the setup GUI.
-  startLocalGUI();
+  const activeCompany = await getActiveTallyCompanyName();
+  tallyActiveCompanyName = activeCompany;
+
+  if (!activeCompany) {
+    console.log("[AGENT] ⚠️  Tally Prime is offline or unreachable.");
+    console.log("[AGENT] Please ensure Tally Prime is running on port 9000 and a company is open.");
+    console.log("[AGENT] Retrying connection in 5 seconds...\n");
+    setTimeout(init, 5000);
+    return;
+  }
+
+  console.log(`[AGENT] Connected to Tally Prime. Active Tally Company: "${activeCompany}"`);
+
+  const currentConfig = loadConfig() || { companies: {} };
+  const companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
+
+  if (companyConfig && companyConfig.apiKey) {
+    console.log(`[AGENT] Found paired credentials for "${activeCompany}" (Client: "${companyConfig.clientName}").`);
+    console.log(`[AGENT] Initializing background sync engine...\n`);
+    startBackgroundSync(companyConfig);
+  } else {
+    console.log(`[AGENT] Active Tally company "${activeCompany}" is not paired yet.`);
+    console.log(`[AGENT] Launching setup interface. Please pair it in your browser...\n`);
+    startLocalGUI();
+  }
 }
+
+init().catch(console.error);
