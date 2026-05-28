@@ -87,6 +87,21 @@ export async function POST(req: Request) {
       processedCount++;
     }
 
+    // 5. Resolve any pending UI sync tasks
+    await prisma.syncTask.updateMany({
+      where: {
+        clientId: client.id,
+        status: { in: ["PENDING", "PROCESSING"] }
+      },
+      data: {
+        status: "COMPLETED",
+        result: {
+          message: "Data successfully synced from desktop agent",
+          recordsProcessed: processedCount
+        }
+      }
+    });
+
     return NextResponse.json({ 
       message: "Data successfully ingested via API",
       client: client.name,
