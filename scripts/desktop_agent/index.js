@@ -163,13 +163,9 @@ async function startBackgroundSync(config) {
     return total;
   }
 
-  /**
-   * Extract period movement amounts for P&L items (Revenue, COGS, Expenses).
-   * Falls back to closing balance if movement fields are not present.
-   */
-  function extractTrialBalanceMovement(parsedData, keywords) {
-    let total = 0;
-    if (!parsedData || !parsedData.ENVELOPE) return 0;
+  function extractAllLedgers(parsedData) {
+    let ledgers = {};
+    if (!parsedData || !parsedData.ENVELOPE) return ledgers;
     const names = parsedData.ENVELOPE.DSPACCNAME || [];
     const infos = parsedData.ENVELOPE.DSPACCINFO || [];
     const nameArr = Array.isArray(names) ? names : [names];
@@ -177,25 +173,26 @@ async function startBackgroundSync(config) {
 
     nameArr.forEach((nameObj, idx) => {
       if (!nameObj || !nameObj.DSPDISPNAME) return;
-      const name = String(nameObj.DSPDISPNAME).toLowerCase();
-      const match = keywords.some(kw => name.includes(kw.toLowerCase()));
-      if (match) {
-        const info = infoArr[idx];
-        if (info) {
-          // Try movement/period fields first
-          const totDrAmt = parseTallyAmount(info?.DSPTOTDRAMT?.DSPTOTDRAMTA);
-          const totCrAmt = parseTallyAmount(info?.DSPTOTCRAMT?.DSPTOTCRAMTA);
-          // Fallback to closing balance (what Tally most commonly returns)
-          const clDrAmt = parseTallyAmount(info?.DSPCLDRAMT?.DSPCLDRAMTA);
-          const clCrAmt = parseTallyAmount(info?.DSPCLCRAMT?.DSPCLCRAMTA);
-          // Use movement if found, else closing balance
-          const periodAmt = totDrAmt + totCrAmt;
-          const closingAmt = clDrAmt + clCrAmt;
-          total += periodAmt > 0 ? periodAmt : closingAmt;
+      const name = String(nameObj.DSPDISPNAME);
+      const info = infoArr[idx];
+      if (info) {
+        // Try movement/period fields first
+        const totDrAmt = parseTallyAmount(info?.DSPTOTDRAMT?.DSPTOTDRAMTA);
+        const totCrAmt = parseTallyAmount(info?.DSPTOTCRAMT?.DSPTOTCRAMTA);
+        // Fallback to closing balance
+        const clDrAmt = parseTallyAmount(info?.DSPCLDRAMT?.DSPCLDRAMTA);
+        const clCrAmt = parseTallyAmount(info?.DSPCLCRAMT?.DSPCLCRAMTA);
+        
+        const periodAmt = totDrAmt + totCrAmt;
+        const closingAmt = clDrAmt + clCrAmt;
+        const amt = periodAmt > 0 ? periodAmt : closingAmt;
+        
+        if (amt !== 0) {
+          ledgers[name] = amt;
         }
       }
     });
-    return total;
+    return ledgers;
   }
 
   async function performSync() {
@@ -289,9 +286,20 @@ async function startBackgroundSync(config) {
 
             const parsedData = await parser.parseStringPromise(tallyResponse.data);
 
-            const rawRevenue = extractTrialBalanceMovement(parsedData, ["Sales Accounts", "Direct Incomes", "Revenue"]);
-            const rawCOGS = extractTrialBalanceMovement(parsedData, ["Purchase Accounts", "Direct Expenses", "Cost of Goods", "Opening Stock"]);
-            const rawOpEx = extractTrialBalanceMovement(parsedData, ["Indirect Expenses", "Operating Expenses"]);
+            const rawLedgers = extractAllLedgers(parsedData);
+            
+            // Re-implement the original keyword extraction using the rawLedgers
+            let rawRevenue = 0, rawCOGS = 0, rawOpEx = 0;
+            for (const [name, amt] of Object.entries(rawLedgers)) {
+                const lowerName = name.toLowerCase();
+                if (["sales accounts", "direct incomes", "revenue"].some(kw => lowerName.includes(kw))) {
+                    rawRevenue += amt;
+                } else if (["purchase accounts", "direct expenses", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) {
+                    rawCOGS += amt;
+                } else if (["indirect expenses", "operating expenses"].some(kw => lowerName.includes(kw))) {
+                    rawOpEx += amt;
+                }
+            }
             const rawCash = extractTrialBalance(parsedData, ["Cash-in-hand", "Bank Accounts"]);
             const rawCurrentAssets = extractTrialBalance(parsedData, ["Current Assets"]);
             const rawCurrentLiab = extractTrialBalance(parsedData, ["Current Liabilities"]);
@@ -321,7 +329,8 @@ async function startBackgroundSync(config) {
                 burnRate: finalOpEx * 1.2,
                 accountsReceivable: rawAR,
                 accountsPayable: rawAP,
-                inventory: rawInventory
+                inventory: rawInventory,
+                ledgers: rawLedgers
             });
 
             console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue}`);
