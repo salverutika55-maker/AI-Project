@@ -536,6 +536,27 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                   {syncProgress}
                 </span>
               )}
+              {client.software === 'TALLY' && client.connectorStatus === 'OFFLINE' && (
+                <button 
+                  onClick={async () => {
+                    try {
+                      const res = await fetch("/api/handshake", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ clientId: client.id })
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.message || "Failed to generate code");
+                      alert(`🔑 Sync Connection Code:\n\n      ${data.code}\n\nEnter this code inside the browser window opened by your FinAnalyzerSync.exe to link your Tally company.`);
+                    } catch (err: any) {
+                      alert("Code Generation Failed: " + err.message);
+                    }
+                  }}
+                  className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold uppercase tracking-widest mt-1.5 underline cursor-pointer"
+                >
+                  Generate Sync Code
+                </button>
+              )}
               {client.software !== 'TALLY' && (
                 <button 
                   onClick={() => { window.location.href = `/api/oauth/${client.software.toLowerCase()}?clientId=${client.id}`; }}
