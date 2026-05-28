@@ -12,6 +12,7 @@ const VERCEL_API = 'https://ai-project-salverutika55-makers-projects.vercel.app/
 const configDir = path.join(os.homedir(), 'AppData', 'Roaming', 'FinAnalyzer');
 const configPath = path.join(configDir, 'config.json');
 let syncInterval;
+let heartbeatInterval;
 let guiServer = null;
 let tallyActiveCompanyName = null;
 
@@ -315,13 +316,42 @@ async function startBackgroundSync(config) {
                 } catch (e) {
                     console.error("[AGENT] Error updating config file:", e.message);
                 }
+                if (syncInterval) {
+                    clearInterval(syncInterval);
+                }
+                if (heartbeatInterval) {
+                    clearInterval(heartbeatInterval);
+                }
                 startLocalGUI();
             }
         }
     }
   }
 
-  // Run immediately, then every 12 hours
+  async function sendHeartbeat() {
+    try {
+      const activeCompany = await getActiveTallyCompanyName();
+      if (!activeCompany) return;
+      
+      const currentConfig = loadConfig();
+      const companyConfig = currentConfig && currentConfig.companies && currentConfig.companies[activeCompany];
+      
+      if (companyConfig && companyConfig.apiKey) {
+        await axios.post(`${VERCEL_API}/connector/heartbeat`, {
+          apiKey: companyConfig.apiKey,
+          status: 'ONLINE'
+        }, { timeout: 3000 });
+      }
+    } catch (err) {
+      // Fail silently for background heartbeats
+    }
+  }
+
+  // Run heartbeat immediately, then every 15 seconds
+  sendHeartbeat();
+  heartbeatInterval = setInterval(sendHeartbeat, 15000);
+
+  // Run sync immediately, then every 12 hours
   await performSync();
   syncInterval = setInterval(performSync, 1000 * 60 * 60 * 12);
 }
