@@ -166,7 +166,7 @@ async function performIncrementalSync(task) {
 
     console.log("Uploading directly using Vercel Blob...");
     const { put } = require('@vercel/blob');
-    require('dotenv').config();
+    require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
     const blob = await put(`tally_sync_${Date.now()}.xml`, xmlString, {
       access: 'private',
