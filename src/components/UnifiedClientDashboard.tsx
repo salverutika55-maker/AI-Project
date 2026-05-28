@@ -507,8 +507,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                 onClick={() => {
                   if (client.software === 'TALLY' && client.connectorStatus === 'OFFLINE') {
                     const link = document.createElement('a');
-                    link.href = '/downloads/FinAnalyzerSync.exe';
-                    link.download = 'FinAnalyzerSync.exe';
+                    link.href = '/downloads/FinAnalyzerSync.zip';
+                    link.download = 'FinAnalyzerSync.zip';
                     link.click();
                   } else {
                     handleSync();
@@ -547,7 +547,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                       });
                       const data = await res.json();
                       if (!res.ok) throw new Error(data.message || "Failed to generate code");
-                      alert(`🔑 Sync Connection Code:\n\n      ${data.code}\n\nEnter this code inside the browser window opened by your FinAnalyzerSync.exe to link your Tally company.`);
+                      alert(`🔑 Sync Connection Code:\n\n      ${data.code}\n\nUnzip the downloaded file and enter this code inside the browser window opened by your FinAnalyzerSync.exe to link your Tally company.`);
                     } catch (err: any) {
                       alert("Code Generation Failed: " + err.message);
                     }
