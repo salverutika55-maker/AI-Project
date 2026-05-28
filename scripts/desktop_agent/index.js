@@ -360,9 +360,11 @@ async function startBackgroundSync(config) {
                 }
                 if (syncInterval) {
                     clearInterval(syncInterval);
+                    syncInterval = null;
                 }
                 if (heartbeatInterval) {
                     clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
                 }
                 startLocalGUI();
             }
@@ -458,12 +460,17 @@ function startLocalGUI() {
         server.close();
         guiServer = null;
         
-        if (!syncInterval) {
-          console.log('[AGENT] Starting background sync daemon...');
-          startBackgroundSync(config);
-        } else {
-          console.log('[AGENT] Sync daemon already running. It will automatically pick up the new pairing.');
+        if (syncInterval) {
+          clearInterval(syncInterval);
+          syncInterval = null;
         }
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+        
+        console.log('[AGENT] Restarting background sync daemon with new credentials...');
+        startBackgroundSync(config);
       }, 2000);
 
     } catch (err) {
