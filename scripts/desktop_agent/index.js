@@ -11,6 +11,7 @@ const VERCEL_API = 'https://ai-project-salverutika55-makers-projects.vercel.app/
 // Config path: %APPDATA%/FinAnalyzer/config.json
 const configDir = path.join(os.homedir(), 'AppData', 'Roaming', 'FinAnalyzer');
 const configPath = path.join(configDir, 'config.json');
+let syncInterval;
 
 function loadConfig() {
   if (fs.existsSync(configPath)) {
@@ -216,13 +217,29 @@ async function startBackgroundSync(config) {
             console.log(`[AGENT] Pushed ${allFinancialPayloads.length} records to Vercel.`);
         } catch (err) {
             console.error(`[AGENT] Error pushing to Vercel: ${err.message}`);
+            if (err.response?.status === 401) {
+                console.log(`\n[AGENT] ⚠️  UNAUTHORIZED ACCESS (401)`);
+                console.log(`[AGENT] The local sync credentials for "${config.clientName}" are invalid or belong to a different organization.`);
+                console.log(`[AGENT] Resetting configuration and launching pairing wizard...\n`);
+                try {
+                    if (fs.existsSync(configPath)) {
+                        fs.unlinkSync(configPath);
+                    }
+                } catch (e) {
+                    console.error("[AGENT] Error deleting config file:", e.message);
+                }
+                if (syncInterval) {
+                    clearInterval(syncInterval);
+                }
+                startLocalGUI();
+            }
         }
     }
   }
 
   // Run immediately, then every 12 hours
   await performSync();
-  setInterval(performSync, 1000 * 60 * 60 * 12);
+  syncInterval = setInterval(performSync, 1000 * 60 * 60 * 12);
 }
 
 
