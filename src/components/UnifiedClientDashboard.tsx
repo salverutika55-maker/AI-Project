@@ -504,7 +504,16 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
             
             <div className="flex flex-col items-end gap-1">
               <button 
-                onClick={handleSync} 
+                onClick={() => {
+                  if (client.software === 'TALLY' && client.connectorStatus === 'OFFLINE') {
+                    const link = document.createElement('a');
+                    link.href = '/downloads/FinAnalyzerSync.exe';
+                    link.download = 'FinAnalyzerSync.exe';
+                    link.click();
+                  } else {
+                    handleSync();
+                  }
+                }} 
                 disabled={isSyncing || client.connectorStatus === 'SYNCING'} 
                 className={`flex items-center gap-2 px-4 py-1.5 ${softwareConfig.bg} border ${softwareConfig.border} rounded-lg text-xs font-black ${softwareConfig.color} hover:opacity-80 transition-all disabled:opacity-50`}
               >
