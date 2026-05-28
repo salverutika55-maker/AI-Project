@@ -117,6 +117,21 @@ async function startBackgroundSync(config) {
   // TALLY EXTRACTION LOGIC
   const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
   
+  /**
+   * Parse a Tally amount string safely.
+   * Handles empty strings, negative values, and comma-separated numbers.
+   */
+  function parseTallyAmount(str) {
+    if (!str || str.trim() === '') return 0;
+    const cleaned = String(str).replace(/[^0-9.-]+/g, '');
+    const val = parseFloat(cleaned);
+    return isNaN(val) ? 0 : Math.abs(val);
+  }
+
+  /**
+   * Extract closing balance (DSPCLDRAMT + DSPCLCRAMT) for matching accounts.
+   * Tally's Trial Balance with EXPLODEFLAG=Yes returns closing balance fields.
+   */
   function extractTrialBalance(parsedData, keywords) {
     let total = 0;
     if (!parsedData || !parsedData.ENVELOPE) return 0;
@@ -132,22 +147,25 @@ async function startBackgroundSync(config) {
       if (match) {
         const info = infoArr[idx];
         if (info) {
-           let drAmtStr = info.DSPCLDRAMT && info.DSPCLDRAMT.DSPCLDRAMTA ? info.DSPCLDRAMT.DSPCLDRAMTA : null;
-           let crAmtStr = info.DSPCLCRAMT && info.DSPCLCRAMT.DSPCLCRAMTA ? info.DSPCLCRAMT.DSPCLCRAMTA : null;
-           if (drAmtStr) {
-             const amt = parseFloat(String(drAmtStr).replace(/[^0-9.-]+/g, ""));
-             if (!isNaN(amt)) total += Math.abs(amt);
-           }
-           if (crAmtStr) {
-             const amt = parseFloat(String(crAmtStr).replace(/[^0-9.-]+/g, ""));
-             if (!isNaN(amt)) total += Math.abs(amt);
-           }
+          // Closing balance DR
+          const drAmt = parseTallyAmount(info?.DSPCLDRAMT?.DSPCLDRAMTA);
+          // Closing balance CR
+          const crAmt = parseTallyAmount(info?.DSPCLCRAMT?.DSPCLCRAMTA);
+          // Also try period movement fields if available
+          const totDrAmt = parseTallyAmount(info?.DSPTOTDRAMT?.DSPTOTDRAMTA);
+          const totCrAmt = parseTallyAmount(info?.DSPTOTCRAMT?.DSPTOTCRAMTA);
+          // Use whichever is larger (movement if available, else closing)
+          total += Math.max(drAmt + crAmt, totDrAmt + totCrAmt);
         }
       }
     });
     return total;
   }
 
+  /**
+   * Extract period movement amounts for P&L items (Revenue, COGS, Expenses).
+   * Falls back to closing balance if movement fields are not present.
+   */
   function extractTrialBalanceMovement(parsedData, keywords) {
     let total = 0;
     if (!parsedData || !parsedData.ENVELOPE) return 0;
@@ -163,16 +181,16 @@ async function startBackgroundSync(config) {
       if (match) {
         const info = infoArr[idx];
         if (info) {
-           let drAmtStr = info.DSPTOTDRAMT && info.DSPTOTDRAMT.DSPTOTDRAMTA ? info.DSPTOTDRAMT.DSPTOTDRAMTA : null;
-           let crAmtStr = info.DSPTOTCRAMT && info.DSPTOTCRAMT.DSPTOTCRAMTA ? info.DSPTOTCRAMT.DSPTOTCRAMTA : null;
-           if (drAmtStr) {
-             const amt = parseFloat(String(drAmtStr).replace(/[^0-9.-]+/g, ""));
-             if (!isNaN(amt)) total += Math.abs(amt);
-           }
-           if (crAmtStr) {
-             const amt = parseFloat(String(crAmtStr).replace(/[^0-9.-]+/g, ""));
-             if (!isNaN(amt)) total += Math.abs(amt);
-           }
+          // Try movement/period fields first
+          const totDrAmt = parseTallyAmount(info?.DSPTOTDRAMT?.DSPTOTDRAMTA);
+          const totCrAmt = parseTallyAmount(info?.DSPTOTCRAMT?.DSPTOTCRAMTA);
+          // Fallback to closing balance (what Tally most commonly returns)
+          const clDrAmt = parseTallyAmount(info?.DSPCLDRAMT?.DSPCLDRAMTA);
+          const clCrAmt = parseTallyAmount(info?.DSPCLCRAMT?.DSPCLCRAMTA);
+          // Use movement if found, else closing balance
+          const periodAmt = totDrAmt + totCrAmt;
+          const closingAmt = clDrAmt + clCrAmt;
+          total += periodAmt > 0 ? periodAmt : closingAmt;
         }
       }
     });
