@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "build": "pkg . -t node18-win-x64 -o FinAnalyzerSync"
+    "build": "pkg . -t node18-win-x64 --compress GZip -o FinAnalyzerSync"
   },
   "dependencies": {
     "axios": "^1.6.8",
