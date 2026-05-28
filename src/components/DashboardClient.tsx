@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { 
   CloudRain, UploadCloud, AlertCircle, RefreshCw, BarChart3, TrendingDown, GitMerge, WalletCards, 
-  Plus, Search, Settings, Zap, Link2, Building2, Download, FileText, FileSpreadsheet, BrainCircuit, Activity,
+  Plus, Search, Settings, Zap, Link2, Building2, Download, FileText, FileSpreadsheet, BrainCircuit, Activity, Key,
   PieChart, Users, Trash2
 } from "lucide-react";
 import {
@@ -89,6 +89,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   const [selectedYear, setSelectedYear] = useState<string>("2026");
   const [fyType, setFyType] = useState<string>("Apr-Mar");
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
+  const [syncCode, setSyncCode] = useState("");
 
   useEffect(() => {
     fetch("https://api.exchangerate-api.com/v4/latest/USD")
@@ -419,11 +420,53 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
             <ErrorBoundary title="Integration Panel Error">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 max-w-2xl mx-auto mt-10">
                 {activeClient?.software === "TALLY" ? (
-                  <a href="/downloads/FinAnalyzerSync.exe" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer md:col-span-2">
-                    <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl"><UploadCloud className="w-6 h-6" /></div>
-                    <span className="font-semibold tracking-wide text-lg">Desktop Sync Agent</span>
-                    <span className="text-sm text-slate-500 text-center px-4">Download .exe to connect Tally Prime</span>
-                  </a>
+                  <div className="md:col-span-2 space-y-6 w-full">
+                    <a href="/downloads/FinAnalyzerSync.exe" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer w-full">
+                      <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl mx-auto"><UploadCloud className="w-6 h-6" /></div>
+                      <span className="font-semibold tracking-wide text-lg text-center block">1. Download Desktop Sync Agent</span>
+                      <span className="text-sm text-slate-500 text-center px-4 block font-medium">Click here to download FinAnalyzerSync.exe to your computer</span>
+                    </a>
+                    
+                    <div className="p-8 rounded-xl border border-white/5 bg-black/30 text-center w-full">
+                      <div className="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold text-xl mx-auto mb-4"><Key className="w-6 h-6" /></div>
+                      <h3 className="text-xl font-bold text-white mb-2">2. Generate Sync Handshake Code</h3>
+                      <p className="text-sm text-slate-400 mb-6 font-medium">Click below to generate a secure, one-time 6-digit code. Use it inside the desktop agent pairing wizard to securely connect this client.</p>
+                      
+                      {syncCode ? (
+                        <div className="space-y-4">
+                          <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-2xl p-6 inline-block">
+                            <span className="text-slate-500 text-[10px] uppercase font-black tracking-widest block mb-2">Connection Code</span>
+                            <span className="text-3xl font-black font-mono text-cyan-400 tracking-wider">{syncCode}</span>
+                            <span className="text-[10px] text-slate-500 font-bold block mt-2">Expires in 15 minutes</span>
+                          </div>
+                          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-relaxed">Enter this code inside the browser window opened by your FinAnalyzerSync.exe</p>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            setLoading(true);
+                            try {
+                              const res = await fetch("/api/handshake", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ clientId: activeClientId })
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.message || "Failed to generate code");
+                              setSyncCode(data.code);
+                            } catch (err: any) {
+                              alert("Code Generation Failed: " + err.message);
+                            } finally {
+                              setLoading(false);
+                            }
+                          }}
+                          className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black px-8 py-3 rounded-xl transition-all shadow-lg text-sm tracking-wide cursor-pointer"
+                        >
+                          GENERATE CONNECTION CODE
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <div className="md:col-span-2 space-y-4">
                     {activeClient?.oauthToken ? (
