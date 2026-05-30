@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     let processedCount = 0;
 
     for (const record of records) {
-      const { period, source, ...financials } = record;
+      const { period, source, ledgers, ...financials } = record;
 
       if (!period) {
         continue; // Skip invalid rows missing mandatory 'period' string (e.g. "2024-01")
