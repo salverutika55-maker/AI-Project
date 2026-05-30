@@ -148,16 +148,17 @@ export async function POST(req: Request) {
       data: {
         status: "COMPLETED",
         result: {
-          message: "Data successfully synced from desktop agent",
+          message: client.pnlMappings?.length > 0 ? "Data successfully synced from desktop agent" : "Data synced successfully, but no Ledgers are Mapped! Please visit the Map Ledgers tab.",
           recordsProcessed: processedCount
         }
       }
     });
 
     return NextResponse.json({ 
-      message: "Data successfully ingested via API",
+      message: client.pnlMappings?.length > 0 ? "Data successfully ingested via API" : "Data ingested, but no PNL Mappings found.",
       client: client.name,
-      recordsProcessed: processedCount
+      recordsProcessed: processedCount,
+      warning: client.pnlMappings?.length === 0 ? "Please configure your Ledger Mappings in the dashboard to view the Detailed P&L." : null
     }, { status: 200 });
 
   } catch (error) {
