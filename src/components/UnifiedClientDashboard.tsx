@@ -479,6 +479,21 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
             <button onClick={exportExcel} className="p-2 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-colors" title="Export CSV"><FileSpreadsheet className="w-4 h-4" /></button>
             
             {client.software === 'TALLY' && (
+              <button 
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = '/downloads/FinAnalyzerSync.zip';
+                  link.download = 'FinAnalyzerSync.zip';
+                  link.click();
+                }} 
+                className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 transition-all flex items-center gap-2" 
+                title="Download Desktop Connector"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            )}
+            
+            {client.software === 'TALLY' && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg group relative">
                 <div className={`w-2 h-2 rounded-full ${
                   client.connectorStatus === 'SYNCING' ? 'bg-amber-500 animate-pulse' :
