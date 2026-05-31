@@ -601,4 +601,29 @@ async function init() {
   }
 }
 
-init().catch(console.error);
+const readline = require('readline');
+function preventExit(msg = "Press Enter to exit...") {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  rl.question(`\n${msg}`, () => {
+    rl.close();
+    process.exit(1);
+  });
+}
+
+process.on('uncaughtException', (err) => {
+  console.error('\n[FATAL ERROR]', err.message);
+  preventExit();
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('\n[FATAL ERROR]', err);
+  preventExit();
+});
+
+init().catch(err => {
+  console.error("\n[INIT ERROR]", err);
+  preventExit();
+});

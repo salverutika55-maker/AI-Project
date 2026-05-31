@@ -421,11 +421,18 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 max-w-2xl mx-auto mt-10">
                 {activeClient?.software === "TALLY" ? (
                   <div className="md:col-span-2 space-y-6 w-full">
-                    <a href="/downloads/FinAnalyzerSync.zip" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer w-full">
-                      <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl mx-auto"><UploadCloud className="w-6 h-6" /></div>
-                      <span className="font-semibold tracking-wide text-lg text-center block">1. Download Desktop Sync Agent</span>
-                      <span className="text-sm text-slate-500 text-center px-4 block font-medium">Click here to download FinAnalyzerSync.zip to your computer</span>
-                    </a>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <a href="/downloads/FinAnalyzer_Connector_Setup.exe" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer w-full">
+                        <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl mx-auto"><Download className="w-6 h-6" /></div>
+                        <span className="font-semibold tracking-wide text-lg text-center block">Download Windows Installer (.exe)</span>
+                        <span className="text-xs text-slate-500 text-center px-4 block font-medium uppercase tracking-widest">Recommended for most users</span>
+                      </a>
+                      <a href="/downloads/FinAnalyzerSync_Portable.zip" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer w-full">
+                        <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl mx-auto"><FolderDown className="w-6 h-6" /></div>
+                        <span className="font-semibold tracking-wide text-lg text-center block">Download Portable Version (.zip)</span>
+                        <span className="text-xs text-slate-500 text-center px-4 block font-medium uppercase tracking-widest">For IT Admins (No Install Required)</span>
+                      </a>
+                    </div>
                     
                     <div className="p-8 rounded-xl border border-white/5 bg-black/30 text-center w-full">
                       <div className="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold text-xl mx-auto mb-4"><Key className="w-6 h-6" /></div>
@@ -439,7 +446,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                             <span className="text-3xl font-black font-mono text-cyan-400 tracking-wider">{syncCode}</span>
                             <span className="text-[10px] text-slate-500 font-bold block mt-2">Expires in 15 minutes</span>
                           </div>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-relaxed">Unzip the folder and double-click <b>Start_Connector.bat</b> to enter this code</p>
+                          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-relaxed">Install or extract the software and double-click the FinAnalyzerSync app to enter this code</p>
                         </div>
                       ) : (
                         <button

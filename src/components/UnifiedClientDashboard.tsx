@@ -482,8 +482,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
               <button 
                 onClick={() => {
                   const link = document.createElement('a');
-                  link.href = '/downloads/FinAnalyzerSync.zip';
-                  link.download = 'FinAnalyzerSync.zip';
+                  link.href = '/downloads/FinAnalyzer_Connector_Setup.exe';
+                  link.download = 'FinAnalyzer_Connector_Setup.exe';
                   link.click();
                 }} 
                 className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 transition-all flex items-center gap-2" 
@@ -522,8 +522,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                 onClick={() => {
                   if (client.software === 'TALLY' && client.connectorStatus === 'OFFLINE') {
                     const link = document.createElement('a');
-                    link.href = '/downloads/FinAnalyzerSync.zip';
-                    link.download = 'FinAnalyzerSync.zip';
+                    link.href = '/downloads/FinAnalyzer_Connector_Setup.exe';
+link.download = 'FinAnalyzer_Connector_Setup.exe';
                     link.click();
                   } else {
                     handleSync();
