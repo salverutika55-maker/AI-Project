@@ -195,6 +195,51 @@ async function startBackgroundSync(config) {
     return ledgers;
   }
 
+  async function extractChartOfAccounts() {
+    try {
+      const coaXml = `<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>List of Accounts</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <ACCOUNTTYPE>Ledgers</ACCOUNTTYPE>
+      </STATICVARIABLES>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+      
+      const response = await axios.post("http://localhost:9000", coaXml, {
+        headers: { "Content-Type": "text/xml" },
+        timeout: 5000 
+      });
+      const parsed = await parser.parseStringPromise(response.data);
+      let ledgers = [];
+      
+      if (parsed?.ENVELOPE?.BODY?.[0]?.DATA?.[0]?.TALLYMESSAGE) {
+        const messages = parsed.ENVELOPE.BODY[0].DATA[0].TALLYMESSAGE;
+        const msgArr = Array.isArray(messages) ? messages : [messages];
+        msgArr.forEach(msg => {
+          let ledgerName = null;
+          if (msg.LEDGER) {
+            const l = Array.isArray(msg.LEDGER) ? msg.LEDGER[0] : msg.LEDGER;
+            ledgerName = l.$?.NAME || (Array.isArray(l.NAME) ? l.NAME[0] : l.NAME);
+          }
+          if (ledgerName) ledgers.push(String(ledgerName));
+        });
+      }
+      return [...new Set(ledgers)];
+    } catch (e) {
+      console.error("[AGENT] Failed to extract Chart of Accounts:", e.message);
+      return [];
+    }
+  }
+
   async function performSync() {
     if (isSyncing) {
       console.log("[AGENT] Sync already in progress, skipping...");
@@ -341,8 +386,9 @@ async function startBackgroundSync(config) {
 
     if (allFinancialPayloads.length > 0) {
         try {
+            const chartOfAccounts = await extractChartOfAccounts();
             await axios.post(`${VERCEL_API}/ingest`, 
-                allFinancialPayloads,
+                { records: allFinancialPayloads, chartOfAccounts: chartOfAccounts },
                 {
                     headers: {
                         'Content-Type': 'application/json',
@@ -350,7 +396,7 @@ async function startBackgroundSync(config) {
                     }
                 }
             );
-            console.log(`[AGENT] Pushed ${allFinancialPayloads.length} records to Vercel.`);
+            console.log(`[AGENT] Pushed ${allFinancialPayloads.length} records and ${chartOfAccounts.length} ledgers to Vercel.`);
         } catch (err) {
             console.error(`[AGENT] Error pushing to Vercel: ${err.message}`);
             if (err.response?.status === 401) {

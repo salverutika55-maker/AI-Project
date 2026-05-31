@@ -142,10 +142,17 @@ export async function POST(req: Request) {
     // 4c. Update Unique Ledgers for the Mapping UI
     if (client.software === 'TALLY') {
       const uniqueLedgers = new Set<string>();
+      
+      // Add all ledgers from the Trial Balance records
       for (const record of records) {
         if (record.ledgers) {
           Object.keys(record.ledgers).forEach(k => uniqueLedgers.add(k.trim()));
         }
+      }
+      
+      // Also add explicit chartOfAccounts if provided by the agent
+      if (body.chartOfAccounts && Array.isArray(body.chartOfAccounts)) {
+        body.chartOfAccounts.forEach((k: string) => uniqueLedgers.add(k.trim()));
       }
       
       if (uniqueLedgers.size > 0) {
