@@ -139,6 +139,32 @@ export async function POST(req: Request) {
       }
     }
 
+    // 4c. Update Unique Ledgers for the Mapping UI
+    if (client.software === 'TALLY') {
+      const uniqueLedgers = new Set<string>();
+      for (const record of records) {
+        if (record.ledgers) {
+          Object.keys(record.ledgers).forEach(k => uniqueLedgers.add(k.trim()));
+        }
+      }
+      
+      if (uniqueLedgers.size > 0) {
+        const ledgersArr = Array.from(uniqueLedgers);
+        const encryptedLedgers = encrypt(JSON.stringify(ledgersArr));
+        
+        await prisma.integrationCredential.upsert({
+          where: { clientId: client.id },
+          create: {
+            clientId: client.id,
+            encryptedApiKey: encryptedLedgers
+          },
+          update: {
+            encryptedApiKey: encryptedLedgers
+          }
+        });
+      }
+    }
+
     // 5. Resolve any pending UI sync tasks
     await prisma.syncTask.updateMany({
       where: {
