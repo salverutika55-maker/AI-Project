@@ -185,24 +185,24 @@ async function startBackgroundSync(config) {
       const name = String(nameObj.DSPDISPNAME);
       const info = infoArr[idx];
       if (info) {
-        // Try movement/period fields first
-        const totDrAmt = getVal(info, 'DSPTOTDRAMT');
-        const totCrAmt = getVal(info, 'DSPTOTCRAMT');
+        // Try ALL known Tally movement/period tag variations
+        const totDrAmt = getVal(info, 'DSPTOTDRAMT') || getVal(info, 'DSPDRTOTAMT') || getVal(info, 'DSPTRDRAMT') || getVal(info, 'DSPTRANSDR') || 0;
+        const totCrAmt = getVal(info, 'DSPTOTCRAMT') || getVal(info, 'DSPCRTOTAMT') || getVal(info, 'DSPTRCRAMT') || getVal(info, 'DSPTRANSCR') || 0;
         
         // For P&L reports, we need the NET movement during this period.
         const periodNet = Math.abs(totCrAmt - totDrAmt);
         
         // Fallback to closing net balance if transactions aren't available
-        const clDrAmt = getVal(info, 'DSPCLDRAMT');
-        const clCrAmt = getVal(info, 'DSPCLCRAMT');
-        const opDrAmt = getVal(info, 'DSPOPDRAMT');
-        const opCrAmt = getVal(info, 'DSPOPCRAMT');
+        const clDrAmt = getVal(info, 'DSPCLDRAMT') || getVal(info, 'DSPCLOSDR') || 0;
+        const clCrAmt = getVal(info, 'DSPCLCRAMT') || getVal(info, 'DSPCLOSCR') || 0;
+        const opDrAmt = getVal(info, 'DSPOPDRAMT') || getVal(info, 'DSPOPENDR') || 0;
+        const opCrAmt = getVal(info, 'DSPOPCRAMT') || getVal(info, 'DSPOPENCR') || 0;
         
-        // If transactions fields are completely missing (0 and 0), try deriving from closing - opening
         const closingNet = clCrAmt - clDrAmt;
         const openingNet = opCrAmt - opDrAmt;
         const derivedNet = Math.abs(closingNet - openingNet);
 
+        // If Tally returned actual transaction figures, ALWAYS prioritize them.
         const amt = (totDrAmt > 0 || totCrAmt > 0) ? periodNet : derivedNet;
         
         if (amt !== 0) {
