@@ -308,44 +308,84 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
       const v = { ...(sourceGrid[month] || {}) };
       
       if (type === "manufacturing") {
-        v["Total Revenue"] = (v["Domestic"] || 0) + (v["Export"] || 0) - (v["Less : Commission"] || 0);
-        v["COGS"] = (v["Opening Stock"] || 0) + (v["Purchase"] || 0) + (v["Transport on Purchases"] || 0) - (v["Closing Stock"] || 0);
+        const revItems = customSubHeads.filter(sh => sh.headName === "Revenue from Operation").map(sh => sh.name);
+        const revTotal = revItems.reduce((sum, item) => sum + (v[item] || 0), 0);
+        const commissionItems = customSubHeads.filter(sh => sh.headName === "Revenue Deductions").map(sh => sh.name);
+        const commTotal = commissionItems.reduce((sum, item) => sum + (v[item] || 0), 0) || (v["Less : Commission"] || 0);
+        v["Total Revenue"] = revTotal - commTotal;
+        
+        const cogsItems = customSubHeads.filter(sh => sh.headName === "Cost of Goods Sold").map(sh => sh.name);
+        v["COGS"] = cogsItems.reduce((sum, item) => sum + (v[item] || 0), 0) || ((v["Opening Stock"] || 0) + (v["Purchase"] || 0) + (v["Transport on Purchases"] || 0) - (v["Closing Stock"] || 0));
         v["Contribution"] = v["Total Revenue"] - v["COGS"];
-        const directExpList = ["Coal Charges", "Power Bill", "Other Mfg. Expenses", "Repairs & Maintenance - Factory", "Depreciation - Factory", "Clearing & Forwarding Charges", "Consumables", "Factory Expenses", "Security Charges", "Factory Staff", "Factory Workers", "Hiring Charges", "Jobwork Charges", "Payment to Contractor", "Transport on Sales"];
-        const directExp = directExpList.reduce((sum, item) => sum + (v[item] || 0), 0);
+        
+        const directExpItems = customSubHeads.filter(sh => sh.headName === "Direct Expenses").map(sh => sh.name);
+        const directExp = directExpItems.reduce((sum, item) => sum + (v[item] || 0), 0);
         v["Gross Profit"] = v["Contribution"] - directExp;
-        const indirectIncome = (v["Interest on Fixed Deposit"] || 0) + (v["Gain/ Loss on (Export/Import)"] || 0) + (v["Duty Drawback"] || 0);
-        const indirectExpList = ["Administrative Expenses", "Sales & Advertisement Expenses", "Director Remuneration", "Office Staff Salary", "Repairs & Maintenance - Office", "Travelling Expenses", "Legal & Professional Fees", "Rent Expenses", "Other Exp"];
-        const totalIndirectExp = indirectExpList.reduce((sum, item) => sum + (v[item] || 0), 0);
+        
+        const indirectIncItems = customSubHeads.filter(sh => sh.headName === "Indirect Income").map(sh => sh.name);
+        const indirectIncome = indirectIncItems.reduce((sum, item) => sum + (v[item] || 0), 0);
+        
+        const indirectExpItems = customSubHeads.filter(sh => sh.headName === "Indirect Expenses").map(sh => sh.name);
+        const totalIndirectExp = indirectExpItems.reduce((sum, item) => sum + (v[item] || 0), 0);
         v["Total Indirect Expenses"] = totalIndirectExp;
+        
         v["Earnings Before Interest Taxes & Amortization"] = v["Gross Profit"] + indirectIncome - totalIndirectExp;
-        v["Net Profit Before Tax"] = v["Earnings Before Interest Taxes & Amortization"] - (v["Interest Expense"] || 0) - (v["Depreciation"] || 0);
+        
+        const finItems = customSubHeads.filter(sh => sh.headName === "Financials").map(sh => sh.name);
+        const finTotal = finItems.reduce((sum, item) => sum + (v[item] || 0), 0) || ((v["Interest Expense"] || 0) + (v["Depreciation"] || 0));
+        v["Net Profit Before Tax"] = v["Earnings Before Interest Taxes & Amortization"] - finTotal;
+        
       } else if (type === "trading") {
-        v["Total Revenue"] = (v["Domestic"] || 0) + (v["Export"] || 0) - (v["Less : Commission"] || 0);
-        v["COGS"] = (v["Opening Stock"] || 0) + (v["Purchase"] || 0) + (v["Transport on Purchases"] || 0) - (v["Closing Stock"] || 0);
+        const revItems = customSubHeads.filter(sh => sh.headName === "Sales Income").map(sh => sh.name);
+        const revTotal = revItems.reduce((sum, item) => sum + (v[item] || 0), 0);
+        const commissionItems = customSubHeads.filter(sh => sh.headName === "Revenue Deductions").map(sh => sh.name);
+        const commTotal = commissionItems.reduce((sum, item) => sum + (v[item] || 0), 0) || (v["Less : Commission"] || 0);
+        v["Total Revenue"] = revTotal - commTotal;
+        
+        const cogsItems = customSubHeads.filter(sh => sh.headName === "Trading Cost").map(sh => sh.name);
+        v["COGS"] = cogsItems.reduce((sum, item) => sum + (v[item] || 0), 0) || ((v["Opening Stock"] || 0) + (v["Purchase"] || 0) + (v["Transport on Purchases"] || 0) - (v["Closing Stock"] || 0));
         v["Contribution"] = v["Total Revenue"] - v["COGS"];
-        const directExpList = ["Clearing & Forwarding Charges", "Transport on Sales", "Other Direct Expense"];
-        const directExp = directExpList.reduce((sum, item) => sum + (v[item] || 0), 0);
+        
+        const directExpItems = customSubHeads.filter(sh => sh.headName === "Direct Expenses").map(sh => sh.name);
+        const directExp = directExpItems.reduce((sum, item) => sum + (v[item] || 0), 0);
         v["Gross Profit"] = v["Contribution"] - directExp;
-        const indirectIncome = (v["Interest on Fixed Deposit"] || 0) + (v["Gain/ Loss on (Export/Import)"] || 0) + (v["Duty Drawback"] || 0);
-        const indirectExpList = ["Administrative Expenses", "Sales & Advertisement Expenses", "Director Remuneration", "Office Staff Salary", "Repairs & Maintenance - Office", "Travelling Expenses", "Legal & Professional Fees", "Rent Expenses", "Other Exp"];
-        const totalIndirectExp = indirectExpList.reduce((sum, item) => sum + (v[item] || 0), 0);
+        
+        const indirectIncItems = customSubHeads.filter(sh => sh.headName === "Indirect Income").map(sh => sh.name);
+        const indirectIncome = indirectIncItems.reduce((sum, item) => sum + (v[item] || 0), 0);
+        
+        const indirectExpItems = customSubHeads.filter(sh => sh.headName === "Indirect Expenses").map(sh => sh.name);
+        const totalIndirectExp = indirectExpItems.reduce((sum, item) => sum + (v[item] || 0), 0);
         v["Total Indirect Expenses"] = totalIndirectExp;
+        
         v["Earnings Before Interest Taxes & Amortization"] = v["Gross Profit"] + indirectIncome - totalIndirectExp;
-        v["Net Profit Before Tax"] = v["Earnings Before Interest Taxes & Amortization"] - (v["Interest Expense"] || 0) - (v["Depreciation"] || 0);
+        
+        const finItems = customSubHeads.filter(sh => sh.headName === "Financials").map(sh => sh.name);
+        const finTotal = finItems.reduce((sum, item) => sum + (v[item] || 0), 0) || ((v["Interest Expense"] || 0) + (v["Depreciation"] || 0));
+        v["Net Profit Before Tax"] = v["Earnings Before Interest Taxes & Amortization"] - finTotal;
+
       } else if (type === "service") {
-        const revItems = ["Service Revenue (Primary income)", "Consulting / Professional Fees", "Maintenance / AMC Income", "Commission Income", "Other Operating Income"];
+        const revItems = customSubHeads.filter(sh => sh.headName === "Operating Revenue").map(sh => sh.name);
         const totalRev = revItems.reduce((sum, item) => sum + (v[item] || 0), 0);
-        v["Total Revenue"] = totalRev - (v["Less : Commission"] || 0);
-        const directExpList = ["Salaries - Service Staff / Engineers / Consultants", "Freelance / Contract Charges", "Project Expenses", "Travel & Conveyance (Service-related)", "Consumables / Tools Used", "Site Expenses", "Subcontracting Charges", "Other Direct Expense"];
-        const directExp = directExpList.reduce((sum, item) => sum + (v[item] || 0), 0);
+        const commissionItems = customSubHeads.filter(sh => sh.headName === "Revenue Deductions").map(sh => sh.name);
+        const commTotal = commissionItems.reduce((sum, item) => sum + (v[item] || 0), 0) || (v["Less : Commission"] || 0);
+        v["Total Revenue"] = totalRev - commTotal;
+        
+        const directExpItems = customSubHeads.filter(sh => sh.headName === "Service Delivery Costs (Direct)").map(sh => sh.name);
+        const directExp = directExpItems.reduce((sum, item) => sum + (v[item] || 0), 0);
         v["Gross Profit"] = v["Total Revenue"] - directExp;
-        const indirectIncome = (v["Interest on Fixed Deposit"] || 0);
-        const indirectExpList = ["Administrative Expenses", "Sales & Advertisement Expenses", "Director Remuneration", "Office Staff Salary", "Repairs & Maintenance - Office", "Travelling Expenses", "Legal & Professional Fees", "Other Exp"];
-        const totalIndirectExp = indirectExpList.reduce((sum, item) => sum + (v[item] || 0), 0);
+        
+        const indirectIncItems = customSubHeads.filter(sh => sh.headName === "Indirect Income").map(sh => sh.name);
+        const indirectIncome = indirectIncItems.reduce((sum, item) => sum + (v[item] || 0), 0);
+        
+        const indirectExpItems = customSubHeads.filter(sh => sh.headName === "Administrative & General Expenses").map(sh => sh.name);
+        const totalIndirectExp = indirectExpItems.reduce((sum, item) => sum + (v[item] || 0), 0);
         v["Total Indirect Expenses"] = totalIndirectExp;
+        
         v["Earnings Before Interest Taxes & Amortization"] = v["Gross Profit"] + indirectIncome - totalIndirectExp;
-        v["Net Profit Before Tax"] = v["Earnings Before Interest Taxes & Amortization"] - (v["Interest Expense"] || 0) - (v["Depreciation"] || 0);
+        
+        const finItems = customSubHeads.filter(sh => sh.headName === "Financials").map(sh => sh.name);
+        const finTotal = finItems.reduce((sum, item) => sum + (v[item] || 0), 0) || ((v["Interest Expense"] || 0) + (v["Depreciation"] || 0));
+        v["Net Profit Before Tax"] = v["Earnings Before Interest Taxes & Amortization"] - finTotal;
       }
       newData[month] = v;
     });
