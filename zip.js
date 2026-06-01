@@ -5,7 +5,7 @@ archiver.registerFormat('zip-encrypted', require('archiver-zip-encrypted'));
 const output = fs.createWriteStream('public/downloads/FinAnalyzerSync_Portable.zip');
 const archive = archiver('zip-encrypted', {
   zlib: { level: 9 },
-  encryptionMethod: 'aes256',
+  encryptionMethod: 'zip20',
   password: 'tally'
 });
 
