@@ -359,11 +359,11 @@ async function startBackgroundSync(config) {
             let rawRevenue = 0, rawCOGS = 0, rawOpEx = 0;
             for (const [name, amt] of Object.entries(rawLedgers)) {
                 const lowerName = name.toLowerCase();
-                if (["sales accounts", "direct incomes", "revenue"].some(kw => lowerName.includes(kw))) {
+                if (["sales", "income", "revenue"].some(kw => lowerName.includes(kw))) {
                     rawRevenue += amt;
-                } else if (["purchase accounts", "direct expenses", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) {
+                } else if (["purchase", "direct expenses", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) {
                     rawCOGS += amt;
-                } else if (["indirect expenses", "operating expenses"].some(kw => lowerName.includes(kw))) {
+                } else if (["indirect expenses", "operating expenses", "admin", "office"].some(kw => lowerName.includes(kw))) {
                     rawOpEx += amt;
                 }
             }
