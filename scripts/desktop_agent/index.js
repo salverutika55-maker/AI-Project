@@ -195,6 +195,59 @@ async function startBackgroundSync(config) {
     return ledgers;
   }
 
+  async function extractChartOfAccounts() {
+    try {
+      const coaXml = `<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>List of Ledgers</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="List of Ledgers" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>Ledger</TYPE>
+            <NATIVEMETHOD>Name</NATIVEMETHOD>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+      
+      const response = await axios.post("http://localhost:9000", coaXml, {
+        headers: { "Content-Type": "text/xml" },
+        timeout: 5000 
+      });
+      const parsed = await parser.parseStringPromise(response.data);
+      let ledgers = [];
+      
+      if (parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION?.LEDGER) {
+        const ledgerNodes = parsed.ENVELOPE.BODY.DATA.COLLECTION.LEDGER;
+        const msgArr = Array.isArray(ledgerNodes) ? ledgerNodes : [ledgerNodes];
+        msgArr.forEach(msg => {
+          let ledgerName = null;
+          if (msg.$?.NAME) {
+            ledgerName = msg.$.NAME;
+          } else if (msg.NAME) {
+             ledgerName = Array.isArray(msg.NAME) ? msg.NAME[0] : msg.NAME;
+          }
+          if (ledgerName) ledgers.push(String(ledgerName));
+        });
+      }
+      return [...new Set(ledgers)];
+    } catch (e) {
+      console.error("[AGENT] Failed to extract Chart of Accounts master list:", e.message);
+      return [];
+    }
+  }
+
   async function performSync() {
     if (isSyncing) {
       console.log("[AGENT] Sync already in progress, skipping...");
@@ -343,6 +396,12 @@ async function startBackgroundSync(config) {
 
     if (allFinancialPayloads.length > 0) {
         try {
+            // Fetch explicit Master Ledgers from Chart of Accounts
+            const masterLedgers = await extractChartOfAccounts();
+            
+            // Merge with any active ledgers found in the Trial Balance for absolute safety
+            masterLedgers.forEach(l => allUniqueLedgers.add(l));
+            
             const finalLedgers = Array.from(allUniqueLedgers);
             await axios.post(`${VERCEL_API}/ingest`, 
                 { records: allFinancialPayloads, chartOfAccounts: finalLedgers },
