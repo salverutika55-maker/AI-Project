@@ -434,6 +434,19 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                       </a>
                     </div>
                     
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6 text-left">
+                      <div className="flex items-start gap-4">
+                        <AlertCircle className="w-6 h-6 text-amber-500 shrink-0 mt-1" />
+                        <div>
+                          <h4 className="text-amber-500 font-bold mb-2">BETA USERS: Security Notice</h4>
+                          <ul className="text-amber-500/80 text-sm space-y-2 list-disc pl-4">
+                            <li>To prevent your browser from falsely blocking the download, the Portable ZIP is encrypted. Use password: <b>tally</b> to extract it.</li>
+                            <li>When running the `.exe` for the first time, Windows SmartScreen may show a blue warning because it is a new application. Click <b>More Info</b> &rarr; <b>Run Anyway</b>.</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                    
                     <div className="p-8 rounded-xl border border-white/5 bg-black/30 text-center w-full">
                       <div className="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold text-xl mx-auto mb-4"><Key className="w-6 h-6" /></div>
                       <h3 className="text-xl font-bold text-white mb-2">2. Generate Sync Handshake Code</h3>
