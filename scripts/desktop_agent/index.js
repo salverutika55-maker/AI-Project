@@ -179,13 +179,24 @@ async function startBackgroundSync(config) {
         // Try movement/period fields first
         const totDrAmt = parseTallyAmount(info?.DSPTOTDRAMT?.DSPTOTDRAMTA);
         const totCrAmt = parseTallyAmount(info?.DSPTOTCRAMT?.DSPTOTCRAMTA);
-        // Fallback to closing balance
+        
+        // For P&L reports, we need the NET movement during this period.
+        // If Tally returns transactions (which we will enforce), use them.
+        const periodNet = Math.abs(totCrAmt - totDrAmt);
+        
+        // Fallback to closing net balance if transactions aren't available
         const clDrAmt = parseTallyAmount(info?.DSPCLDRAMT?.DSPCLDRAMTA);
         const clCrAmt = parseTallyAmount(info?.DSPCLCRAMT?.DSPCLCRAMTA);
+        const opDrAmt = parseTallyAmount(info?.DSPOPDRAMT?.DSPOPDRAMTA);
+        const opCrAmt = parseTallyAmount(info?.DSPOPCRAMT?.DSPOPCRAMTA);
         
-        const periodAmt = totDrAmt + totCrAmt;
-        const closingAmt = clDrAmt + clCrAmt;
-        const amt = periodAmt > 0 ? periodAmt : closingAmt;
+        // If transactions fields are completely missing (0 and 0), try deriving from closing - opening
+        // Note: this is a fallback if XML fails to return DSPTOT.
+        const closingNet = clCrAmt - clDrAmt;
+        const openingNet = opCrAmt - opDrAmt;
+        const derivedNet = Math.abs(closingNet - openingNet);
+
+        const amt = (totDrAmt > 0 || totCrAmt > 0) ? periodNet : derivedNet;
         
         if (amt !== 0) {
           ledgers[name] = amt;
@@ -323,6 +334,7 @@ async function startBackgroundSync(config) {
         <REPORTNAME>Trial Balance</REPORTNAME>
         <STATICVARIABLES>
           <EXPLODEFLAG>Yes</EXPLODEFLAG>
+          <DSPSHOWTRANS>Yes</DSPSHOWTRANS>
           <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
           <SVFROMDATE>${period.fromDate}</SVFROMDATE>
           <SVTODATE>${period.toDate}</SVTODATE>

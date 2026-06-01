@@ -392,8 +392,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     return newData;
   };
 
-  const calculatedData = useMemo(() => calculateMetrics(gridData), [gridData, client?.sector, months]);
-  const calculatedBudgetData = useMemo(() => calculateMetrics(budgetData), [budgetData, client?.sector, months]);
+  const calculatedData = useMemo(() => calculateMetrics(gridData), [gridData, client?.sector, months, customSubHeads]);
+  const calculatedBudgetData = useMemo(() => calculateMetrics(budgetData), [budgetData, client?.sector, months, customSubHeads]);
 
   const getRowTotal = (item: string) => {
     return visibleMonths.reduce((sum, m) => sum + (calculatedData[m]?.[item] || gridData[m]?.[item] || 0), 0);
