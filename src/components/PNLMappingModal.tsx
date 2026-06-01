@@ -189,11 +189,11 @@ export default function PNLMappingModal({ isOpen, onClose, clientId, sectorHeads
                                 if (e.target.value) toggleMapping(e.target.value, account.name);
                                 e.target.value = "";
                               }}
-                              className="bg-black/40 border border-white/10 rounded-lg px-3 py-1 text-[10px] font-black text-cyan-500 hover:border-cyan-500/50 transition-all appearance-none cursor-pointer"
+                              className="bg-[#1a1a24] border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white hover:border-emerald-500/50 transition-all cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
                             >
-                              <option value="">Map to Head...</option>
+                              <option value="" className="bg-[#13131A] text-slate-400 font-medium">Map to Head...</option>
                               {sectorHeads.map(h => (
-                                <option key={h} value={h}>{h}</option>
+                                <option key={h} value={h} className="bg-[#13131A] text-white font-medium py-1">{h}</option>
                               ))}
                             </select>
                           )}
