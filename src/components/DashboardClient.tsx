@@ -421,16 +421,11 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 max-w-2xl mx-auto mt-10">
                 {activeClient?.software === "TALLY" ? (
                   <div className="md:col-span-2 space-y-6 w-full">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <a href="/downloads/FinAnalyzer_Connector_Setup.exe" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer w-full">
-                        <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl mx-auto"><Download className="w-6 h-6" /></div>
-                        <span className="font-semibold tracking-wide text-lg text-center block">Download Windows Installer (.exe)</span>
-                        <span className="text-xs text-slate-500 text-center px-4 block font-medium uppercase tracking-widest">Recommended for most users</span>
-                      </a>
-                      <a href="/downloads/FinAnalyzerSync_Portable.zip" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-cyan-500/50 transition-all text-white group cursor-pointer w-full">
-                        <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xl mx-auto"><FolderDown className="w-6 h-6" /></div>
-                        <span className="font-semibold tracking-wide text-lg text-center block">Download Portable Version (.zip)</span>
-                        <span className="text-xs text-slate-500 text-center px-4 block font-medium uppercase tracking-widest">For IT Admins (No Install Required)</span>
+                    <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+                      <a href="/downloads/FinAnalyzerSync_Portable.zip" download className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all text-emerald-400 group cursor-pointer w-full max-w-md mx-auto">
+                        <div className="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xl mx-auto"><FolderDown className="w-6 h-6" /></div>
+                        <span className="font-semibold tracking-wide text-lg text-center block">Download Desktop Agent (.zip)</span>
+                        <span className="text-xs text-emerald-500 text-center px-4 block font-medium uppercase tracking-widest">v1.1.0 • No Install Required</span>
                       </a>
                     </div>
                     
@@ -441,7 +436,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                           <h4 className="text-amber-500 font-bold mb-2">BETA USERS: Security Notice</h4>
                           <ul className="text-amber-500/80 text-sm space-y-2 list-disc pl-4">
                             <li>To prevent your browser from falsely blocking the download, the Portable ZIP is encrypted. Use password: <b>tally</b> to extract it.</li>
-                            <li>When running the `.exe` for the first time, Windows SmartScreen may show a blue warning because it is a new application. Click <b>More Info</b> &rarr; <b>Run Anyway</b>.</li>
+                            <li>Once extracted, double-click <b>Start_FinAnalyzer.bat</b>. Since we run via an official Node.js signed binary, Windows Defender will not block the connection.</li>
                           </ul>
                         </div>
                       </div>

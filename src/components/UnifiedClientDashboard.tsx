@@ -491,20 +491,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                 <div className="absolute right-0 mt-2 w-72 bg-[#13131A] border border-white/10 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 overflow-hidden">
                   <div className="p-3 bg-amber-500/10 border-b border-white/5">
                     <p className="text-[10px] text-amber-500 font-black tracking-widest uppercase mb-1">Beta Security Notice</p>
-                    <p className="text-[10px] text-amber-500/80 leading-relaxed font-medium">Extract ZIP with password: <b>tally</b>.<br/>If Windows shows a blue security screen, click <b>More Info &rarr; Run Anyway</b>.</p>
+                    <p className="text-[10px] text-amber-500/80 leading-relaxed font-medium">Extract ZIP with password: <b>tally</b>.<br/>Then double-click <b>Start_FinAnalyzer.bat</b>.</p>
                   </div>
-                  <button 
-                    onClick={() => {
-                      const link = document.createElement('a');
-                      link.href = '/downloads/FinAnalyzer_Connector_Setup.exe';
-                      link.download = 'FinAnalyzer_Connector_Setup.exe';
-                      link.click();
-                    }}
-                    className="w-full text-left px-4 py-3 text-xs font-bold text-white hover:bg-white/5 flex items-center gap-3 transition-colors border-b border-white/5"
-                  >
-                    <Download className="w-4 h-4 text-emerald-400" />
-                    Windows Installer (.exe)
-                  </button>
                   <button 
                     onClick={() => {
                       const link = document.createElement('a');
@@ -515,7 +503,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                     className="w-full text-left px-4 py-3 text-xs font-bold text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
                   >
                     <FolderDown className="w-4 h-4 text-emerald-400" />
-                    Portable Version (.zip)
+                    Download Desktop Agent (.zip)
                   </button>
                 </div>
               </div>
