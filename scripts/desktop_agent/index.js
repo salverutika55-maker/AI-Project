@@ -171,27 +171,34 @@ async function startBackgroundSync(config) {
     const nameArr = Array.isArray(names) ? names : [names];
     const infoArr = Array.isArray(infos) ? infos : [infos];
 
+    const getVal = (infoObj, baseTag) => {
+      if (!infoObj || !infoObj[baseTag]) return 0;
+      const node = infoObj[baseTag];
+      if (typeof node === 'object' && node[`${baseTag}A`] !== undefined) {
+          return parseTallyAmount(node[`${baseTag}A`]);
+      }
+      return parseTallyAmount(node);
+    };
+
     nameArr.forEach((nameObj, idx) => {
       if (!nameObj || !nameObj.DSPDISPNAME) return;
       const name = String(nameObj.DSPDISPNAME);
       const info = infoArr[idx];
       if (info) {
         // Try movement/period fields first
-        const totDrAmt = parseTallyAmount(info?.DSPTOTDRAMT?.DSPTOTDRAMTA);
-        const totCrAmt = parseTallyAmount(info?.DSPTOTCRAMT?.DSPTOTCRAMTA);
+        const totDrAmt = getVal(info, 'DSPTOTDRAMT');
+        const totCrAmt = getVal(info, 'DSPTOTCRAMT');
         
         // For P&L reports, we need the NET movement during this period.
-        // If Tally returns transactions (which we will enforce), use them.
         const periodNet = Math.abs(totCrAmt - totDrAmt);
         
         // Fallback to closing net balance if transactions aren't available
-        const clDrAmt = parseTallyAmount(info?.DSPCLDRAMT?.DSPCLDRAMTA);
-        const clCrAmt = parseTallyAmount(info?.DSPCLCRAMT?.DSPCLCRAMTA);
-        const opDrAmt = parseTallyAmount(info?.DSPOPDRAMT?.DSPOPDRAMTA);
-        const opCrAmt = parseTallyAmount(info?.DSPOPCRAMT?.DSPOPCRAMTA);
+        const clDrAmt = getVal(info, 'DSPCLDRAMT');
+        const clCrAmt = getVal(info, 'DSPCLCRAMT');
+        const opDrAmt = getVal(info, 'DSPOPDRAMT');
+        const opCrAmt = getVal(info, 'DSPOPCRAMT');
         
         // If transactions fields are completely missing (0 and 0), try deriving from closing - opening
-        // Note: this is a fallback if XML fails to return DSPTOT.
         const closingNet = clCrAmt - clDrAmt;
         const openingNet = opCrAmt - opDrAmt;
         const derivedNet = Math.abs(closingNet - openingNet);
