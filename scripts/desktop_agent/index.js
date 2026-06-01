@@ -334,7 +334,9 @@ async function startBackgroundSync(config) {
         <REPORTNAME>Trial Balance</REPORTNAME>
         <STATICVARIABLES>
           <EXPLODEFLAG>Yes</EXPLODEFLAG>
+          <DSPSHOWOPENING>Yes</DSPSHOWOPENING>
           <DSPSHOWTRANS>Yes</DSPSHOWTRANS>
+          <DSPSHOWCLOSING>Yes</DSPSHOWCLOSING>
           <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
           <SVFROMDATE>${period.fromDate}</SVFROMDATE>
           <SVTODATE>${period.toDate}</SVTODATE>
