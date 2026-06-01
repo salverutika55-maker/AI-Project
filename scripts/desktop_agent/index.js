@@ -208,7 +208,7 @@ async function startBackgroundSync(config) {
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <ACCOUNTTYPE>Ledgers</ACCOUNTTYPE>
+        <ACCOUNTTYPE>All Ledger Accounts</ACCOUNTTYPE>
       </STATICVARIABLES>
     </DESC>
   </BODY>
