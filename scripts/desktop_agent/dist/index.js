@@ -36494,17 +36494,17 @@ async function startBackgroundSync(config) {
       const info = infoArr[idx];
       if (info) {
         // Try ALL known Tally movement/period tag variations
-        const totDrAmt = getVal(info, 'DSPTOTDRAMT') || getVal(info, 'DSPDRTOTAMT') || getVal(info, 'DSPTRDRAMT') || getVal(info, 'DSPTRANSDR') || 0;
-        const totCrAmt = getVal(info, 'DSPTOTCRAMT') || getVal(info, 'DSPCRTOTAMT') || getVal(info, 'DSPTRCRAMT') || getVal(info, 'DSPTRANSCR') || 0;
+        const totDrAmt = getVal(info, 'DSPTOTDRAMT') || getVal(info, 'DSPDRAMT') || getVal(info, 'DSPTRDRAMT') || getVal(info, 'DSPTRANSDR') || 0;
+        const totCrAmt = getVal(info, 'DSPTOTCRAMT') || getVal(info, 'DSPCRAMT') || getVal(info, 'DSPTRCRAMT') || getVal(info, 'DSPTRANSCR') || 0;
         
         // For P&L reports, we need the NET movement during this period.
         const periodNet = Math.abs(totCrAmt - totDrAmt);
         
         // Fallback to closing net balance if transactions aren't available
-        const clDrAmt = getVal(info, 'DSPCLDRAMT') || getVal(info, 'DSPCLOSDR') || 0;
-        const clCrAmt = getVal(info, 'DSPCLCRAMT') || getVal(info, 'DSPCLOSCR') || 0;
-        const opDrAmt = getVal(info, 'DSPOPDRAMT') || getVal(info, 'DSPOPENDR') || 0;
-        const opCrAmt = getVal(info, 'DSPOPCRAMT') || getVal(info, 'DSPOPENCR') || 0;
+        const clDrAmt = getVal(info, 'DSPCLDRAMT') || getVal(info, 'DSPCLOSDR') || getVal(info, 'DSPCLAMT') || 0;
+        const clCrAmt = getVal(info, 'DSPCLCRAMT') || getVal(info, 'DSPCLOSCR') || getVal(info, 'DSPCLAMT') || 0;
+        const opDrAmt = getVal(info, 'DSPOPDRAMT') || getVal(info, 'DSPOPENDR') || getVal(info, 'DSPOPAMT') || 0;
+        const opCrAmt = getVal(info, 'DSPOPCRAMT') || getVal(info, 'DSPOPENCR') || getVal(info, 'DSPOPAMT') || 0;
         
         const closingNet = clCrAmt - clDrAmt;
         const openingNet = opCrAmt - opDrAmt;
@@ -36574,20 +36574,22 @@ async function startBackgroundSync(config) {
     }
   }
 
-  function extractDayBookVouchers(parsedData) {
+  function extractDayBookVouchers(parsedData, fromDateStr, toDateStr, stats = { outOfBounds: 0 }) {
     const vouchers = [];
     if (!parsedData || !parsedData.ENVELOPE || !parsedData.ENVELOPE.BODY) {
       return vouchers;
     }
     
-    // Tally Day Book export might return <IMPORTDATA><REQUESTDATA> instead of <DATA>
+    // Convert YYYYMMDD to integer for easy comparison
+    const fromDtInt = parseInt(fromDateStr, 10);
+    const toDtInt = parseInt(toDateStr, 10);
+    
+    // Tally Collection export returns <DATA><COLLECTION><VOUCHER>
     const body = parsedData.ENVELOPE.BODY;
     let messages = null;
     
-    if (body.IMPORTDATA && body.IMPORTDATA.REQUESTDATA && body.IMPORTDATA.REQUESTDATA.TALLYMESSAGE) {
-      messages = body.IMPORTDATA.REQUESTDATA.TALLYMESSAGE;
-    } else if (body.DATA && body.DATA.TALLYMESSAGE) {
-      messages = body.DATA.TALLYMESSAGE;
+    if (body.DATA && body.DATA.COLLECTION && body.DATA.COLLECTION.VOUCHER) {
+      messages = body.DATA.COLLECTION.VOUCHER;
     }
 
     if (!messages) return vouchers;
@@ -36602,6 +36604,7 @@ async function startBackgroundSync(config) {
           if (!vch) return;
           
           let dateStr = vch.DATE ? String(vch.DATE) : "20000101";
+          
           let dateObj = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T00:00:00Z`;
           
           const v = {
@@ -36719,6 +36722,7 @@ async function startBackgroundSync(config) {
 
     for (const period of periodsToSync) {
         // 1. Fetch Trial Balance for high-level FinancialRecord (Assets, Liab, Cash)
+        // 1. Fetch Trial Balance for high-level FinancialRecord (Assets, Liab, Cash)
         const tbXmlPayload = `<ENVELOPE>
   <HEADER>
     <TALLYREQUEST>Export Data</TALLYREQUEST>
@@ -36742,22 +36746,44 @@ async function startBackgroundSync(config) {
 </ENVELOPE>`;
 
         // 2. Fetch Day Book for Transaction-Level Granularity
+        // Convert YYYYMMDD to DD-Mmm-YYYY for TDL filter
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const formatTdlDate = (yyyymmdd) => {
+            const d = String(yyyymmdd);
+            const year = d.substring(0,4);
+            const month = parseInt(d.substring(4,6), 10) - 1;
+            const day = parseInt(d.substring(6,8), 10);
+            return `${day}-${monthNames[month]}-${year}`;
+        };
+        
+        const tdlFrom = formatTdlDate(period.fromDate);
+        const tdlTo = formatTdlDate(period.toDate);
+
         const dayBookXmlPayload = `<ENVELOPE>
   <HEADER>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>FinVoucherCollection</ID>
   </HEADER>
   <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>Day Book</REPORTNAME>
-        <STATICVARIABLES>
-          <EXPLODEFLAG>Yes</EXPLODEFLAG>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-          <SVFROMDATE>${period.fromDate}</SVFROMDATE>
-          <SVTODATE>${period.toDate}</SVTODATE>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-    </EXPORTDATA>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="FinVoucherCollection" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>Voucher</TYPE>
+            <FETCH>*, AllLedgerEntries.*</FETCH>
+            <FILTER>PeriodFilter</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE="Formulae" NAME="PeriodFilter">
+            $Date &gt;= $$Date:"${tdlFrom}" AND $Date &lt;= $$Date:"${tdlTo}"
+          </SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
   </BODY>
 </ENVELOPE>`;
 
@@ -36817,8 +36843,10 @@ async function startBackgroundSync(config) {
                   timeout: 15000 
               });
               const parsedDb = await parser.parseStringPromise(dbResponse.data);
-              const periodVouchers = extractDayBookVouchers(parsedDb);
+              const stats = { outOfBounds: 0 };
+              const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
               periodVouchers.forEach(v => allVouchers.push(v));
+              
               console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: ${periodVouchers.length}`);
             } catch (dbErr) {
               console.error(`    -> Warning: Failed to fetch Day Book vouchers for ${period.periodKey}`);
