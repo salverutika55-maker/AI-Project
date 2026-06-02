@@ -144,7 +144,7 @@ export async function POST(req: Request) {
       // 1. Group vouchers by period
       for (const v of vouchers) {
         const d = new Date(v.date);
-        const mShort = d.toLocaleString('default', { month: 'short' });
+        const mShort = d.toLocaleString('en-US', { month: 'short' });
         const year = d.getFullYear();
         // Adjust for fiscal year (assuming April start)
         const syncYearToSave = d.getMonth() < 3 ? year - 1 : year;
@@ -159,10 +159,8 @@ export async function POST(req: Request) {
           if (!line.ledgerName) continue;
           const ledgerNameLower = line.ledgerName.trim().toLowerCase();
           
-          // Debits are technically expenses/assets (positive for PNL expenses), Credits are revenue (positive for PNL revenue)
-          // We will sum the absolute transaction volume for P&L based on the entry type.
-          // Wait, PNLValue expects a positive absolute number for the movement.
-          const amt = Math.abs(line.amount);
+          // Debits are negative, Credits are positive. Summing them yields the Net Movement.
+          const amt = line.amount;
           
           monthBalances[periodKey][ledgerNameLower] = (monthBalances[periodKey][ledgerNameLower] || 0) + amt;
         }
