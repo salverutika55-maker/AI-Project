@@ -296,7 +296,6 @@ async function startBackgroundSync(config) {
           if (!vch) return;
           
           let dateStr = vch.DATE ? String(vch.DATE) : "20000101";
-          let dateStr = vch.DATE ? String(vch.DATE) : "20000101";
           
           let dateObj = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T00:00:00Z`;
           
