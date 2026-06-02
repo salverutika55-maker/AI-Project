@@ -385,10 +385,10 @@ async function startBackgroundSync(config) {
     
     console.log(`[AGENT] Executing Sync for client: "${companyConfig.clientName}" (Active Tally: "${activeCompany}")`);
     
-    // Calculate last 24 months
+    // Calculate last 36 months (3 years) to ensure full fiscal years are captured
     const periodsToSync = [];
     const now = new Date();
-    for (let i = 23; i >= 0; i--) {
+    for (let i = 35; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
