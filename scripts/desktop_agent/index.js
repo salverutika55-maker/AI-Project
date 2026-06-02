@@ -478,13 +478,7 @@ async function startBackgroundSync(config) {
             });
             const parsedTb = await parser.parseStringPromise(tbResponse.data);
             const rawLedgers = extractAllLedgers(parsedTb);
-            Object.keys(rawLedgers).forEach(name => {
-                if (name) {
-                    const original = name.trim();
-                    const lower = original.toLowerCase();
-                    if (!allUniqueLedgersMap.has(lower)) allUniqueLedgersMap.set(lower, original);
-                }
-            });
+            // We NO LONGER add these to allUniqueLedgersMap because Trial Balance includes Groups!
             
             let rawRevenue = 0, rawCOGS = 0, rawOpEx = 0;
             for (const [name, amt] of Object.entries(rawLedgers)) {
