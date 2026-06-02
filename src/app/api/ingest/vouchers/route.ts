@@ -193,7 +193,7 @@ export async function POST(req: Request) {
           }
 
           if (balance !== 0) {
-            headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + balance;
+            headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
           }
         }
 
