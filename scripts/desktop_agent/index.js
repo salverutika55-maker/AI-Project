@@ -422,23 +422,23 @@ async function startBackgroundSync(config) {
   </BODY>
 </ENVELOPE>`;
 
-        // 2. Fetch Day Book for Transaction-Level Granularity
+        // 2. Fetch Day Book for Transaction-Level Granularity (Raw Data instead of Formatted Report)
         const dayBookXmlPayload = `<ENVELOPE>
   <HEADER>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>Day Book</ID>
   </HEADER>
   <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>Day Book</REPORTNAME>
-        <STATICVARIABLES>
-          <EXPLODEFLAG>Yes</EXPLODEFLAG>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-          <SVFROMDATE>${period.fromDate}</SVFROMDATE>
-          <SVTODATE>${period.toDate}</SVTODATE>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-    </EXPORTDATA>
+    <DESC>
+      <STATICVARIABLES>
+        <EXPLODEFLAG>Yes</EXPLODEFLAG>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>${period.fromDate}</SVFROMDATE>
+        <SVTODATE>${period.toDate}</SVTODATE>
+      </STATICVARIABLES>
+    </DESC>
   </BODY>
 </ENVELOPE>`;
 
