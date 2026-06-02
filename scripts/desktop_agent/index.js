@@ -266,7 +266,7 @@ async function startBackgroundSync(config) {
     }
   }
 
-  function extractDayBookVouchers(parsedData, fromDateStr, toDateStr) {
+  function extractDayBookVouchers(parsedData, fromDateStr, toDateStr, stats = { outOfBounds: 0 }) {
     const vouchers = [];
     if (!parsedData || !parsedData.ENVELOPE || !parsedData.ENVELOPE.BODY) {
       return vouchers;
@@ -301,6 +301,7 @@ async function startBackgroundSync(config) {
           const vchDtInt = parseInt(dateStr, 10);
           
           if (vchDtInt < fromDtInt || vchDtInt > toDtInt) {
+            stats.outOfBounds++;
             return; // Skip vouchers outside the requested period
           }
           
@@ -519,9 +520,15 @@ async function startBackgroundSync(config) {
                   timeout: 15000 
               });
               const parsedDb = await parser.parseStringPromise(dbResponse.data);
-              const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate);
+              const stats = { outOfBounds: 0 };
+              const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
               periodVouchers.forEach(v => allVouchers.push(v));
-              console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: ${periodVouchers.length}`);
+              
+              if (periodVouchers.length === 0 && stats.outOfBounds > 0) {
+                  console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: 0 (Skipped ${stats.outOfBounds} vouchers outside period. Change Alt+F2 in Tally to sync!)`);
+              } else {
+                  console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: ${periodVouchers.length}`);
+              }
             } catch (dbErr) {
               console.error(`    -> Warning: Failed to fetch Day Book vouchers for ${period.periodKey}`);
               console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: 0 (Failed)`);
