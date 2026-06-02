@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
+import crypto from "crypto";
 
 export async function POST(req: Request) {
   try {
@@ -38,64 +39,72 @@ export async function POST(req: Request) {
       }
     }
 
-    for (const ledgerName of uniqueLedgerNames) {
-      const normalizedLedger = await prisma.normalizedLedger.upsert({
-        where: {
-          clientId_name: {
-            clientId: client.id,
-            name: ledgerName
-          }
-        },
-        update: {}, // Don't overwrite group name if it was manually set
-        create: {
-          clientId: client.id,
-          name: ledgerName,
-          groupName: "Uncategorized",
-          nature: "DEBIT" // Default fallback
-        }
+    // Batch process Ledgers
+    const existingLedgers = await prisma.normalizedLedger.findMany({
+      where: { clientId: client.id, name: { in: Array.from(uniqueLedgerNames) } }
+    });
+
+    for (const l of existingLedgers) {
+      ledgerMap.set(l.name.toLowerCase(), l.id);
+      uniqueLedgerNames.delete(l.name);
+    }
+
+    const ledgersToCreate = Array.from(uniqueLedgerNames).map(name => {
+      const id = crypto.randomUUID();
+      ledgerMap.set(name.toLowerCase(), id);
+      return {
+        id,
+        clientId: client.id,
+        name,
+        groupName: "Uncategorized",
+        nature: "DEBIT"
+      };
+    });
+
+    if (ledgersToCreate.length > 0) {
+      await prisma.normalizedLedger.createMany({
+        data: ledgersToCreate
       });
-      ledgerMap.set(ledgerName.toLowerCase(), normalizedLedger.id);
     }
 
     let processedCount = 0;
 
-    // We should process them sequentially to avoid locking issues, or batch them
+    // Batch process Vouchers
+    const referenceNos = vouchers.map((v: any, idx: number) => v.guid || v.voucherNumber || `VCH-${v.date}-${idx}`);
+    
+    const existingVouchersList = await prisma.normalizedVoucher.findMany({
+      where: { clientId: client.id, referenceNo: { in: referenceNos } }
+    });
+    
+    const existingMap = new Map(existingVouchersList.map(v => [v.referenceNo, v.id]));
+    
+    const vouchersToCreate = [];
+    const linesToCreate = [];
+    const vouchersToDeleteLines = [];
+
     for (const v of vouchers) {
-      // Upsert the Voucher using a composite of client + voucherNumber + date to uniquely identify it
-      // For simplicity, we'll use an internal GUID or fallback
       const referenceNo = v.guid || v.voucherNumber || `VCH-${v.date}-${processedCount}`;
-      
-      const existingVoucher = await prisma.normalizedVoucher.findFirst({
-        where: {
+      const existingId = existingMap.get(referenceNo);
+
+      let voucherId = existingId;
+
+      if (!existingId) {
+        voucherId = crypto.randomUUID();
+        vouchersToCreate.push({
+          id: voucherId,
           clientId: client.id,
-          referenceNo: referenceNo
-        }
-      });
-
-      let voucherId = existingVoucher?.id;
-
-      if (!existingVoucher) {
-        const newVch = await prisma.normalizedVoucher.create({
-          data: {
-            clientId: client.id,
-            voucherNumber: v.voucherNumber || "N/A",
-            referenceNo: referenceNo,
-            date: new Date(v.date),
-            type: v.voucherType || "JOURNAL",
-            narration: v.narration || null,
-            totalAmount: v.totalAmount || 0,
-            isManual: false
-          }
+          voucherNumber: v.voucherNumber || "N/A",
+          referenceNo: referenceNo,
+          date: new Date(v.date),
+          type: v.voucherType || "JOURNAL",
+          narration: v.narration || null,
+          totalAmount: v.totalAmount || 0,
+          isManual: false
         });
-        voucherId = newVch.id;
       } else {
-        // Clear old lines if we are replacing
-        await prisma.normalizedVoucherLine.deleteMany({
-          where: { voucherId: existingVoucher.id }
-        });
+        vouchersToDeleteLines.push(existingId);
       }
 
-      // Create lines
       const linePayloads = v.lines.map((line: any) => {
         const ledId = ledgerMap.get((line.ledgerName || "").toLowerCase());
         return {
@@ -104,14 +113,28 @@ export async function POST(req: Request) {
           amount: Math.abs(line.amount),
           entryType: line.isDebit ? "DEBIT" : "CREDIT"
         };
-      }).filter((l: any) => l.ledgerId); // skip if ledger not found
+      }).filter((l: any) => l.ledgerId);
 
-      if (linePayloads.length > 0) {
-        await prisma.normalizedVoucherLine.createMany({
-          data: linePayloads
-        });
-      }
+      linesToCreate.push(...linePayloads);
       processedCount++;
+    }
+
+    if (vouchersToDeleteLines.length > 0) {
+      await prisma.normalizedVoucherLine.deleteMany({
+        where: { voucherId: { in: vouchersToDeleteLines } }
+      });
+    }
+
+    if (vouchersToCreate.length > 0) {
+      await prisma.normalizedVoucher.createMany({
+        data: vouchersToCreate
+      });
+    }
+
+    if (linesToCreate.length > 0) {
+      await prisma.normalizedVoucherLine.createMany({
+        data: linesToCreate
+      });
     }
 
     // --- PNLValue Aggregation from Vouchers ---
