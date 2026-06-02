@@ -89,7 +89,9 @@ export async function POST(req: Request) {
       processedCount++;
 
       // 4b. Map and Save PNLValues for Detailed P&L
-      if (record.ledgers && Object.keys(record.ledgers).length > 0 && client.pnlMappings) {
+      // Skip this if the source is Tally Prime Agent, because Tally now uses the granular /ingest/vouchers endpoint
+      // which aggregates PNLValues dynamically from transaction movements instead of Trial Balance.
+      if (syncSource !== "Tally Prime Agent" && record.ledgers && Object.keys(record.ledgers).length > 0 && client.pnlMappings) {
         // period is e.g. "2026-04"
         const [yearStr, monthStr] = period.split("-");
         const dateObj = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);

@@ -266,6 +266,73 @@ async function startBackgroundSync(config) {
     }
   }
 
+  function extractDayBookVouchers(parsedData) {
+    const vouchers = [];
+    if (!parsedData || !parsedData.ENVELOPE || !parsedData.ENVELOPE.BODY || !parsedData.ENVELOPE.BODY.DATA || !parsedData.ENVELOPE.BODY.DATA.TALLYMESSAGE) {
+      return vouchers;
+    }
+    
+    let messages = parsedData.ENVELOPE.BODY.DATA.TALLYMESSAGE;
+    if (!Array.isArray(messages)) messages = [messages];
+
+    messages.forEach(msg => {
+      if (msg.VOUCHER) {
+        let vList = Array.isArray(msg.VOUCHER) ? msg.VOUCHER : [msg.VOUCHER];
+        
+        vList.forEach(vch => {
+          if (!vch) return;
+          
+          let dateStr = vch.DATE ? String(vch.DATE) : "20000101";
+          let dateObj = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T00:00:00Z`;
+          
+          const v = {
+            guid: vch.GUID || vch.VOUCHERNUMBER,
+            voucherNumber: vch.VOUCHERNUMBER || "N/A",
+            voucherType: vch.VOUCHERTYPENAME || "JOURNAL",
+            date: dateObj,
+            narration: vch.NARRATION || "",
+            lines: []
+          };
+
+          let entries = [];
+          if (vch["ALLLEDGERENTRIES.LIST"]) {
+            entries = entries.concat(Array.isArray(vch["ALLLEDGERENTRIES.LIST"]) ? vch["ALLLEDGERENTRIES.LIST"] : [vch["ALLLEDGERENTRIES.LIST"]]);
+          }
+          if (vch["LEDGERENTRIES.LIST"]) {
+            entries = entries.concat(Array.isArray(vch["LEDGERENTRIES.LIST"]) ? vch["LEDGERENTRIES.LIST"] : [vch["LEDGERENTRIES.LIST"]]);
+          }
+          
+          let vchTotal = 0;
+
+          entries.forEach(entry => {
+            if (!entry || !entry.LEDGERNAME) return;
+            const amtStr = String(entry.AMOUNT || "0").replace(/[^0-9.-]+/g, '');
+            const rawAmt = parseFloat(amtStr) || 0;
+            // Tally represents debits as negative values in AMOUNT for Vouchers, or uses ISDEEMEDPOSITIVE="Yes"
+            const isDebit = entry.ISDEEMEDPOSITIVE === "Yes" || rawAmt < 0;
+            const absAmt = Math.abs(rawAmt);
+            
+            if (absAmt > 0) {
+              v.lines.push({
+                ledgerName: String(entry.LEDGERNAME),
+                amount: absAmt,
+                isDebit: isDebit
+              });
+              if (isDebit) vchTotal += absAmt;
+            }
+          });
+          
+          v.totalAmount = vchTotal;
+          if (v.lines.length > 0) {
+            vouchers.push(v);
+          }
+        });
+      }
+    });
+    
+    return vouchers;
+  }
+
   async function performSync() {
     if (isSyncing) {
       console.log("[AGENT] Sync already in progress, skipping...");
@@ -329,9 +396,11 @@ async function startBackgroundSync(config) {
 
     const allFinancialPayloads = [];
     const allUniqueLedgers = new Set();
+    const allVouchers = [];
 
     for (const period of periodsToSync) {
-        const xmlPayload = `<ENVELOPE>
+        // 1. Fetch Trial Balance for high-level FinancialRecord (Assets, Liab, Cash)
+        const tbXmlPayload = `<ENVELOPE>
   <HEADER>
     <TALLYREQUEST>Export Data</TALLYREQUEST>
   </HEADER>
@@ -353,40 +422,53 @@ async function startBackgroundSync(config) {
   </BODY>
 </ENVELOPE>`;
 
+        // 2. Fetch Day Book for Transaction-Level Granularity
+        const dayBookXmlPayload = `<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Export Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Day Book</REPORTNAME>
+        <STATICVARIABLES>
+          <EXPLODEFLAG>Yes</EXPLODEFLAG>
+          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+          <SVFROMDATE>${period.fromDate}</SVFROMDATE>
+          <SVTODATE>${period.toDate}</SVTODATE>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+    </EXPORTDATA>
+  </BODY>
+</ENVELOPE>`;
+
         try {
-            const tallyResponse = await axios.post("http://localhost:9000", xmlPayload, {
+            // -- Trial Balance Request --
+            const tbResponse = await axios.post("http://localhost:9000", tbXmlPayload, {
                 headers: { "Content-Type": "text/xml" },
-                timeout: 5000 
+                timeout: 10000 
             });
-
-            const parsedData = await parser.parseStringPromise(tallyResponse.data);
-
-            const rawLedgers = extractAllLedgers(parsedData);
+            const parsedTb = await parser.parseStringPromise(tbResponse.data);
+            const rawLedgers = extractAllLedgers(parsedTb);
             Object.keys(rawLedgers).forEach(name => allUniqueLedgers.add(name));
             
-            // Re-implement the original keyword extraction using the rawLedgers
             let rawRevenue = 0, rawCOGS = 0, rawOpEx = 0;
             for (const [name, amt] of Object.entries(rawLedgers)) {
                 const lowerName = name.toLowerCase();
-                if (["sales", "income", "revenue"].some(kw => lowerName.includes(kw))) {
-                    rawRevenue += amt;
-                } else if (["purchase", "direct expenses", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) {
-                    rawCOGS += amt;
-                } else if (["indirect expenses", "operating expenses", "admin", "office"].some(kw => lowerName.includes(kw))) {
-                    rawOpEx += amt;
-                }
+                if (["sales", "income", "revenue"].some(kw => lowerName.includes(kw))) rawRevenue += amt;
+                else if (["purchase", "direct expenses", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) rawCOGS += amt;
+                else if (["indirect expenses", "operating expenses", "admin", "office"].some(kw => lowerName.includes(kw))) rawOpEx += amt;
             }
-            const rawCash = extractTrialBalance(parsedData, ["Cash-in-hand", "Bank Accounts"]);
-            const rawCurrentAssets = extractTrialBalance(parsedData, ["Current Assets"]);
-            const rawCurrentLiab = extractTrialBalance(parsedData, ["Current Liabilities"]);
-            const rawAR = extractTrialBalance(parsedData, ["Sundry Debtors", "Accounts Receivable"]);
-            const rawAP = extractTrialBalance(parsedData, ["Sundry Creditors", "Accounts Payable"]);
-            const rawInventory = extractTrialBalance(parsedData, ["Closing Stock", "Stock-in-hand", "Inventory"]);
+            const rawCash = extractTrialBalance(parsedTb, ["Cash-in-hand", "Bank Accounts"]);
+            const rawCurrentAssets = extractTrialBalance(parsedTb, ["Current Assets"]);
+            const rawCurrentLiab = extractTrialBalance(parsedTb, ["Current Liabilities"]);
+            const rawAR = extractTrialBalance(parsedTb, ["Sundry Debtors", "Accounts Receivable"]);
+            const rawAP = extractTrialBalance(parsedTb, ["Sundry Creditors", "Accounts Payable"]);
+            const rawInventory = extractTrialBalance(parsedTb, ["Closing Stock", "Stock-in-hand", "Inventory"]);
 
             const finalRevenue = rawRevenue > 0 ? rawRevenue : 0;
             const finalCOGS = rawCOGS > 0 ? rawCOGS : 0;
             const finalOpEx = rawOpEx > 0 ? rawOpEx : 0;
-            
             const netIncome = finalRevenue - finalCOGS - finalOpEx;
 
             allFinancialPayloads.push({
@@ -409,7 +491,21 @@ async function startBackgroundSync(config) {
                 ledgers: rawLedgers
             });
 
-            console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue}`);
+            // -- Day Book Request --
+            try {
+              const dbResponse = await axios.post("http://localhost:9000", dayBookXmlPayload, {
+                  headers: { "Content-Type": "text/xml" },
+                  timeout: 15000 
+              });
+              const parsedDb = await parser.parseStringPromise(dbResponse.data);
+              const periodVouchers = extractDayBookVouchers(parsedDb);
+              periodVouchers.forEach(v => allVouchers.push(v));
+              console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: ${periodVouchers.length}`);
+            } catch (dbErr) {
+              console.error(`    -> Warning: Failed to fetch Day Book vouchers for ${period.periodKey}`);
+              console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: 0 (Failed)`);
+            }
+
         } catch (e) {
             console.error(`    -> Error fetching ${period.periodKey}: Tally not running or unreachable.`);
         }
@@ -417,13 +513,26 @@ async function startBackgroundSync(config) {
 
     if (allFinancialPayloads.length > 0) {
         try {
-            // Fetch explicit Master Ledgers from Chart of Accounts
+            // 1. Fetch Explicit Master Ledgers
             const masterLedgers = await extractChartOfAccounts();
-            
-            // Merge with any active ledgers found in the Trial Balance for absolute safety
             masterLedgers.forEach(l => allUniqueLedgers.add(l));
-            
             const finalLedgers = Array.from(allUniqueLedgers);
+            
+            // 2. Push Vouchers
+            if (allVouchers.length > 0) {
+               console.log(`[AGENT] Pushing ${allVouchers.length} normalized vouchers to backend...`);
+               await axios.post(`${VERCEL_API}/ingest/vouchers`, 
+                   { vouchers: allVouchers },
+                   {
+                       headers: {
+                           'Content-Type': 'application/json',
+                           'Authorization': `Bearer ${companyConfig.apiKey}`
+                       }
+                   }
+               );
+            }
+            
+            // 3. Push Trial Balance summary (High level metrics)
             await axios.post(`${VERCEL_API}/ingest`, 
                 { records: allFinancialPayloads, chartOfAccounts: finalLedgers },
                 {
@@ -433,7 +542,7 @@ async function startBackgroundSync(config) {
                     }
                 }
             );
-            console.log(`[AGENT] Pushed ${allFinancialPayloads.length} records and ${finalLedgers.length} ledgers to Vercel.`);
+            console.log(`[AGENT] Pushed ${allFinancialPayloads.length} summary records and ${finalLedgers.length} ledgers to Vercel.`);
         } catch (err) {
             console.error(`[AGENT] Error pushing to Vercel: ${err.message}`);
             if (err.response?.status === 401) {
