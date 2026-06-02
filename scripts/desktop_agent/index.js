@@ -266,11 +266,15 @@ async function startBackgroundSync(config) {
     }
   }
 
-  function extractDayBookVouchers(parsedData) {
+  function extractDayBookVouchers(parsedData, fromDateStr, toDateStr) {
     const vouchers = [];
     if (!parsedData || !parsedData.ENVELOPE || !parsedData.ENVELOPE.BODY) {
       return vouchers;
     }
+    
+    // Convert YYYYMMDD to integer for easy comparison
+    const fromDtInt = parseInt(fromDateStr, 10);
+    const toDtInt = parseInt(toDateStr, 10);
     
     // Tally Day Book export might return <IMPORTDATA><REQUESTDATA> instead of <DATA>
     const body = parsedData.ENVELOPE.BODY;
@@ -294,6 +298,12 @@ async function startBackgroundSync(config) {
           if (!vch) return;
           
           let dateStr = vch.DATE ? String(vch.DATE) : "20000101";
+          const vchDtInt = parseInt(dateStr, 10);
+          
+          if (vchDtInt < fromDtInt || vchDtInt > toDtInt) {
+            return; // Skip vouchers outside the requested period
+          }
+          
           let dateObj = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T00:00:00Z`;
           
           const v = {
@@ -509,7 +519,7 @@ async function startBackgroundSync(config) {
                   timeout: 15000 
               });
               const parsedDb = await parser.parseStringPromise(dbResponse.data);
-              const periodVouchers = extractDayBookVouchers(parsedDb);
+              const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate);
               periodVouchers.forEach(v => allVouchers.push(v));
               console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: ${periodVouchers.length}`);
             } catch (dbErr) {
