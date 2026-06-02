@@ -193,7 +193,7 @@ export async function POST(req: Request) {
           }
 
           if (balance !== 0) {
-            headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
+            headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + balance;
           }
         }
 
@@ -202,7 +202,7 @@ export async function POST(req: Request) {
           headName,
           month: mShort,
           year: syncYearToSave,
-          amount: encrypt(balance.toString())
+          amount: encrypt(Math.abs(balance).toString())
         }));
 
         if (finalEntries.length > 0) {
