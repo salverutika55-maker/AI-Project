@@ -268,11 +268,22 @@ async function startBackgroundSync(config) {
 
   function extractDayBookVouchers(parsedData) {
     const vouchers = [];
-    if (!parsedData || !parsedData.ENVELOPE || !parsedData.ENVELOPE.BODY || !parsedData.ENVELOPE.BODY.DATA || !parsedData.ENVELOPE.BODY.DATA.TALLYMESSAGE) {
+    if (!parsedData || !parsedData.ENVELOPE || !parsedData.ENVELOPE.BODY) {
       return vouchers;
     }
     
-    let messages = parsedData.ENVELOPE.BODY.DATA.TALLYMESSAGE;
+    // Tally Day Book export might return <IMPORTDATA><REQUESTDATA> instead of <DATA>
+    const body = parsedData.ENVELOPE.BODY;
+    let messages = null;
+    
+    if (body.IMPORTDATA && body.IMPORTDATA.REQUESTDATA && body.IMPORTDATA.REQUESTDATA.TALLYMESSAGE) {
+      messages = body.IMPORTDATA.REQUESTDATA.TALLYMESSAGE;
+    } else if (body.DATA && body.DATA.TALLYMESSAGE) {
+      messages = body.DATA.TALLYMESSAGE;
+    }
+
+    if (!messages) return vouchers;
+    
     if (!Array.isArray(messages)) messages = [messages];
 
     messages.forEach(msg => {
@@ -422,23 +433,23 @@ async function startBackgroundSync(config) {
   </BODY>
 </ENVELOPE>`;
 
-        // 2. Fetch Day Book for Transaction-Level Granularity (Raw Data instead of Formatted Report)
+        // 2. Fetch Day Book for Transaction-Level Granularity
         const dayBookXmlPayload = `<ENVELOPE>
   <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Data</TYPE>
-    <ID>Day Book</ID>
+    <TALLYREQUEST>Export Data</TALLYREQUEST>
   </HEADER>
   <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <EXPLODEFLAG>Yes</EXPLODEFLAG>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVFROMDATE>${period.fromDate}</SVFROMDATE>
-        <SVTODATE>${period.toDate}</SVTODATE>
-      </STATICVARIABLES>
-    </DESC>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Day Book</REPORTNAME>
+        <STATICVARIABLES>
+          <EXPLODEFLAG>Yes</EXPLODEFLAG>
+          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+          <SVFROMDATE>${period.fromDate}</SVFROMDATE>
+          <SVTODATE>${period.toDate}</SVTODATE>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+    </EXPORTDATA>
   </BODY>
 </ENVELOPE>`;
 
