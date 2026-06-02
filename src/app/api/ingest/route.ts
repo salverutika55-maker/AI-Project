@@ -143,22 +143,30 @@ export async function POST(req: Request) {
 
     // 4c. Update Unique Ledgers for the Mapping UI
     if (client.software === 'TALLY') {
-      const uniqueLedgers = new Set<string>();
+      const uniqueLedgers = new Map<string, string>(); // lower -> original
       
       // Add all ledgers from the Trial Balance records
       for (const record of records) {
         if (record.ledgers) {
-          Object.keys(record.ledgers).forEach(k => uniqueLedgers.add(k.trim()));
+          Object.keys(record.ledgers).forEach(k => {
+             const original = k.trim();
+             const lower = original.toLowerCase();
+             if (!uniqueLedgers.has(lower)) uniqueLedgers.set(lower, original);
+          });
         }
       }
       
       // Also add explicit chartOfAccounts if provided by the agent
       if (body.chartOfAccounts && Array.isArray(body.chartOfAccounts)) {
-        body.chartOfAccounts.forEach((k: string) => uniqueLedgers.add(k.trim()));
+        body.chartOfAccounts.forEach((k: string) => {
+             const original = k.trim();
+             const lower = original.toLowerCase();
+             if (!uniqueLedgers.has(lower)) uniqueLedgers.set(lower, original);
+        });
       }
       
       if (uniqueLedgers.size > 0) {
-        const ledgersArr = Array.from(uniqueLedgers);
+        const ledgersArr = Array.from(uniqueLedgers.values());
         const encryptedLedgers = encrypt(JSON.stringify(ledgersArr));
         
         await prisma.integrationCredential.upsert({

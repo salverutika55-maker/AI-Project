@@ -31,25 +31,31 @@ export async function POST(req: Request) {
 
     // Upsert ledgers to NormalizedLedger and keep an ID map
     const ledgerMap = new Map();
-    const uniqueLedgerNames = new Set<string>();
+    const uniqueLedgerNames = new Map<string, string>(); // lowercase -> original case
     
     for (const v of vouchers) {
       for (const line of v.lines) {
-        if (line.ledgerName) uniqueLedgerNames.add(line.ledgerName);
+        if (line.ledgerName) {
+           const original = line.ledgerName.trim();
+           const lower = original.toLowerCase();
+           if (!uniqueLedgerNames.has(lower)) {
+             uniqueLedgerNames.set(lower, original);
+           }
+        }
       }
     }
 
     // Batch process Ledgers
     const existingLedgers = await prisma.normalizedLedger.findMany({
-      where: { clientId: client.id, name: { in: Array.from(uniqueLedgerNames) } }
+      where: { clientId: client.id, name: { in: Array.from(uniqueLedgerNames.values()) } }
     });
 
     for (const l of existingLedgers) {
       ledgerMap.set(l.name.toLowerCase(), l.id);
-      uniqueLedgerNames.delete(l.name);
+      uniqueLedgerNames.delete(l.name.toLowerCase());
     }
 
-    const ledgersToCreate = Array.from(uniqueLedgerNames).map(name => {
+    const ledgersToCreate = Array.from(uniqueLedgerNames.values()).map(name => {
       const id = crypto.randomUUID();
       ledgerMap.set(name.toLowerCase(), id);
       return {

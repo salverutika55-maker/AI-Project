@@ -403,7 +403,7 @@ async function startBackgroundSync(config) {
     }
 
     const allFinancialPayloads = [];
-    const allUniqueLedgers = new Set();
+    const allUniqueLedgersMap = new Map();
 
     for (const period of periodsToSync) {
         // 1. Fetch Trial Balance for high-level FinancialRecord (Assets, Liab, Cash)
@@ -478,7 +478,13 @@ async function startBackgroundSync(config) {
             });
             const parsedTb = await parser.parseStringPromise(tbResponse.data);
             const rawLedgers = extractAllLedgers(parsedTb);
-            Object.keys(rawLedgers).forEach(name => allUniqueLedgers.add(name));
+            Object.keys(rawLedgers).forEach(name => {
+                if (name) {
+                    const original = name.trim();
+                    const lower = original.toLowerCase();
+                    if (!allUniqueLedgersMap.has(lower)) allUniqueLedgersMap.set(lower, original);
+                }
+            });
             
             let rawRevenue = 0, rawCOGS = 0, rawOpEx = 0;
             for (const [name, amt] of Object.entries(rawLedgers)) {
@@ -562,8 +568,14 @@ async function startBackgroundSync(config) {
         try {
             // 1. Fetch Explicit Master Ledgers
             const masterLedgers = await extractChartOfAccounts();
-            masterLedgers.forEach(l => allUniqueLedgers.add(l));
-            const finalLedgers = Array.from(allUniqueLedgers);
+            masterLedgers.forEach(name => {
+                if (name) {
+                    const original = name.trim();
+                    const lower = original.toLowerCase();
+                    if (!allUniqueLedgersMap.has(lower)) allUniqueLedgersMap.set(lower, original);
+                }
+            });
+            const finalLedgers = Array.from(allUniqueLedgersMap.values());
             
             // 2. Push Trial Balance summary (High level metrics)
             await axios.post(`${VERCEL_API}/ingest`, 
