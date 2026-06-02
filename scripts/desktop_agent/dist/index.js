@@ -36712,7 +36712,6 @@ async function startBackgroundSync(config) {
 
     const allFinancialPayloads = [];
     const allUniqueLedgers = new Set();
-    const allVouchers = [];
 
     for (const period of periodsToSync) {
         // 1. Fetch Trial Balance for high-level FinancialRecord (Assets, Liab, Cash)
@@ -36837,7 +36836,24 @@ async function startBackgroundSync(config) {
               const parsedDb = await parser.parseStringPromise(dbResponse.data);
               const stats = { outOfBounds: 0 };
               const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
-              periodVouchers.forEach(v => allVouchers.push(v));
+              
+              if (periodVouchers.length > 0) {
+                 console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}...`);
+                 try {
+                     await axios.post(`${VERCEL_API}/ingest/vouchers`, 
+                         { vouchers: periodVouchers },
+                         {
+                             headers: {
+                                 'Content-Type': 'application/json',
+                                 'Authorization': `Bearer ${companyConfig.apiKey}`
+                             },
+                             timeout: 60000
+                         }
+                     );
+                 } catch(pushErr) {
+                     console.error(`    -> Backend timeout/error pushing ${period.periodKey}: ${pushErr.message}`);
+                 }
+              }
               
               console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: ${periodVouchers.length}`);
             } catch (dbErr) {
@@ -36857,21 +36873,7 @@ async function startBackgroundSync(config) {
             masterLedgers.forEach(l => allUniqueLedgers.add(l));
             const finalLedgers = Array.from(allUniqueLedgers);
             
-            // 2. Push Vouchers
-            if (allVouchers.length > 0) {
-               console.log(`[AGENT] Pushing ${allVouchers.length} normalized vouchers to backend...`);
-               await axios.post(`${VERCEL_API}/ingest/vouchers`, 
-                   { vouchers: allVouchers },
-                   {
-                       headers: {
-                           'Content-Type': 'application/json',
-                           'Authorization': `Bearer ${companyConfig.apiKey}`
-                       }
-                   }
-               );
-            }
-            
-            // 3. Push Trial Balance summary (High level metrics)
+            // 2. Push Trial Balance summary (High level metrics)
             await axios.post(`${VERCEL_API}/ingest`, 
                 { records: allFinancialPayloads, chartOfAccounts: finalLedgers },
                 {

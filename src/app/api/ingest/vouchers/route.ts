@@ -187,22 +187,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Resolve any pending sync tasks
-    await prisma.syncTask.updateMany({
-      where: {
-        clientId: client.id,
-        status: { in: ["PENDING", "PROCESSING"] },
-        type: "TALLY_SYNC"
-      },
-      data: {
-        status: "COMPLETED",
-        result: {
-          message: "Data synced successfully via Transaction Vouchers.",
-          recordsProcessed: processedCount
-        }
-      }
-    });
-
     return NextResponse.json({ 
       message: `Successfully processed ${processedCount} vouchers.`,
       recordsProcessed: processedCount
