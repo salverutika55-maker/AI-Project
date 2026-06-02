@@ -20,7 +20,7 @@ async function test() {
             <FILTER>PeriodFilter</FILTER>
           </COLLECTION>
           <SYSTEM TYPE="Formulae" NAME="PeriodFilter">
-            $Date &gt;= $$Date:"1-Jul-2024" AND $Date &lt;= $$Date:"31-Jul-2024"
+            $Date &gt;= $$Date:"1-Sep-2024" AND $Date &lt;= $$MonthEnd:$$Date:"1-Sep-2024"
           </SYSTEM>
         </TDLMESSAGE>
       </TDL>
@@ -31,7 +31,7 @@ async function test() {
   try {
     const res = await fetch("http://localhost:9000", { method: 'POST', body: payload, headers: { "Content-Type": "text/xml" }});
     const data = await res.text();
-    fs.writeFileSync('tally_jul_2024.xml', data);
+    fs.writeFileSync('tally_all_vouchers.xml', data);
     console.log("Response saved. Length:", data.length);
     const matches = data.match(/<VOUCHER[\s\S]*?<\/VOUCHER>/g);
     console.log("Found", matches ? matches.length : 0, "vouchers in Jul 2024.");

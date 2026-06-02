@@ -36749,9 +36749,7 @@ async function startBackgroundSync(config) {
             const day = parseInt(d.substring(6,8), 10);
             return `${day}-${monthNames[month]}-${year}`;
         };
-        
         const tdlFrom = formatTdlDate(period.fromDate);
-        const tdlTo = formatTdlDate(period.toDate);
 
         const dayBookXmlPayload = `<ENVELOPE>
   <HEADER>
@@ -36773,7 +36771,7 @@ async function startBackgroundSync(config) {
             <FILTER>PeriodFilter</FILTER>
           </COLLECTION>
           <SYSTEM TYPE="Formulae" NAME="PeriodFilter">
-            $Date &gt;= $$Date:"${tdlFrom}" AND $Date &lt;= $$Date:"${tdlTo}"
+            $Date &gt;= $$Date:"${tdlFrom}" AND $Date &lt;= $$MonthEnd:$$Date:"${tdlFrom}"
           </SYSTEM>
         </TDLMESSAGE>
       </TDL>
