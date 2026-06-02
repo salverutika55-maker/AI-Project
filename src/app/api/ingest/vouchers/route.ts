@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { encrypt } from "@/lib/encryption";
 
 export async function POST(req: Request) {
   try {
@@ -110,6 +111,8 @@ export async function POST(req: Request) {
           data: linePayloads
         });
       }
+      processedCount++;
+    }
 
     // --- PNLValue Aggregation from Vouchers ---
     if (client.pnlMappings && client.pnlMappings.length > 0) {
