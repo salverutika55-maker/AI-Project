@@ -36596,16 +36596,12 @@ async function startBackgroundSync(config) {
     
     if (!Array.isArray(messages)) messages = [messages];
 
-    messages.forEach(msg => {
-      if (msg.VOUCHER) {
-        let vList = Array.isArray(msg.VOUCHER) ? msg.VOUCHER : [msg.VOUCHER];
-        
-        vList.forEach(vch => {
-          if (!vch) return;
-          
-          let dateStr = vch.DATE ? String(vch.DATE) : "20000101";
-          
-          let dateObj = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T00:00:00Z`;
+    messages.forEach(vch => {
+      if (!vch) return;
+      
+      let dateStr = vch.DATE ? String(vch.DATE) : "20000101";
+      
+      let dateObj = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T00:00:00Z`;
           
           const v = {
             guid: vch.GUID || vch.VOUCHERNUMBER,
@@ -36648,8 +36644,6 @@ async function startBackgroundSync(config) {
           if (v.lines.length > 0) {
             vouchers.push(v);
           }
-        });
-      }
     });
     
     return vouchers;
