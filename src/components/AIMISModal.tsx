@@ -133,7 +133,12 @@ export default function AIMISModal({ isOpen, onClose, clientName, getRowTotal, f
     }
 
     setReport({
-      executiveSummary: `For the selected period, ${clientName} generated ${formatCurrency(totalRev)} in Total Revenue, culminating in a Net Profit of ${formatCurrency(totalNP)}. Direct costs amounted to ${formatCurrency(cogs)}, while indirect operating expenses were ${formatCurrency(totalExp)}.`,
+      executiveSummary: [
+        { label: "Total Revenue Generated", value: formatCurrency(totalRev) },
+        { label: "Total Direct Costs (COGS)", value: formatCurrency(cogs) },
+        { label: "Total Indirect OPEX", value: formatCurrency(totalExp) },
+        { label: "Net Profit Before Tax", value: formatCurrency(totalNP), isNegative: totalNP < 0 }
+      ],
       focusAreas,
       strengths,
       risks,
@@ -189,29 +194,39 @@ export default function AIMISModal({ isOpen, onClose, clientName, getRowTotal, f
           ) : report ? (
             <div className="space-y-10 animate-in fade-in duration-700">
               
-              {/* Executive Summary */}
+              {/* Executive Summary Pointwise */}
               <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-2xl p-6 md:p-8 relative overflow-hidden">
                 <Zap className="absolute -top-10 -right-10 w-40 h-40 text-indigo-500/10 rotate-12" />
-                <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Executive Summary</h3>
-                <p className="text-lg md:text-xl text-slate-300 font-medium leading-relaxed relative z-10">
-                  {report.executiveSummary}
-                </p>
+                <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-6">Executive Summary</h3>
+                <ul className="space-y-4 relative z-10">
+                  {report.executiveSummary.map((item: any, i: number) => (
+                    <li key={i} className="flex items-center gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                      <span className="text-sm text-slate-400 font-medium w-48">{item.label}:</span>
+                      <span className={`text-base font-black ${item.isNegative ? 'text-rose-400' : 'text-white'}`}>
+                        {item.value}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
 
-              {/* Core Focus Areas */}
+              {/* Core Focus Areas Pointwise */}
               <div>
                 <h3 className="text-xl font-black text-white mb-6 flex items-center gap-3">
                   <Target className="w-6 h-6 text-cyan-400" /> 
                   Strategic Focus Areas
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
                   {report.focusAreas.map((area: any, idx: number) => (
-                    <div key={idx} className="bg-[#13131A] border border-cyan-500/30 rounded-2xl p-6 shadow-lg shadow-cyan-500/5 hover:border-cyan-500/60 transition-colors group">
-                      <div className="w-10 h-10 bg-cyan-500/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                        <span className="text-cyan-400 font-black">{idx + 1}</span>
+                    <div key={idx} className="flex items-start gap-4 p-5 border-l-2 border-cyan-500 bg-white/[0.02] hover:bg-white/[0.04] transition-colors rounded-r-xl">
+                      <div className="w-8 h-8 bg-cyan-500/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-cyan-400 font-black text-sm">{idx + 1}</span>
                       </div>
-                      <h4 className="text-lg font-black text-white mb-3">{area.title}</h4>
-                      <p className="text-sm text-slate-400 font-medium leading-relaxed">{area.desc}</p>
+                      <div>
+                        <h4 className="text-lg font-black text-white mb-2">{area.title}</h4>
+                        <p className="text-sm text-slate-300 font-medium leading-relaxed">{area.desc}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
