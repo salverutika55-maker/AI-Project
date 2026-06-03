@@ -127,17 +127,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         }
         const rec = monthMap.get(periodKey);
         const val = parseFloat(decrypt(p.amount)) || 0;
+        const lowerName = p.headName.toLowerCase();
         
-        if (p.headName === "Revenue") rec.revenue += val;
-        else if (p.headName === "COGS") rec.cogs += val;
-        else if (p.headName === "Operating Expenses") rec.operatingExpenses += val;
-        else if (p.headName === "Net Income") rec.netIncome += val;
-        else if (p.headName === "Cash & Cash Equivalents") rec.cashBalance += val;
-        else if (p.headName === "Accounts Receivable") rec.accountsReceivable += val;
-        else if (p.headName === "Accounts Payable") rec.accountsPayable += val;
-        else if (p.headName === "Inventory") rec.inventory += val;
-        else if (p.headName === "Current Assets") rec.currentAssets += val;
-        else if (p.headName === "Current Liabilities") rec.currentLiabilities += val;
+        if (["sales", "income", "revenue"].some(kw => lowerName.includes(kw))) rec.revenue += val;
+        else if (["purchase", "direct", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) rec.cogs += val;
+        else if (["expense", "salary", "rent", "admin", "office", "indirect", "selling", "charges", "audit"].some(kw => lowerName.includes(kw))) rec.operatingExpenses += val;
+        else if (["cash", "bank"].some(kw => lowerName.includes(kw))) rec.cashBalance += val;
+        else if (["receivable", "debtor"].some(kw => lowerName.includes(kw))) rec.accountsReceivable += val;
+        else if (["payable", "creditor"].some(kw => lowerName.includes(kw))) rec.accountsPayable += val;
+        else if (["inventory", "stock"].some(kw => lowerName.includes(kw))) rec.inventory += val;
+        else if (["current asset"].some(kw => lowerName.includes(kw))) rec.currentAssets += val;
+        else if (["current liab"].some(kw => lowerName.includes(kw))) rec.currentLiabilities += val;
+        else if (lowerName === "net income") rec.netIncome += val;
       }
       
       monthMap.forEach(rec => {

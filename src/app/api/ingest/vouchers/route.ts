@@ -166,7 +166,7 @@ export async function POST(req: Request) {
           const ledgerNameLower = line.ledgerName.trim().toLowerCase();
           
           // Debits are negative, Credits are positive. Summing them yields the Net Movement.
-          const amt = line.amount;
+          const amt = line.isDebit ? -line.amount : line.amount;
           
           monthBalances[periodKey][ledgerNameLower] = (monthBalances[periodKey][ledgerNameLower] || 0) + amt;
         }
@@ -186,9 +186,6 @@ export async function POST(req: Request) {
             const exactMatchKey = Object.keys(accounts).find(k => k === alias);
             if (exactMatchKey) {
               balance += accounts[exactMatchKey];
-            } else {
-              const fuzzyMatchKey = Object.keys(accounts).find(k => k.includes(alias));
-              if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
             }
           }
 
