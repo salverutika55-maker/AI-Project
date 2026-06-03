@@ -24,6 +24,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import Papa from "papaparse";
 import ErrorBoundary from "./ErrorBoundary";
+import AIMISModal from "./AIMISModal";
 
 interface UnifiedDashboardProps {
   client: any;
@@ -59,6 +60,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const [misLoading, setMisLoading] = useState(false);
   const [customSubHeads, setCustomSubHeads] = useState<any[]>([]);
   const [isManagingStructure, setIsManagingStructure] = useState(false);
+  const [isMISModalOpen, setIsMISModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
   // Derived state for mapping modals
@@ -767,46 +769,18 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                   </div>
                 </div>
 
-                {/* AI MIS & Ratios */}
+                {/* AI MIS Assistant Launcher */}
                 <div className="space-y-8">
                   <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"><BrainCircuit className="w-20 h-20 text-indigo-400" /></div>
-                    <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-xl font-black text-white flex items-center gap-3"><BrainCircuit className="w-5 h-5 text-indigo-400" /> AI MIS Assistant</h3>
-                      <button onClick={generateMIS} disabled={misLoading} className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors">
-                        {misLoading ? "Thinking..." : "Regenerate"}
-                      </button>
-                    </div>
-                    
-                    {misLoading ? (
-                      <div className="py-10 flex flex-col items-center justify-center text-indigo-400 animate-pulse">
-                        <RefreshCw className="w-8 h-8 animate-spin mb-4" />
-                        <p className="text-xs font-bold uppercase tracking-widest">Processing Data...</p>
-                      </div>
-                    ) : misReport ? (
-                      <div className="space-y-6">
-                        <p className="text-sm text-slate-300 leading-relaxed font-medium">{misReport.commentary}</p>
-                        <div className="space-y-3">
-                          {misReport.highlights.map((hl: string, i: number) => (
-                            <div key={i} className="flex items-start gap-3 bg-white/5 p-3 rounded-xl">
-                              <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-cyan-500 shrink-0" />
-                              <span className="text-xs text-slate-400 font-bold">{hl}</span>
-                            </div>
-                          ))}
-                        </div>
-                        {misReport.anomalies.length > 0 && (
-                          <div className="mt-4 p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl">
-                            <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-2 mb-2"><Activity className="w-3 h-3" /> Anomalies</p>
-                            <p className="text-xs text-rose-300 font-bold">{misReport.anomalies[0]}</p>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="py-10 text-center">
-                        <p className="text-sm text-slate-500 font-medium mb-6">Connect your Zoho account and click below to generate an AI financial summary.</p>
-                        <button onClick={generateMIS} className="px-6 py-3 bg-indigo-500 text-white font-black text-xs rounded-xl shadow-lg shadow-indigo-500/20 hover:scale-105 transition-all">Generate First MIS Report</button>
-                      </div>
-                    )}
+                    <h3 className="text-xl font-black text-white flex items-center gap-3 mb-4"><BrainCircuit className="w-5 h-5 text-indigo-400" /> AI MIS Assistant</h3>
+                    <p className="text-sm text-slate-400 font-medium mb-8 relative z-10">Generate a comprehensive, full-screen AI analysis of your financial performance, including key strategic focus areas and risk anomalies.</p>
+                    <button 
+                      onClick={() => setIsMISModalOpen(true)} 
+                      className="relative z-10 w-full py-4 bg-indigo-500 hover:bg-indigo-400 text-white font-black text-sm rounded-xl shadow-lg shadow-indigo-500/20 transition-all flex justify-center items-center gap-2"
+                    >
+                      <Zap className="w-4 h-4" /> Generate Full Report
+                    </button>
                   </div>
 
                   <div className="bg-[#13131A] border border-white/5 rounded-3xl p-8 shadow-xl">
@@ -1068,35 +1042,22 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
             </ErrorBoundary>
           )}
         </div>
-        <TrialBalanceUploadModal 
-          isOpen={isTBUploadOpen} 
-          onClose={() => setIsTBUploadOpen(false)} 
-          clientId={client.id} 
-          sectorHeads={allSectorHeads}
-        />
+
       </main>
 
       {/* MODALS */}
-      <PNLMappingModal 
-        isOpen={isMappingOpen} 
-        onClose={() => setIsMappingOpen(false)} 
-        clientId={client.id} 
-        sectorHeads={allSectorHeads} 
-      />
-      <BudgetUploadModal
-        isOpen={isBudgetOpen}
-        onClose={() => setIsBudgetOpen(false)}
-        clientId={client.id}
-        sectorHeads={allSectorHeads}
+      {isMappingOpen && <PNLMappingModal clientId={client.id} sections={sections} onClose={() => { setIsMappingOpen(false); fetchAllData(); }} />}
+      {isBudgetOpen && <BudgetUploadModal clientId={client.id} currentYear={selectedYear} fyType={fyType} sections={sections} onClose={() => { setIsBudgetOpen(false); fetchAllData(); }} />}
+      {isTBUploadOpen && <TrialBalanceUploadModal clientId={client.id} onClose={() => { setIsTBUploadOpen(false); fetchAllData(); }} />}
+      {isManagingStructure && <PNLStructureModal clientId={client.id} sections={sections} onClose={() => { setIsManagingStructure(false); fetchAllData(); }} />}
+      <AIMISModal 
+        isOpen={isMISModalOpen} 
+        onClose={() => setIsMISModalOpen(false)} 
+        clientName={client.name} 
+        getRowTotal={getRowTotal} 
+        formatCurrency={formatCurrency} 
       />
 
-      <PNLStructureModal
-        isOpen={isManagingStructure}
-        onClose={() => setIsManagingStructure(false)}
-        clientId={client.id}
-        sections={sections}
-        onUpdate={fetchAllData}
-      />
 
       {loading && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center">
