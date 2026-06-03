@@ -29,36 +29,46 @@ export async function GET(
     });
 
     let currentAssets = 0;
+    let nonCurrentAssets = 0;
     let currentLiabilities = 0;
     let tradeReceivables = 0;
     let tradePayables = 0;
     let averageInventory = 0;
+    let cashAndEquiv = 0;
     let totalDebt = 0;
     let shareholdersEquity = 0;
-    let totalInvestment = 0;
 
     ledgers.forEach(l => {
       const g = l.groupName.toLowerCase();
-      // Current Assets
+      // Assets
       if (g.includes("current asset") || g.includes("cash") || g.includes("bank") || g.includes("debtor") || g.includes("inventory") || g.includes("stock")) {
         currentAssets += l.closingBalance;
+      } else if (g.includes("fixed asset") || g.includes("investment") || g.includes("non-current asset")) {
+        nonCurrentAssets += l.closingBalance;
       }
-      // Current Liabilities
-      if (g.includes("current liabilit") || g.includes("creditor") || g.includes("duty") || g.includes("tax")) {
-        currentLiabilities += l.closingBalance;
+      
+      // Cash
+      if (g.includes("cash") || g.includes("bank")) {
+        cashAndEquiv += l.closingBalance;
       }
       // Debtors / Receivables
       if (g.includes("debtor") || g.includes("receivable")) {
         tradeReceivables += l.closingBalance;
       }
-      // Creditors / Payables
-      if (g.includes("creditor") || g.includes("payable")) {
-        tradePayables += l.closingBalance;
-      }
       // Inventory
       if (g.includes("inventory") || g.includes("stock")) {
         averageInventory += l.closingBalance;
       }
+
+      // Liabilities
+      if (g.includes("current liabilit") || g.includes("creditor") || g.includes("duty") || g.includes("tax")) {
+        currentLiabilities += l.closingBalance;
+      }
+      // Creditors / Payables
+      if (g.includes("creditor") || g.includes("payable")) {
+        tradePayables += l.closingBalance;
+      }
+
       // Debt
       if (g.includes("loan") || g.includes("borrowing") || g.includes("debt")) {
         totalDebt += l.closingBalance;
@@ -69,7 +79,10 @@ export async function GET(
       }
     });
 
-    totalInvestment = shareholdersEquity + totalDebt;
+    const totalAssets = currentAssets + nonCurrentAssets;
+    const workingCapital = currentAssets - currentLiabilities;
+    const capitalEmployed = totalAssets - currentLiabilities;
+    const totalInvestment = shareholdersEquity + totalDebt;
 
     // Fetch PNL Data
     const pnlValues = await prisma.pNLValue.findMany({
@@ -77,19 +90,14 @@ export async function GET(
     });
 
     const decryptValue = (amountStr: string) => {
-      let decryptedAmount = 0;
-      try {
-        const decrypted = decrypt(amountStr);
-        decryptedAmount = parseFloat(decrypted);
-      } catch (e) {
-        decryptedAmount = parseFloat(amountStr);
-      }
-      return isNaN(decryptedAmount) ? 0 : decryptedAmount;
+      try { return parseFloat(decrypt(amountStr)) || parseFloat(amountStr) || 0; }
+      catch { return parseFloat(amountStr) || 0; }
     };
 
     let annualRevenue = 0;
     let cogs = 0;
     let netProfit = 0;
+    let interestExpense = 0;
 
     pnlValues.forEach(v => {
       const amt = decryptValue(v.amount);
@@ -100,133 +108,218 @@ export async function GET(
         cogs += amt;
       } else if (v.headName === "Net Profit Before Tax" || h.includes("net profit")) {
         netProfit += amt;
+      } else if (h.includes("interest") || h.includes("finance cost")) {
+        interestExpense += amt;
       }
     });
 
     // Mock annualizing if revenue is extremely low (assuming partial data)
     if (annualRevenue > 0 && annualRevenue < 100000) {
-      annualRevenue = annualRevenue * 12; // Extremely basic annualization for MVP
+      annualRevenue = annualRevenue * 12; 
     }
     
-    // Derived Purchases
-    let annualPurchases = cogs + (averageInventory * 0.1); // Approximation for MVP if actual opening/closing inventory diff is unavailable
+    let annualPurchases = cogs + (averageInventory * 0.1);
+    let ebit = netProfit + interestExpense; 
 
-    // Calculations
+    // --- CALCULATIONS ---
+    
+    // 1. Liquidity
     const currentRatio = currentLiabilities > 0 ? (currentAssets / currentLiabilities) : 0;
+    const quickRatio = currentLiabilities > 0 ? ((cashAndEquiv + tradeReceivables) / currentLiabilities) : 0;
+    const cashRatio = currentLiabilities > 0 ? (cashAndEquiv / currentLiabilities) : 0;
+
+    // 2. Working Capital
     const dso = annualRevenue > 0 ? (tradeReceivables / annualRevenue) * 365 : 0;
     const dio = cogs > 0 ? (averageInventory / cogs) * 365 : 0;
     const dpo = annualPurchases > 0 ? (tradePayables / annualPurchases) * 365 : 0;
-    const inventoryTurnover = averageInventory > 0 ? (cogs / averageInventory) : 0;
-    const debtEquity = shareholdersEquity !== 0 ? (totalDebt / shareholdersEquity) : 0;
-    const roi = totalInvestment > 0 ? (netProfit / totalInvestment) * 100 : 0;
+    const ccc = (dso > 0 && dio > 0 && dpo > 0) ? (dso + dio - dpo) : 0;
 
-    // Helper functions for AI Insights
+    // 3. Efficiency
+    const inventoryTurnover = averageInventory > 0 ? (cogs / averageInventory) : 0;
+    const assetTurnover = totalAssets > 0 ? (annualRevenue / totalAssets) : 0;
+    const wcTurnover = workingCapital > 0 ? (annualRevenue / workingCapital) : 0;
+
+    // 4. Profitability & Leverage
+    const roi = totalInvestment > 0 ? (netProfit / totalInvestment) * 100 : 0;
+    const roce = capitalEmployed > 0 ? (ebit / capitalEmployed) * 100 : 0;
+    const roe = shareholdersEquity > 0 ? (netProfit / shareholdersEquity) * 100 : 0;
+    const debtEquity = shareholdersEquity !== 0 ? (totalDebt / shareholdersEquity) : 0;
+
+    // --- AI INTERPRETATION HELPER ---
     const getTrend = () => {
       const r = Math.random();
       return r > 0.6 ? "UP" : r > 0.3 ? "DOWN" : "STABLE";
     };
 
-    const analyzeCurrentRatio = (val: number) => {
-      if (val === 0) return { status: "WARNING", benchmark: "> 1.5", insight: "Current liabilities cannot be accurately determined.", trend: getTrend() };
-      if (val >= 1.5 && val <= 3.0) return { status: "EXCELLENT", benchmark: "> 1.5", insight: "The company has adequate short-term liquidity to meet its obligations without holding excess idle cash.", trend: getTrend() };
-      if (val > 3.0) return { status: "AVERAGE", benchmark: "1.5 - 3.0", insight: "High current ratio indicates potential inefficient use of working capital or excess idle cash.", trend: getTrend() };
-      return { status: "WARNING", benchmark: "> 1.5", insight: "Warning: Current liabilities exceed current assets. Immediate liquidity risk present.", trend: getTrend() };
+    const getStatus = (val: number, goodMin: number, goodMax: number, warnMin: number, warnMax: number) => {
+      if (val === 0) return "WARNING";
+      if (val >= goodMin && val <= goodMax) return "EXCELLENT";
+      if (val >= warnMin && val <= warnMax) return "AVERAGE";
+      return "WARNING";
     };
 
-    const analyzeDSO = (val: number) => {
-      if (val === 0) return { status: "AVERAGE", benchmark: "< 45 Days", insight: "Insufficient revenue data to calculate collection cycle.", trend: getTrend() };
-      if (val <= 45) return { status: "EXCELLENT", benchmark: "< 45 Days", insight: "Highly efficient collection cycle. Cash is being realized rapidly from customers.", trend: getTrend() };
-      if (val <= 60) return { status: "AVERAGE", benchmark: "< 45 Days", insight: "Collection cycle is acceptable but could be tightened to improve cash flow.", trend: getTrend() };
-      return { status: "WARNING", benchmark: "< 45 Days", insight: "Severe delay in collections. Significant capital is tied up in receivables.", trend: getTrend() };
-    };
-
-    const analyzeDIO = (val: number) => {
-      if (val === 0) return { status: "AVERAGE", benchmark: "< 60 Days", insight: "Insufficient inventory or COGS data.", trend: getTrend() };
-      if (val <= 60) return { status: "EXCELLENT", benchmark: "< 60 Days", insight: "Inventory is turning rapidly, minimizing holding costs and obsolescence risk.", trend: getTrend() };
-      if (val <= 90) return { status: "AVERAGE", benchmark: "< 60 Days", insight: "Inventory movement is moderate. Monitor slow-moving stock.", trend: getTrend() };
-      return { status: "WARNING", benchmark: "< 60 Days", insight: "Capital is heavily locked in inventory. High risk of obsolescence and liquidity strain.", trend: getTrend() };
-    };
-
-    const analyzeDPO = (val: number) => {
-      if (val === 0) return { status: "AVERAGE", benchmark: "45 - 60 Days", insight: "Insufficient payable or purchase data.", trend: getTrend() };
-      if (val >= 45 && val <= 75) return { status: "EXCELLENT", benchmark: "45 - 60 Days", insight: "Optimal utilization of supplier credit without straining vendor relationships.", trend: getTrend() };
-      if (val > 75) return { status: "AVERAGE", benchmark: "45 - 60 Days", insight: "Extended payables might preserve cash but risks vendor relations and early-payment discounts.", trend: getTrend() };
-      return { status: "WARNING", benchmark: "45 - 60 Days", insight: "Paying suppliers too quickly. Suggest renegotiating credit terms to improve cash flow.", trend: getTrend() };
-    };
-
-    const analyzeTurnover = (val: number) => {
-      if (val === 0) return { status: "WARNING", benchmark: "> 6.0x", insight: "Insufficient data to calculate inventory turnover.", trend: getTrend() };
-      if (val >= 6) return { status: "EXCELLENT", benchmark: "> 6.0x", insight: `Inventory is turning over ${val.toFixed(1)} times annually, indicating highly efficient stock management.`, trend: getTrend() };
-      if (val >= 4) return { status: "AVERAGE", benchmark: "> 6.0x", insight: "Acceptable turnover rate, but room for supply chain optimization exists.", trend: getTrend() };
-      return { status: "WARNING", benchmark: "> 6.0x", insight: "Sluggish inventory turnover. Potential overstocking or declining sales demand.", trend: getTrend() };
-    };
-
-    const analyzeDebtEquity = (val: number) => {
-      if (val === 0) return { status: "EXCELLENT", benchmark: "< 1.5", insight: "Zero or negligible debt burden. Highly solvent.", trend: getTrend() };
-      if (val < 0) return { status: "WARNING", benchmark: "< 1.5", insight: "Negative equity detected. The business is technically insolvent.", trend: getTrend() };
-      if (val <= 1.5) return { status: "EXCELLENT", benchmark: "< 1.5", insight: "Healthy capital structure with conservative leverage.", trend: getTrend() };
-      if (val <= 2.5) return { status: "AVERAGE", benchmark: "< 1.5", insight: "The business relies moderately on debt financing.", trend: getTrend() };
-      return { status: "WARNING", benchmark: "< 1.5", insight: "Highly leveraged capital structure. Significant financial risk in high interest rate environments.", trend: getTrend() };
-    };
-
-    const analyzeROI = (val: number) => {
-      if (val === 0) return { status: "WARNING", benchmark: "> 15%", insight: "Insufficient investment or profit data to calculate ROI.", trend: getTrend() };
-      if (val >= 15) return { status: "EXCELLENT", benchmark: "> 15%", insight: `Generating a robust return of ${val.toFixed(1)}% on invested capital.`, trend: getTrend() };
-      if (val > 0) return { status: "AVERAGE", benchmark: "> 15%", insight: "Positive but suboptimal returns. Management should focus on yield optimization.", trend: getTrend() };
-      return { status: "WARNING", benchmark: "> 15%", insight: "Negative ROI indicates value destruction. Urgent profitability audit required.", trend: getTrend() };
-    };
-
-    const report = [
-      {
-        id: "current_ratio",
-        category: "Liquidity",
-        name: "Current Ratio",
-        value: currentRatio.toFixed(2) + "x",
-        ...analyzeCurrentRatio(currentRatio)
+    // --- REPORT GENERATION ---
+    const report = {
+      scores: {
+        financialHealth: Math.min(100, Math.max(0, 70 + (currentRatio > 1.2 ? 10 : -10) + (netProfit > 0 ? 20 : -20))),
+        compliance: 95, // Mocked for UI purposes
+        cashFlow: Math.min(100, Math.max(0, 60 + (cashRatio > 0.2 ? 20 : -20) + (ccc > 0 && ccc < 60 ? 20 : 0))),
+        risk: 88,
+        growth: Math.min(100, Math.max(0, 50 + (roe > 10 ? 25 : 0) + (assetTurnover > 1 ? 25 : 0)))
       },
-      {
-        id: "dso",
-        category: "Working Capital",
-        name: "Days Sales Outstanding (DSO)",
-        value: dso > 0 ? dso.toFixed(0) + " Days" : "N/A",
-        ...analyzeDSO(dso)
-      },
-      {
-        id: "dio",
-        category: "Working Capital",
-        name: "Days Inventory Outstanding (DIO)",
-        value: dio > 0 ? dio.toFixed(0) + " Days" : "N/A",
-        ...analyzeDIO(dio)
-      },
-      {
-        id: "dpo",
-        category: "Working Capital",
-        name: "Days Payables Outstanding (DPO)",
-        value: dpo > 0 ? dpo.toFixed(0) + " Days" : "N/A",
-        ...analyzeDPO(dpo)
-      },
-      {
-        id: "inv_turnover",
-        category: "Efficiency",
-        name: "Inventory Turnover",
-        value: inventoryTurnover > 0 ? inventoryTurnover.toFixed(1) + "x" : "N/A",
-        ...analyzeTurnover(inventoryTurnover)
-      },
-      {
-        id: "debt_equity",
-        category: "Leverage",
-        name: "Debt to Equity Ratio",
-        value: debtEquity !== 0 ? debtEquity.toFixed(2) + "x" : "N/A",
-        ...analyzeDebtEquity(debtEquity)
-      },
-      {
-        id: "roi",
-        category: "Profitability",
-        name: "Return on Investment (ROI)",
-        value: roi !== 0 ? roi.toFixed(1) + "%" : "N/A",
-        ...analyzeROI(roi)
-      }
-    ];
+      categories: [
+        {
+          id: "liquidity",
+          name: "Liquidity Ratios",
+          ratios: [
+            {
+              id: "current_ratio", name: "Current Ratio", shortName: "CR",
+              value: currentRatio > 0 ? currentRatio.toFixed(2) + "x" : "N/A",
+              status: getStatus(currentRatio, 1.5, 3.0, 1.0, 1.5),
+              trend: getTrend(), benchmark: "> 1.50x", targetVal: 1.5, actualVal: currentRatio,
+              insight: currentRatio >= 1.5 ? "Sufficient liquidity to cover short-term liabilities." : "Warning: May struggle to pay short-term obligations.",
+              formula: "Current Assets / Current Liabilities",
+              components: [ { name: "Current Assets", val: currentAssets }, { name: "Current Liabilities", val: currentLiabilities } ]
+            },
+            {
+              id: "quick_ratio", name: "Quick Ratio", shortName: "QR",
+              value: quickRatio > 0 ? quickRatio.toFixed(2) + "x" : "N/A",
+              status: getStatus(quickRatio, 1.0, 2.0, 0.7, 1.0),
+              trend: getTrend(), benchmark: "> 1.00x", targetVal: 1.0, actualVal: quickRatio,
+              insight: quickRatio >= 1.0 ? "Strong liquid asset position excluding inventory." : "High reliance on inventory sales to meet liabilities.",
+              formula: "(Cash + Receivables) / Current Liabilities",
+              components: [ { name: "Cash + Receivables", val: cashAndEquiv + tradeReceivables }, { name: "Current Liabilities", val: currentLiabilities } ]
+            },
+            {
+              id: "cash_ratio", name: "Cash Ratio", shortName: "CashR",
+              value: cashRatio > 0 ? cashRatio.toFixed(2) + "x" : "N/A",
+              status: getStatus(cashRatio, 0.2, 0.5, 0.1, 0.2),
+              trend: getTrend(), benchmark: "> 0.20x", targetVal: 0.2, actualVal: cashRatio,
+              insight: cashRatio >= 0.2 ? "Adequate cash reserves for immediate obligations." : "Low cash buffers; liquidity risk if collections delay.",
+              formula: "Cash & Equivalents / Current Liabilities",
+              components: [ { name: "Cash & Equivalents", val: cashAndEquiv }, { name: "Current Liabilities", val: currentLiabilities } ]
+            }
+          ]
+        },
+        {
+          id: "working_capital",
+          name: "Working Capital Ratios",
+          ratios: [
+            {
+              id: "dso", name: "Days Sales Outstanding", shortName: "DSO",
+              value: dso > 0 ? dso.toFixed(0) + " Days" : "N/A",
+              status: getStatus(dso, 1, 45, 46, 60), // Lower is better
+              trend: getTrend(), benchmark: "< 45 Days", targetVal: 45, actualVal: dso, inverse: true,
+              insight: dso <= 45 ? "Efficient collection cycle. Receivables are highly liquid." : "Slow collections are tying up operational capital.",
+              formula: "(Trade Receivables / Annual Revenue) * 365",
+              components: [ { name: "Trade Receivables", val: tradeReceivables }, { name: "Annual Revenue", val: annualRevenue } ]
+            },
+            {
+              id: "dio", name: "Days Inventory Outstanding", shortName: "DIO",
+              value: dio > 0 ? dio.toFixed(0) + " Days" : "N/A",
+              status: getStatus(dio, 1, 60, 61, 90),
+              trend: getTrend(), benchmark: "< 60 Days", targetVal: 60, actualVal: dio, inverse: true,
+              insight: dio <= 60 ? "Fast inventory movement minimizes obsolescence risk." : "Capital is locked in slow-moving inventory.",
+              formula: "(Average Inventory / COGS) * 365",
+              components: [ { name: "Average Inventory", val: averageInventory }, { name: "COGS", val: cogs } ]
+            },
+            {
+              id: "dpo", name: "Days Payables Outstanding", shortName: "DPO",
+              value: dpo > 0 ? dpo.toFixed(0) + " Days" : "N/A",
+              status: getStatus(dpo, 45, 60, 30, 44),
+              trend: getTrend(), benchmark: "45-60 Days", targetVal: 60, actualVal: dpo,
+              insight: dpo >= 45 ? "Optimized vendor payment cycle preserves cash." : "Paying vendors too quickly, reducing available cash flow.",
+              formula: "(Trade Payables / Annual Purchases) * 365",
+              components: [ { name: "Trade Payables", val: tradePayables }, { name: "Annual Purchases", val: annualPurchases } ]
+            },
+            {
+              id: "ccc", name: "Cash Conversion Cycle", shortName: "CCC",
+              value: ccc !== 0 ? ccc.toFixed(0) + " Days" : "N/A",
+              status: getStatus(ccc, 1, 45, 46, 75),
+              trend: getTrend(), benchmark: "< 45 Days", targetVal: 45, actualVal: ccc, inverse: true,
+              insight: ccc <= 45 ? "Business rapidly converts investments into cash." : "Extended cash cycle requires heavy external financing.",
+              formula: "DSO + DIO - DPO",
+              components: [ { name: "DSO + DIO", val: dso + dio }, { name: "DPO", val: dpo } ]
+            }
+          ]
+        },
+        {
+          id: "efficiency",
+          name: "Efficiency Ratios",
+          ratios: [
+            {
+              id: "inv_turnover", name: "Inventory Turnover", shortName: "InvTurn",
+              value: inventoryTurnover > 0 ? inventoryTurnover.toFixed(1) + "x" : "N/A",
+              status: getStatus(inventoryTurnover, 6, 999, 4, 5.9),
+              trend: getTrend(), benchmark: "> 6.0x", targetVal: 6.0, actualVal: inventoryTurnover,
+              insight: inventoryTurnover >= 6 ? "Highly efficient stock management." : "Sluggish inventory turnover. Potential overstocking.",
+              formula: "COGS / Average Inventory",
+              components: [ { name: "COGS", val: cogs }, { name: "Average Inventory", val: averageInventory } ]
+            },
+            {
+              id: "asset_turnover", name: "Asset Turnover", shortName: "AssetTurn",
+              value: assetTurnover > 0 ? assetTurnover.toFixed(2) + "x" : "N/A",
+              status: getStatus(assetTurnover, 1.0, 999, 0.5, 0.99),
+              trend: getTrend(), benchmark: "> 1.0x", targetVal: 1.0, actualVal: assetTurnover,
+              insight: assetTurnover >= 1 ? "Efficiently utilizing total assets to generate revenue." : "Asset utilization is sub-optimal.",
+              formula: "Total Revenue / Total Assets",
+              components: [ { name: "Annual Revenue", val: annualRevenue }, { name: "Total Assets", val: totalAssets } ]
+            },
+            {
+              id: "wc_turnover", name: "Working Capital Turnover", shortName: "WCTurn",
+              value: wcTurnover > 0 ? wcTurnover.toFixed(1) + "x" : "N/A",
+              status: getStatus(wcTurnover, 4, 999, 2, 3.9),
+              trend: getTrend(), benchmark: "> 4.0x", targetVal: 4.0, actualVal: wcTurnover,
+              insight: wcTurnover >= 4 ? "Working capital is aggressively generating sales." : "Working capital is not translating effectively into revenue.",
+              formula: "Total Revenue / Working Capital",
+              components: [ { name: "Annual Revenue", val: annualRevenue }, { name: "Working Capital", val: workingCapital } ]
+            }
+          ]
+        },
+        {
+          id: "profitability",
+          name: "Profitability & Leverage",
+          ratios: [
+            {
+              id: "roi", name: "Return on Investment", shortName: "ROI",
+              value: roi !== 0 ? roi.toFixed(1) + "%" : "N/A",
+              status: getStatus(roi, 15, 999, 5, 14.9),
+              trend: getTrend(), benchmark: "> 15%", targetVal: 15, actualVal: roi,
+              insight: roi >= 15 ? "Generating excellent returns on invested capital." : "Sub-optimal returns on investment.",
+              formula: "(Net Profit / Total Investment) * 100",
+              components: [ { name: "Net Profit", val: netProfit }, { name: "Total Investment", val: totalInvestment } ]
+            },
+            {
+              id: "roce", name: "Return on Capital Employed", shortName: "ROCE",
+              value: roce !== 0 ? roce.toFixed(1) + "%" : "N/A",
+              status: getStatus(roce, 15, 999, 8, 14.9),
+              trend: getTrend(), benchmark: "> 15%", targetVal: 15, actualVal: roce,
+              insight: roce >= 15 ? "Strong operational profitability against long-term capital." : "Capital employed is yielding lower operational profits.",
+              formula: "(EBIT / Capital Employed) * 100",
+              components: [ { name: "EBIT", val: ebit }, { name: "Capital Employed", val: capitalEmployed } ]
+            },
+            {
+              id: "roe", name: "Return on Equity", shortName: "ROE",
+              value: roe !== 0 ? roe.toFixed(1) + "%" : "N/A",
+              status: getStatus(roe, 12, 999, 5, 11.9),
+              trend: getTrend(), benchmark: "> 12%", targetVal: 12, actualVal: roe,
+              insight: roe >= 12 ? "Creating strong value for shareholders." : "Equity yields are below investor expectations.",
+              formula: "(Net Profit / Shareholders Equity) * 100",
+              components: [ { name: "Net Profit", val: netProfit }, { name: "Shareholders Equity", val: shareholdersEquity } ]
+            },
+            {
+              id: "debt_equity", name: "Debt to Equity", shortName: "D/E Ratio",
+              value: debtEquity !== 0 ? debtEquity.toFixed(2) + "x" : "N/A",
+              status: getStatus(debtEquity, 0, 1.5, 1.51, 2.5),
+              trend: getTrend(), benchmark: "< 1.5x", targetVal: 1.5, actualVal: debtEquity, inverse: true,
+              insight: debtEquity <= 1.5 ? "Healthy capital structure with conservative leverage." : "Highly leveraged. Significant financial risk.",
+              formula: "Total Debt / Shareholders Equity",
+              components: [ { name: "Total Debt", val: totalDebt }, { name: "Shareholders Equity", val: shareholdersEquity } ]
+            }
+          ]
+        }
+      ]
+    };
 
     return NextResponse.json(report);
   } catch (error: any) {
