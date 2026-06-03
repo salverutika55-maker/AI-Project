@@ -24,7 +24,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import Papa from "papaparse";
 import ErrorBoundary from "./ErrorBoundary";
-import AIMISModal from "./AIMISModal";
+import AICFOReport from "./AICFOReport";
 
 interface UnifiedDashboardProps {
   client: any;
@@ -1050,15 +1050,12 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
       {isBudgetOpen && <BudgetUploadModal clientId={client.id} currentYear={selectedYear} fyType={fyType} sections={sections} onClose={() => { setIsBudgetOpen(false); fetchAllData(); }} />}
       {isTBUploadOpen && <TrialBalanceUploadModal clientId={client.id} onClose={() => { setIsTBUploadOpen(false); fetchAllData(); }} />}
       {isManagingStructure && <PNLStructureModal clientId={client.id} sections={sections} onClose={() => { setIsManagingStructure(false); fetchAllData(); }} />}
-      <AIMISModal 
+      <AICFOReport 
         isOpen={isMISModalOpen} 
         onClose={() => setIsMISModalOpen(false)} 
+        clientId={client.id}
         clientName={client.name} 
-        getRowTotal={getRowTotal} 
-        formatCurrency={formatCurrency} 
-        customSubHeads={customSubHeads}
-        visibleMonths={visibleMonths}
-        gridData={gridData}
+        selectedYear={selectedYear}
       />
 
 
