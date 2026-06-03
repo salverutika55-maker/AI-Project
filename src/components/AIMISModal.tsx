@@ -9,9 +9,12 @@ interface AIMISModalProps {
   clientName: string;
   getRowTotal: (item: string) => number;
   formatCurrency: (val: number, compact?: boolean) => string;
+  customSubHeads: any[];
+  visibleMonths: string[];
+  gridData: Record<string, Record<string, number>>;
 }
 
-export default function AIMISModal({ isOpen, onClose, clientName, getRowTotal, formatCurrency }: AIMISModalProps) {
+export default function AIMISModal({ isOpen, onClose, clientName, getRowTotal, formatCurrency, customSubHeads, visibleMonths, gridData }: AIMISModalProps) {
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<any>(null);
 
@@ -21,7 +24,7 @@ export default function AIMISModal({ isOpen, onClose, clientName, getRowTotal, f
       // Simulate AI generation time
       const timer = setTimeout(() => {
         generateAdvancedInsights();
-      }, 2000);
+      }, 2500);
       return () => clearTimeout(timer);
     } else {
       setReport(null);
@@ -43,11 +46,30 @@ export default function AIMISModal({ isOpen, onClose, clientName, getRowTotal, f
     const strengths = [];
     const risks = [];
 
+    // Detailed Ledger Analysis
+    const getLedgerTotals = (headNames: string[]) => {
+      return customSubHeads
+        .filter(sh => headNames.includes(sh.headName))
+        .map(sh => {
+          const total = visibleMonths.reduce((sum, m) => sum + (gridData[m]?.[sh.name] || 0), 0);
+          return { name: sh.name, total };
+        })
+        .filter(l => l.total > 0)
+        .sort((a, b) => b.total - a.total);
+    };
+
+    const topOpex = getLedgerTotals(["Indirect Expenses", "Administrative & General Expenses"]);
+    const topRevenue = getLedgerTotals(["Revenue from Operation", "Sales Income", "Operating Revenue"]);
+    const topCogs = getLedgerTotals(["Cost of Goods Sold", "Trading Cost", "Service Delivery Costs (Direct)"]);
+
+    const formatLedgerList = (ledgers: any[]) => ledgers.slice(0, 3).map(l => `${l.name} (${formatCurrency(l.total, true)})`).join(", ");
+
     // Heuristics Engine for Actionable Focus Areas
     if (gpMargin < 30 && totalRev > 0) {
+      const cogsDetail = topCogs.length > 0 ? ` Your highest direct costs are ${formatLedgerList(topCogs)}.` : "";
       focusAreas.push({
         title: "COGS & Vendor Negotiation",
-        desc: `Your Gross Margin is low at ${gpMargin.toFixed(1)}%. Focus immediately on renegotiating supplier contracts, optimizing raw material costs, or adjusting your pricing strategy to improve baseline profitability.`
+        desc: `Your Gross Margin is low at ${gpMargin.toFixed(1)}%.${cogsDetail} Focus immediately on renegotiating supplier contracts, optimizing raw material costs, or adjusting pricing strategy to improve baseline profitability.`
       });
       risks.push(`High Direct Costs (${formatCurrency(cogs, true)}) are severely eating into your gross margins.`);
     } else if (gpMargin >= 40) {
@@ -55,18 +77,29 @@ export default function AIMISModal({ isOpen, onClose, clientName, getRowTotal, f
     }
 
     if (opexRatio > 35) {
+      const opexDetail = topOpex.length > 0 ? ` Your top 3 expenses driving this are ${formatLedgerList(topOpex)}.` : "";
       focusAreas.push({
         title: "OPEX Rationalization",
-        desc: `Indirect expenses are consuming ${opexRatio.toFixed(1)}% of your revenue (${formatCurrency(totalExp, true)}). Conduct a line-by-line audit of administrative, marketing, and operational expenses to identify leakages.`
+        desc: `Indirect expenses are consuming ${opexRatio.toFixed(1)}% of your revenue (${formatCurrency(totalExp, true)}).${opexDetail} Conduct a line-by-line audit of these specific cost centers to identify leakages and improve efficiency.`
       });
     } else if (opexRatio > 0 && opexRatio <= 25) {
       strengths.push(`Highly efficient OPEX management, consuming only ${opexRatio.toFixed(1)}% of revenue.`);
     }
 
+    if (topRevenue.length > 0) {
+      const primaryRevenue = topRevenue[0];
+      const revenueConcentration = (primaryRevenue.total / totalRev) * 100;
+      if (revenueConcentration > 80 && topRevenue.length > 1) {
+        risks.push(`High Revenue Concentration: ${revenueConcentration.toFixed(1)}% of your revenue comes from a single stream (${primaryRevenue.name}). Consider diversifying income sources.`);
+      } else {
+        strengths.push(`Primary revenue driver is performing well: ${primaryRevenue.name} generated ${formatCurrency(primaryRevenue.total, true)}.`);
+      }
+    }
+
     if (totalNP < 0) {
       focusAreas.push({
         title: "Immediate Profitability Turnaround",
-        desc: `The business is operating at a net loss of ${formatCurrency(Math.abs(totalNP))}. Immediate action is required to either inject capital, slash non-essential OPEX, or aggressively drive high-margin sales.`
+        desc: `The business is operating at a net loss of ${formatCurrency(Math.abs(totalNP))}. Immediate action is required to slash non-essential OPEX (such as ${topOpex[0]?.name || 'administrative costs'}) or aggressively drive high-margin sales.`
       });
       risks.push("Sustained net losses could lead to cash flow insolvency if not addressed immediately.");
     } else if (npMargin < 5 && totalRev > 0) {

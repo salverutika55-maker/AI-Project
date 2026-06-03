@@ -1056,6 +1056,9 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
         clientName={client.name} 
         getRowTotal={getRowTotal} 
         formatCurrency={formatCurrency} 
+        customSubHeads={customSubHeads}
+        visibleMonths={visibleMonths}
+        gridData={gridData}
       />
 
 
