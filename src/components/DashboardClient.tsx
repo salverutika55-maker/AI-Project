@@ -639,7 +639,11 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
               ].map((m) => <option key={m.val} value={m.val}>{m.label}</option>)}
             </select>
             <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="bg-[#13131A] border border-cyan-500/30 text-cyan-400 font-bold text-sm px-4 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-cyan-500 hover:bg-cyan-500/10 transition-all ml-2">
-              {Array.from({ length: 31 }, (_, i) => 2000 + i).map((y) => <option key={y} value={y.toString()}>{y}</option>)}
+              {Array.from({ length: 31 }, (_, i) => 2000 + i).map((y) => (
+                <option key={y} value={y.toString()}>
+                  {fyType === "Apr-Mar" ? `FY ${y}-${(y + 1).toString().slice(2)}` : y}
+                </option>
+              ))}
             </select>
             <select value={fyType} onChange={(e) => setFyType(e.target.value)} className="bg-[#13131A] border border-purple-500/30 text-purple-400 font-bold text-sm px-4 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-purple-500 hover:bg-purple-500/10 transition-all ml-2">
               <option value="Apr-Mar">FY: Apr - Mar</option>

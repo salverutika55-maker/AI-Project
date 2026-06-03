@@ -1,7 +1,4 @@
 const { PrismaClient } = require('@prisma/client');
-const { decrypt } = require('./src/lib/encryption.ts'); // Wait, I can't require TS directly like this.
-
-// I will just copy the decrypt function into the script.
 const crypto = require('crypto');
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default_secret_key_32_chars_long_!!'; // Must be 32 chars
 
@@ -31,22 +28,32 @@ const prisma = new PrismaClient();
 
 async function main() {
   const clients = await prisma.client.findMany();
-  if (clients.length === 0) return console.log("No clients found");
-  
   const activeClient = clients.find(c => c.name.includes("SSA TAX")) || clients[0];
-  console.log("Active Client ID:", activeClient.id);
   
   const pnlValues = await prisma.pNLValue.findMany({
     where: { clientId: activeClient.id }
   });
-  
-  console.log("PNL Values count:", pnlValues.length);
-  
+
+  const monthMap = new Map();
+  const monthsOrder = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+
   for (const p of pnlValues) {
-    if (p.month === 'Jan' || p.month === 'Feb' || p.month === 'Mar') {
-      const val = decryptText(p.amount);
-      console.log(`${p.year}-${p.month} | ${p.headName}: ${val}`);
+    const calYear = ['Jan', 'Feb', 'Mar'].includes(p.month) ? p.year + 1 : p.year;
+    const mm = monthsOrder[p.month];
+    const periodKey = `${calYear}-${mm}`;
+
+    if (!monthMap.has(periodKey)) {
+      monthMap.set(periodKey, { period: periodKey, revenue: 0 });
     }
+    const rec = monthMap.get(periodKey);
+    const val = parseFloat(decryptText(p.amount)) || 0;
+    const lowerName = p.headName.toLowerCase();
+    if (["sales", "income", "revenue"].some(kw => lowerName.includes(kw))) rec.revenue += val;
+  }
+
+  const records = Array.from(monthMap.values()).sort((a, b) => a.period.localeCompare(b.period));
+  for (const r of records) {
+    console.log(`${r.period}: ${r.revenue}`);
   }
 }
 
