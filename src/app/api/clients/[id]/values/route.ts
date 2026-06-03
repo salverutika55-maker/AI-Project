@@ -28,8 +28,9 @@ export async function GET(
     // 2. Authorization & Ownership Check
     await authorizeClientAction(user.id, id, "READ_ONLY");
 
-    // Determine the exact years to query based on Fiscal Year type
-    const queryYears = fyType === "APR_MAR" ? [year, year + 1] : [year];
+    // The database normalizes all months in a Fiscal Year to the starting year.
+    // For FY 2025-26, both Apr 2025 and Mar 2026 are saved as year: 2025.
+    const queryYears = [year];
 
     // 3. Fetch and DECRYPT actual values
     const encryptedValues = await prisma.pNLValue.findMany({
@@ -54,10 +55,6 @@ export async function GET(
 
     // Filter values strictly to the selected Fiscal Year
     const filterByFy = (v: any) => {
-      if (fyType === "APR_MAR") {
-        if (["Jan", "Feb", "Mar"].includes(v.month)) return v.year === year + 1;
-        return v.year === year;
-      }
       return v.year === year;
     };
 
