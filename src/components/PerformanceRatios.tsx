@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { 
   ArrowUpRight, ArrowDownRight, ArrowRight, BrainCircuit, Activity, 
-  RefreshCw, ShieldCheck, TrendingUp, Target, ShieldAlert, CheckCircle2, AlertTriangle, Calculator, Presentation, FileText
+  RefreshCw, ShieldCheck, TrendingUp, Target, ShieldAlert, Calculator, Presentation, FileText, ChevronRight, X, BarChart3
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -58,25 +58,17 @@ export default function PerformanceRatios({ clientId, selectedYear }: Performanc
 
   const getTrendIcon = (trend: string, status: string) => {
     const color = status === "EXCELLENT" ? "text-emerald-400" : status === "WARNING" ? "text-rose-400" : "text-amber-400";
-    if (trend === "UP") return <ArrowUpRight className={`w-3 h-3 ${color}`} />;
-    if (trend === "DOWN") return <ArrowDownRight className={`w-3 h-3 ${color}`} />;
-    return <ArrowRight className={`w-3 h-3 text-slate-400`} />;
+    if (trend === "UP") return <ArrowUpRight className={`w-4 h-4 ${color}`} />;
+    if (trend === "DOWN") return <ArrowDownRight className={`w-4 h-4 ${color}`} />;
+    return <ArrowRight className={`w-4 h-4 text-slate-400`} />;
   };
 
-  const getProgressWidth = (ratio: any) => {
-    if (ratio.value === "N/A" || ratio.targetVal === 0) return 0;
-    const actual = ratio.actualVal;
-    const target = ratio.targetVal;
-    let pct = (actual / target) * 100;
-    if (ratio.inverse) { // e.g., DSO where lower is better
-      pct = (target / actual) * 100;
-    }
-    return Math.min(100, Math.max(0, pct));
-  };
+  // Flatten ratios for tables and insights
+  const allRatios = categories.flatMap((c: any) => c.ratios);
 
   return (
     <div className="space-y-8">
-      {/* 1. Executive Summary Scores Bar */}
+      {/* 1. Executive Summary Scorecards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {[
           { label: "Financial Health", score: scores.financialHealth, icon: Activity, color: "cyan" },
@@ -100,72 +92,41 @@ export default function PerformanceRatios({ clientId, selectedYear }: Performanc
         ))}
       </div>
 
-      {/* 2. CFO Performance Metrics Grid */}
+      {/* 2. CFO Performance Metrics Grid (Ultra-Minimalist) */}
       <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 md:p-10 shadow-2xl relative overflow-hidden">
         {/* Background Accent */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/5 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none" />
         
-        <div className="flex items-center gap-3 mb-10 border-b border-white/5 pb-6">
+        <div className="flex items-center gap-3 mb-10 border-b border-white/5 pb-6 relative z-10">
           <Presentation className="w-8 h-8 text-cyan-400" />
           <div>
-            <h2 className="text-2xl font-black text-white tracking-tight">Enterprise Ratios</h2>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Board-Level Financial Metrics</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">Executive Ratios</h2>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Click any tile for detailed analysis</p>
           </div>
         </div>
 
         <div className="space-y-12 relative z-10">
           {categories.map((cat: any) => (
-            <div key={cat.id} className="space-y-5">
-              <h3 className="text-sm font-black text-slate-300 uppercase tracking-widest flex items-center gap-2">
-                <Target className="w-4 h-4 text-slate-500" /> {cat.name}
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+            <div key={cat.id} className="space-y-4">
+              <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">{cat.name}</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 {cat.ratios.map((ratio: any) => (
                   <motion.div 
-                    whileHover={{ y: -4 }}
+                    whileHover={{ y: -2, scale: 1.01 }}
+                    whileTap={{ scale: 0.98 }}
                     key={ratio.id} 
                     onClick={() => setSelectedRatio(ratio)}
-                    className="bg-[#181821] hover:bg-[#1C1C26] p-5 rounded-2xl border border-white/5 hover:border-cyan-500/30 transition-all cursor-pointer shadow-lg group flex flex-col justify-between"
+                    className="bg-[#1A1A24] hover:bg-[#20202A] p-6 rounded-2xl border border-white/5 hover:border-cyan-500/30 transition-all cursor-pointer shadow-lg flex flex-col justify-between h-32"
                   >
-                    <div>
-                      {/* Card Header */}
-                      <div className="flex justify-between items-start mb-6">
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{ratio.shortName}</p>
-                          <p className="text-xs font-black text-slate-300 leading-tight">{ratio.name}</p>
-                        </div>
-                        <div className="text-[10px] font-black uppercase flex flex-col items-end gap-1">
-                          <span className={ratio.status === "EXCELLENT" ? "text-emerald-400" : ratio.status === "WARNING" ? "text-rose-400" : "text-amber-400"}>
-                            {getStatusDot(ratio.status)} {ratio.status}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {/* Metric Value */}
-                      <div className="flex items-end gap-2 mb-6">
-                        <h4 className="text-4xl font-black text-white tracking-tighter">
-                          {ratio.value === "N/A" ? <span className="text-slate-600 text-3xl">--</span> : ratio.value}
-                        </h4>
-                        {ratio.value !== "N/A" && (
-                          <div className="flex items-center gap-1 text-[10px] font-black uppercase text-slate-500 mb-1.5 px-2 py-0.5 bg-black/30 rounded-md">
-                            {getTrendIcon(ratio.trend, ratio.status)} {ratio.trend}
-                          </div>
-                        )}
-                      </div>
+                    <div className="flex justify-between items-start">
+                      <p className="text-sm font-bold text-slate-300 leading-tight pr-4">{ratio.name}</p>
+                      <span className="text-base shrink-0" title={ratio.status}>{getStatusDot(ratio.status)}</span>
                     </div>
-
-                    {/* Benchmark Mini Bar */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest">
-                        <span className="text-slate-500">Benchmark</span>
-                        <span className="text-cyan-400">{ratio.benchmark}</span>
-                      </div>
-                      <div className="h-1.5 w-full bg-black/40 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-1000 ${ratio.status === "EXCELLENT" ? "bg-emerald-400" : ratio.status === "WARNING" ? "bg-rose-400" : "bg-amber-400"}`}
-                          style={{ width: ratio.value === "N/A" ? '0%' : `${getProgressWidth(ratio)}%` }} 
-                        />
-                      </div>
+                    
+                    <div className="flex justify-between items-end">
+                      <h4 className="text-3xl font-black text-white tracking-tighter">
+                        {ratio.value === "N/A" ? <span className="text-slate-600 text-2xl">--</span> : ratio.value}
+                      </h4>
                     </div>
                   </motion.div>
                 ))}
@@ -175,81 +136,134 @@ export default function PerformanceRatios({ clientId, selectedYear }: Performanc
         </div>
       </div>
 
-      {/* 3. Dedicated AI Financial Insights Panel */}
-      <div className="bg-indigo-950/20 border border-indigo-500/20 rounded-3xl p-6 md:p-10 shadow-2xl">
-        <div className="flex items-center gap-3 mb-8 pb-4 border-b border-indigo-500/20">
-          <div className="w-10 h-10 bg-indigo-500/20 rounded-xl flex items-center justify-center">
-            <BrainCircuit className="w-5 h-5 text-indigo-400" />
-          </div>
+      {/* 3. AI Financial Insights Panel */}
+      <div className="bg-[#13131A] border border-indigo-500/20 rounded-3xl p-6 md:p-10 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-[400px] h-[400px] bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none" />
+        
+        <div className="flex items-center gap-3 mb-8 pb-6 border-b border-white/5 relative z-10">
+          <BrainCircuit className="w-8 h-8 text-indigo-400" />
           <div>
-            <h3 className="text-xl font-black text-indigo-100">AI Financial Insights</h3>
-            <p className="text-xs font-bold text-indigo-400/70 uppercase tracking-widest">Automated Management Commentary</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">AI Financial Insights</h2>
+            <p className="text-xs font-bold text-indigo-400/70 uppercase tracking-widest mt-1">Automated Management Commentary</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
-          {categories.flatMap((c: any) => c.ratios).map((r: any) => (
-            <div key={r.id} className="flex gap-4">
-              <span className="mt-1 text-sm shrink-0">{getStatusDot(r.status)}</span>
+        <div className="space-y-6 relative z-10">
+          {allRatios.map((r: any) => (
+            <div key={r.id} className="flex gap-4 p-4 rounded-xl hover:bg-white/5 transition-colors">
+              <span className="mt-0.5 text-lg shrink-0">{getStatusDot(r.status)}</span>
               <div>
-                <span className="text-sm font-black text-white">{r.name}: </span>
-                <span className="text-sm font-medium text-slate-300 leading-relaxed">{r.insight}</span>
+                <p className="text-sm font-black text-white mb-1">{r.name}</p>
+                <p className="text-sm font-medium text-slate-400 leading-relaxed">
+                  {r.value === "N/A" 
+                    ? "Data Unavailable: Insufficient ledger data mapped to calculate this metric." 
+                    : r.insight}
+                </p>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* 4. Drill-Down Modal */}
+      {/* 4. Benchmark Comparison Table */}
+      <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 md:p-10 shadow-2xl overflow-hidden">
+        <div className="flex items-center gap-3 mb-8 pb-6 border-b border-white/5">
+          <BarChart3 className="w-8 h-8 text-emerald-400" />
+          <div>
+            <h2 className="text-2xl font-black text-white tracking-tight">Benchmark Comparison</h2>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Industry Standard Targets vs Actuals</p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-white/10 text-xs font-black text-slate-500 uppercase tracking-widest">
+                <th className="py-4 px-4 font-black">Ratio</th>
+                <th className="py-4 px-4 text-right">Company Actual</th>
+                <th className="py-4 px-4 text-right text-emerald-400">Industry Target</th>
+                <th className="py-4 px-4 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allRatios.map((r: any, idx: number) => (
+                <tr key={r.id} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${idx % 2 === 0 ? 'bg-black/10' : ''}`}>
+                  <td className="py-4 px-4 text-sm font-bold text-slate-300">{r.name}</td>
+                  <td className="py-4 px-4 text-sm font-black text-white text-right">{r.value === "N/A" ? "--" : r.value}</td>
+                  <td className="py-4 px-4 text-sm font-bold text-slate-400 text-right">{r.benchmark}</td>
+                  <td className="py-4 px-4 text-center">{getStatusDot(r.status)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 5. Click-to-Expand Side Drawer */}
       <AnimatePresence>
         {selectedRatio && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <>
+            {/* Backdrop */}
             <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm"
               onClick={() => setSelectedRatio(null)}
             />
+            {/* Drawer */}
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
-              animate={{ opacity: 1, scale: 1, y: 0 }} 
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative bg-[#13131A] border border-white/10 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden z-10"
+              initial={{ x: "100%" }} 
+              animate={{ x: 0 }} 
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 bottom-0 z-[210] w-full max-w-md bg-[#13131A] border-l border-white/10 shadow-2xl flex flex-col"
             >
-              <div className="p-8 border-b border-white/5 bg-[#181821] flex justify-between items-start">
-                <div>
-                  <p className="text-[10px] font-black text-cyan-400 uppercase tracking-widest mb-2">Detailed Metric Analysis</p>
-                  <h3 className="text-2xl font-black text-white">{selectedRatio.name}</h3>
-                </div>
-                <button onClick={() => setSelectedRatio(null)} className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors">
-                  ✕
+              <div className="p-6 border-b border-white/5 bg-[#181821] flex justify-between items-center shrink-0">
+                <h3 className="text-xl font-black text-white">{selectedRatio.shortName} Details</h3>
+                <button 
+                  onClick={() => setSelectedRatio(null)} 
+                  className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="p-8 space-y-8">
-                {/* Metric Hero */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Current Value</p>
-                    <p className="text-4xl font-black text-white">{selectedRatio.value === "N/A" ? "--" : selectedRatio.value}</p>
+              <div className="p-6 overflow-y-auto flex-1 space-y-8">
+                {/* Header */}
+                <div>
+                  <p className="text-sm font-bold text-slate-400 mb-1">{selectedRatio.name}</p>
+                  <div className="flex items-end gap-4">
+                    <p className="text-5xl font-black text-white">{selectedRatio.value === "N/A" ? "--" : selectedRatio.value}</p>
+                    <div className="mb-2">{getStatusDot(selectedRatio.status)}</div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Status</p>
-                    <div className={`px-3 py-1.5 rounded-lg border text-xs font-black uppercase tracking-wider inline-flex items-center gap-2 ${selectedRatio.status === "EXCELLENT" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : selectedRatio.status === "WARNING" ? "text-rose-400 bg-rose-500/10 border-rose-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20"}`}>
-                      {getStatusDot(selectedRatio.status)} {selectedRatio.status}
+                </div>
+
+                {/* Target & Trend Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-black/30 border border-white/5 p-4 rounded-2xl">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Target</p>
+                    <p className="text-sm font-black text-cyan-400">{selectedRatio.benchmark}</p>
+                  </div>
+                  <div className="bg-black/30 border border-white/5 p-4 rounded-2xl">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Trend</p>
+                    <div className="flex items-center gap-2">
+                      {getTrendIcon(selectedRatio.trend, selectedRatio.status)}
+                      <span className="text-sm font-black text-white">{selectedRatio.trend}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Calculation Breakdown */}
-                <div className="bg-black/30 border border-white/5 p-6 rounded-2xl">
-                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-                    <Calculator className="w-4 h-4" /> Calculation Logic
-                  </p>
-                  <div className="px-4 py-3 bg-[#181821] rounded-xl border border-white/5 font-mono text-xs text-cyan-400 mb-6">
+                {/* Calculation Details */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <Calculator className="w-4 h-4" /> Calculation
+                  </h4>
+                  <div className="px-4 py-3 bg-[#181821] rounded-xl border border-white/5 font-mono text-xs text-emerald-400">
                     {selectedRatio.formula}
                   </div>
                   
-                  <div className="space-y-3">
+                  <div className="space-y-3 bg-black/20 p-4 rounded-2xl border border-white/5">
                     {selectedRatio.components.map((c: any, i: number) => (
                       <div key={i} className="flex justify-between items-center text-sm">
                         <span className="text-slate-400 font-medium">{c.name}</span>
@@ -262,17 +276,21 @@ export default function PerformanceRatios({ clientId, selectedYear }: Performanc
                 </div>
 
                 {/* AI Insight */}
-                <div className="bg-indigo-500/10 border border-indigo-500/20 p-6 rounded-2xl flex items-start gap-4">
-                  <BrainCircuit className="w-6 h-6 text-indigo-400 shrink-0" />
-                  <p className="text-sm text-indigo-100 leading-relaxed font-medium">
-                    {selectedRatio.value === "N/A" 
-                      ? "The calculation engine could not compute this ratio because the required ledger groups were not found in the sync data." 
-                      : selectedRatio.insight}
-                  </p>
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <BrainCircuit className="w-4 h-4" /> AI Commentary
+                  </h4>
+                  <div className="bg-indigo-500/10 border border-indigo-500/20 p-5 rounded-2xl">
+                    <p className="text-sm text-indigo-100 leading-relaxed font-medium">
+                      {selectedRatio.value === "N/A" 
+                        ? "The calculation engine could not compute this ratio because the required ledger groups were not found in the sync data." 
+                        : selectedRatio.insight}
+                    </p>
+                  </div>
                 </div>
               </div>
             </motion.div>
-          </div>
+          </>
         )}
       </AnimatePresence>
     </div>
