@@ -36761,6 +36761,8 @@ async function startBackgroundSync(config) {
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>${period.fromDate}</SVFROMDATE>
+        <SVTODATE>${period.toDate}</SVTODATE>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
