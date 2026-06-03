@@ -550,11 +550,11 @@ async function startBackgroundSync(config) {
               }
               
               if (periodVouchers.length > 0 || finalRevenue > 0) {
-                 console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: ${periodVouchers.length}`);
+                 console.log(`    -> Fetched ${period.periodKey} | Vouchers: ${periodVouchers.length}`);
               }
             } catch (dbErr) {
               console.error(`    -> Warning: Failed to fetch Day Book vouchers for ${period.periodKey}`);
-              console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue} | Vouchers: 0 (Failed)`);
+              console.log(`    -> Fetched ${period.periodKey} | Vouchers: 0 (Failed)`);
             }
 
         } catch (e) {
