@@ -97,10 +97,56 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
     let records: any[] = [];
     if (activeClientId) {
-      records = await prisma.financialRecord.findMany({
-        where: { clientId: activeClientId },
-        orderBy: { period: "asc" },
+      const { decrypt } = await import("@/lib/encryption");
+      const pnlValues = await prisma.pNLValue.findMany({
+        where: { clientId: activeClientId }
       });
+
+      const monthMap = new Map<string, any>();
+      const monthsOrder = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+
+      for (const p of pnlValues) {
+        const calYear = ['Jan', 'Feb', 'Mar'].includes(p.month) ? p.year + 1 : p.year;
+        const mm = monthsOrder[p.month as keyof typeof monthsOrder];
+        const periodKey = `${calYear}-${mm}`;
+
+        if (!monthMap.has(periodKey)) {
+          monthMap.set(periodKey, {
+            period: periodKey,
+            revenue: 0,
+            cogs: 0,
+            operatingExpenses: 0,
+            netIncome: 0,
+            cashBalance: 0,
+            accountsReceivable: 0,
+            accountsPayable: 0,
+            inventory: 0,
+            currentAssets: 0,
+            currentLiabilities: 0
+          });
+        }
+        const rec = monthMap.get(periodKey);
+        const val = parseFloat(decrypt(p.amount)) || 0;
+        
+        if (p.headName === "Revenue") rec.revenue += val;
+        else if (p.headName === "COGS") rec.cogs += val;
+        else if (p.headName === "Operating Expenses") rec.operatingExpenses += val;
+        else if (p.headName === "Net Income") rec.netIncome += val;
+        else if (p.headName === "Cash & Cash Equivalents") rec.cashBalance += val;
+        else if (p.headName === "Accounts Receivable") rec.accountsReceivable += val;
+        else if (p.headName === "Accounts Payable") rec.accountsPayable += val;
+        else if (p.headName === "Inventory") rec.inventory += val;
+        else if (p.headName === "Current Assets") rec.currentAssets += val;
+        else if (p.headName === "Current Liabilities") rec.currentLiabilities += val;
+      }
+      
+      monthMap.forEach(rec => {
+        if (rec.netIncome === 0 && (rec.revenue > 0 || rec.cogs > 0 || rec.operatingExpenses > 0)) {
+           rec.netIncome = rec.revenue - rec.cogs - rec.operatingExpenses;
+        }
+      });
+
+      records = Array.from(monthMap.values()).sort((a, b) => a.period.localeCompare(b.period));
     }
 
     return (
