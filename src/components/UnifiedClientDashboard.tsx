@@ -503,8 +503,11 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
               <option value="JAN_DEC" className="bg-[#13131A]">FY: JAN - DEC</option>
             </select>
             <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none hover:bg-white/10 transition-all cursor-pointer">
-              <option value={2026} className="bg-[#13131A]">2026-27</option>
-              <option value={2025} className="bg-[#13131A]">2025-26</option>
+              {Array.from({ length: 11 }, (_, i) => 2020 + i).map((y) => (
+                <option key={y} value={y} className="bg-[#13131A]">
+                  {fyType === "APR_MAR" ? `${y}-${(y + 1).toString().slice(2)}` : y}
+                </option>
+              ))}
             </select>
             <div className="h-4 w-[1px] bg-white/10 hidden md:block" />
             <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-3 py-1.5 text-xs font-black text-cyan-400 focus:outline-none hover:bg-cyan-500/20 transition-all cursor-pointer">
