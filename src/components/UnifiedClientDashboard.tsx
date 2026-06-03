@@ -25,6 +25,7 @@ import jsPDF from "jspdf";
 import Papa from "papaparse";
 import ErrorBoundary from "./ErrorBoundary";
 import AICFOReport from "./AICFOReport";
+import PerformanceRatios from "./PerformanceRatios";
 
 interface UnifiedDashboardProps {
   client: any;
@@ -783,26 +784,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                     </button>
                   </div>
 
-                  <div className="bg-[#13131A] border border-white/5 rounded-3xl p-8 shadow-xl">
-                    <h3 className="text-xl font-black text-white mb-8">Performance Ratios</h3>
-                    <div className="space-y-6">
-                      {[
-                        { label: "NP Margin", value: (getRowTotal("Total Revenue") > 0 ? (getRowTotal("Net Profit Before Tax") / getRowTotal("Total Revenue") * 100).toFixed(1) : 0) + "%", color: "bg-emerald-500" },
-                        { label: "OPEX Efficiency", value: (getRowTotal("Total Revenue") > 0 ? (getRowTotal("Total Indirect Expenses") / getRowTotal("Total Revenue") * 100).toFixed(1) : 0) + "%", color: "bg-indigo-500" },
-                        { label: "Growth Index", value: "+4.2%", color: "bg-cyan-500" }
-                      ].map((ratio, i) => (
-                        <div key={i} className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">{ratio.label}</span>
-                            <span className="text-sm font-black text-white">{ratio.value}</span>
-                          </div>
-                          <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                            <div className={`${ratio.color} h-full`} style={{ width: '60%' }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <PerformanceRatios clientId={client.id} selectedYear={selectedYear} />
                 </div>
               </div>
             </div>
