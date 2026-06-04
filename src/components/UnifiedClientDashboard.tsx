@@ -792,10 +792,10 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                     </button>
                   </div>
                 </div>
-                
-                {/* Executive Health Scorecards */}
-                <PerformanceRatios clientId={client.id} selectedYear={selectedYear} mode="scores" />
               </div>
+
+              {/* Executive Health Scorecards */}
+              <PerformanceRatios clientId={client.id} selectedYear={selectedYear} mode="scores" />
             </div>
           </ErrorBoundary>
         )}
