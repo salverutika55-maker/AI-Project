@@ -29,7 +29,7 @@ import PerformanceRatios from "./PerformanceRatios";
 import EarlyWarningSystem from "./EarlyWarningSystem";
 import ExceptionDashboard from "./ExceptionDashboard";
 import StrategicAdvisoryDashboard from "./StrategicAdvisoryDashboard";
-
+import RiskIntelligenceDashboard from "./RiskIntelligenceDashboard";
 interface UnifiedDashboardProps {
   client: any;
   allClients: any[];
@@ -969,22 +969,11 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
 
           {activeTab === "risk" && (
             <ErrorBoundary title="Risk Module Error">
-              <div className="flex flex-col items-center justify-center h-96 bg-[#13131A] rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden">
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]"></div>
-                <div className="absolute w-64 h-64 bg-rose-500/10 rounded-full blur-[80px] pointer-events-none"></div>
-                <div className="relative z-10 flex flex-col items-center">
-                  <div className="w-20 h-20 bg-rose-500/10 rounded-full flex items-center justify-center border border-rose-500/20 mb-6 shadow-[0_0_30px_rgba(244,63,94,0.1)]">
-                    <AlertCircle className="w-8 h-8 text-rose-400" />
-                  </div>
-                  <h3 className="text-2xl font-black text-white mb-2">Risk Intelligence Engine</h3>
-                  <p className="text-sm text-slate-400 font-medium max-w-md text-center leading-relaxed">
-                    The AI Risk assessment module is currently undergoing advanced training. Soon, this dashboard will provide real-time fraud detection, compliance forecasting, and macroeconomic risk hedging.
-                  </p>
-                  <div className="mt-8 px-4 py-2 bg-white/5 rounded-full border border-white/10 text-xs font-black uppercase tracking-widest text-slate-500">
-                    Deployment Scheduled: Q3
-                  </div>
-                </div>
-              </div>
+              <RiskIntelligenceDashboard 
+                clientId={client.id} 
+                selectedYear={selectedYear} 
+                displayCurrency={displayCurrency} 
+              />
             </ErrorBoundary>
           )}
 
