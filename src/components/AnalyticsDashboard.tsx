@@ -31,7 +31,7 @@ interface AnalyticsDashboardProps {
 const COLORS = ["#22D3EE", "#10B981", "#6366F1", "#F59E0B", "#EC4899", "#8B5CF6", "#14B8A6", "#F43F5E", "#06B6D4", "#64748B"];
 
 export default function AnalyticsDashboard({ clientId, selectedYear, displayCurrency }: AnalyticsDashboardProps) {
-  const [activeType, setActiveType] = useState<"RATIOS" | "VENDORS" | "CUSTOMERS">("RATIOS");
+  const [activeType, setActiveType] = useState<"VENDORS" | "CUSTOMERS">("VENDORS");
   const [parties, setParties] = useState<PartyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<"totalValue" | "outstanding" | "overdue">("totalValue");
@@ -41,7 +41,6 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
   // Fetching Aggregated Data from API
   useEffect(() => {
     async function fetchAnalytics() {
-      if (activeType === "RATIOS") return;
       setLoading(true);
       try {
         const res = await fetch(`/api/clients/${clientId}/analytics?type=${activeType}&year=${selectedYear}`);
