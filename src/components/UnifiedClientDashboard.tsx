@@ -28,6 +28,7 @@ import AICFOReport from "./AICFOReport";
 import PerformanceRatios from "./PerformanceRatios";
 import EarlyWarningSystem from "./EarlyWarningSystem";
 import ExceptionDashboard from "./ExceptionDashboard";
+import StrategicAdvisoryDashboard from "./StrategicAdvisoryDashboard";
 
 interface UnifiedDashboardProps {
   client: any;
@@ -679,7 +680,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
         )}
 
         {/* 2. TAB NAVIGATION */}
-        <div className="flex flex-nowrap overflow-x-auto items-center gap-1 bg-[#13131A] p-1.5 rounded-2xl border border-white/5 w-full md:w-fit shadow-lg scrollbar-hide">
+        <div className="flex flex-wrap items-center gap-1 bg-[#13131A] p-1.5 rounded-2xl border border-white/5 w-fit shadow-lg">
           <button onClick={() => setActiveTab("executive")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "executive" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <LayoutDashboard className="w-4 h-4" /> Executive Dashboard
           </button>
@@ -1003,22 +1004,11 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
 
           {activeTab === "advisory" && (
             <ErrorBoundary title="Advisory Module Error">
-              <div className="flex flex-col items-center justify-center h-96 bg-[#13131A] rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden">
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]"></div>
-                <div className="absolute w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none"></div>
-                <div className="relative z-10 flex flex-col items-center">
-                  <div className="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center border border-indigo-500/20 mb-6 shadow-[0_0_30px_rgba(99,102,241,0.1)]">
-                    <Briefcase className="w-8 h-8 text-indigo-400" />
-                  </div>
-                  <h3 className="text-2xl font-black text-white mb-2">Strategic CFO Advisory</h3>
-                  <p className="text-sm text-slate-400 font-medium max-w-md text-center leading-relaxed">
-                    The strategic action tracker is currently being built. This space will host automated board meeting prep, competitor benchmarking, and M&A readiness scoring.
-                  </p>
-                  <div className="mt-8 px-4 py-2 bg-white/5 rounded-full border border-white/10 text-xs font-black uppercase tracking-widest text-slate-500">
-                    Deployment Scheduled: Q3
-                  </div>
-                </div>
-              </div>
+              <StrategicAdvisoryDashboard 
+                clientId={client.id} 
+                selectedYear={selectedYear} 
+                displayCurrency={displayCurrency} 
+              />
             </ErrorBoundary>
           )}
 
