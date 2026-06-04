@@ -930,9 +930,6 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
               </div>
             </div>
             
-            {/* Extended Financial Performance Components */}
-            <PerformanceRatios clientId={client.id} selectedYear={selectedYear} mode="ratios" />
-            
             {/* Placeholders for Working Capital, Cash Flow, Expense Intelligence */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 shadow-xl h-48 flex items-center justify-center">
