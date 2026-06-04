@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, Fragment, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Factory, Briefcase, ArrowRightLeft, Download, FolderDown, Link2, UploadCloud, RefreshCw,
-  TrendingDown, BarChart3, WalletCards, GitMerge, BrainCircuit, Activity,
+  TrendingDown, BarChart3, WalletCards, GitMerge, BrainCircuit, Activity, DollarSign,
   FileText, FileSpreadsheet, Zap, LayoutDashboard, Table as TableIcon, Search, AlertCircle, Settings2, Users, ShieldAlert, Scale
 } from "lucide-react";
 import {
@@ -14,7 +14,8 @@ import {
 import AnalyticsDashboard from "./AnalyticsDashboard";
 import ComplianceDashboard from "./ComplianceDashboard";
 import ScrutinyDashboard from "./ScrutinyDashboard";
-import PNLMappingModal from "./PNLMappingModal";
+import MasterLedgerMapping from "./MasterLedgerMapping";
+import BalanceSheetDashboard from "./BalanceSheetDashboard";
 import BudgetUploadModal from "./BudgetUploadModal";
 import PNLStructureModal from "./PNLStructureModal";
 import TrialBalanceUploadModal from "./TrialBalanceUploadModal";
@@ -41,7 +42,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const isAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(userRole);
 
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"executive" | "performance" | "analytics" | "compliance" | "risk" | "advisory" | "diagnostics">("executive");
+  const [activeTab, setActiveTab] = useState<"executive" | "performance" | "balanceSheet" | "analytics" | "compliance" | "risk" | "advisory" | "diagnostics" | "insights">("executive");
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedMonth, setSelectedMonth] = useState("May");
@@ -687,6 +688,9 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
           <button onClick={() => setActiveTab("performance")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "performance" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <TableIcon className="w-4 h-4" /> Financial Performance
           </button>
+          <button onClick={() => setActiveTab("balanceSheet")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "balanceSheet" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <DollarSign className="w-4 h-4" /> Balance Sheet
+          </button>
           <button onClick={() => setActiveTab("analytics")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "analytics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Users className="w-4 h-4" /> Business Analytics
           </button>
@@ -817,7 +821,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                   </div>
                   {isAdmin && (
                     <>
-                      <button onClick={() => setIsMappingOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-cyan-400 hover:bg-cyan-500/10 transition-all"><Link2 className="w-3 h-3" /> Map Ledgers</button>
+                      <button onClick={() => setIsMappingOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-cyan-400 hover:bg-cyan-500/10 transition-all"><Link2 className="w-3 h-3" /> Master Mapping</button>
                       <button onClick={() => setIsManagingStructure(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-emerald-400 hover:bg-emerald-500/10 transition-all"><Settings2 className="w-3 h-3" /> Manage Structure</button>
                       <button onClick={() => setIsBudgetOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-[10px] font-black text-purple-400 hover:bg-purple-500/20 transition-all"><UploadCloud className="w-3 h-3" /> Budget</button>
                     </>
@@ -967,6 +971,12 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
             </ErrorBoundary>
           )}
 
+          {activeTab === "balanceSheet" && (
+            <ErrorBoundary title="Balance Sheet Error">
+              <BalanceSheetDashboard clientId={client.id} />
+            </ErrorBoundary>
+          )}
+
           {activeTab === "risk" && (
             <ErrorBoundary title="Risk Module Error">
               <RiskIntelligenceDashboard 
@@ -1064,9 +1074,9 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
       </main>
 
       {/* MODALS */}
-      {isMappingOpen && <PNLMappingModal isOpen={isMappingOpen} clientId={client.id} sectorHeads={sections.map((s: any) => s.name)} onClose={() => { setIsMappingOpen(false); fetchAllData(); }} />}
-      {isBudgetOpen && <BudgetUploadModal isOpen={isBudgetOpen} clientId={client.id} currentYear={selectedYear} fyType={fyType} sections={sections} onClose={() => { setIsBudgetOpen(false); fetchAllData(); }} />}
-      {isTBUploadOpen && <TrialBalanceUploadModal isOpen={isTBUploadOpen} clientId={client.id} onClose={() => { setIsTBUploadOpen(false); fetchAllData(); }} />}
+      {isMappingOpen && <MasterLedgerMapping isOpen={isMappingOpen} clientId={client.id} onClose={() => { setIsMappingOpen(false); fetchAllData(); }} />}
+      {isBudgetOpen && <BudgetUploadModal isOpen={isBudgetOpen} clientId={client.id} sectorHeads={sections.map((s: any) => s.name)} onClose={() => { setIsBudgetOpen(false); fetchAllData(); }} />}
+      {isTBUploadOpen && <TrialBalanceUploadModal isOpen={isTBUploadOpen} clientId={client.id} sectorHeads={sections.map((s: any) => s.name)} onClose={() => { setIsTBUploadOpen(false); fetchAllData(); }} />}
       {isManagingStructure && <PNLStructureModal isOpen={isManagingStructure} clientId={client.id} sections={sections} onUpdate={fetchAllData} onClose={() => { setIsManagingStructure(false); fetchAllData(); }} />}
       <AICFOReport 
         isOpen={isMISModalOpen} 

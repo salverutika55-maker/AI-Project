@@ -113,6 +113,8 @@ model Client {
   normalizedLedgers    NormalizedLedger[]
   normalizedVouchers   NormalizedVoucher[]
   reconStates          ReconciliationState[]
+  unifiedMappings      UnifiedLedgerMapping[]
+  bsValues             BSValue[]
   createdAt            DateTime          @default(now())
 }
 
@@ -229,15 +231,16 @@ model HandshakeCode {
   createdAt DateTime @default(now())
 }
 model CustomSubHead {
-  id        String   @id @default(cuid())
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name      String   // e.g. "Travelling Expense"
-  headName  String   // e.g. "Indirect Expenses"
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  statementType String   @default("PNL") // "PNL" or "BS"
+  name          String   // e.g. "Travelling Expense"
+  headName      String   // e.g. "Indirect Expenses"
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
 
-  @@unique([clientId, name, headName])
+  @@unique([clientId, statementType, name, headName])
 }
 
 model SyncTask {
@@ -471,4 +474,33 @@ model ReconciliationState {
   mismatchAmount Float                 @default(0.0)
   lastRun        DateTime              @default(now())
   metadata       Json?                 // Reconciliation parameters and match logs
+}
+
+model UnifiedLedgerMapping {
+  id                 String   @id @default(cuid())
+  clientId           String
+  client             Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  softwareLedgerName String
+  statementType      String   // "PNL" or "BS"
+  groupName          String   // e.g., "Current Assets", "Revenue"
+  subGroupName       String?  // e.g., "Cash & Bank"
+  subHeadName        String   // e.g., "Advances", "Salary Expense"
+  source             String   @default("USER")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([clientId, softwareLedgerName])
+}
+
+model BSValue {
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  headName   String   // The BS head name
+  month      String   // e.g. "Apr", "May"
+  year       Int
+  amount     String   // ENCRYPTED values
+  updatedAt  DateTime @updatedAt
+
+  @@unique([clientId, headName, month, year])
 }
