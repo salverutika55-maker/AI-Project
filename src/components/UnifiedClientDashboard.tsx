@@ -38,7 +38,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const isAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(userRole);
 
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"insights" | "pnl" | "analytics" | "compliance" | "scrutiny" | "diagnostics">("insights");
+  const [activeTab, setActiveTab] = useState<"executive" | "performance" | "analytics" | "compliance" | "risk" | "advisory" | "diagnostics">("executive");
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedMonth, setSelectedMonth] = useState("May");
@@ -677,23 +677,26 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
         )}
 
         {/* 2. TAB NAVIGATION */}
-        <div className="flex items-center gap-1 bg-[#13131A] p-1.5 rounded-2xl border border-white/5 w-fit shadow-lg">
-          <button onClick={() => setActiveTab("insights")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "insights" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-            <LayoutDashboard className="w-4 h-4" /> Executive Insights
+        <div className="flex flex-wrap items-center gap-1 bg-[#13131A] p-1.5 rounded-2xl border border-white/5 w-fit shadow-lg">
+          <button onClick={() => setActiveTab("executive")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "executive" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <LayoutDashboard className="w-4 h-4" /> Executive Dashboard
           </button>
-          <button onClick={() => setActiveTab("pnl")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "pnl" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-            <TableIcon className="w-4 h-4" /> Detailed P&L
+          <button onClick={() => setActiveTab("performance")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "performance" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <TableIcon className="w-4 h-4" /> Financial Performance
           </button>
-          <button onClick={() => setActiveTab("analytics")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "analytics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => setActiveTab("analytics")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "analytics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Users className="w-4 h-4" /> Business Analytics
           </button>
-          <button onClick={() => setActiveTab("compliance")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "compliance" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-            <ShieldAlert className="w-4 h-4" /> Compliance Audit
+          <button onClick={() => setActiveTab("compliance")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "compliance" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <ShieldAlert className="w-4 h-4" /> Audit & Compliance
           </button>
-          <button onClick={() => setActiveTab("scrutiny")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "scrutiny" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-            <Scale className="w-4 h-4" /> Ledger Scrutiny & Recon
+          <button onClick={() => setActiveTab("risk")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "risk" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <AlertCircle className="w-4 h-4" /> Risk Intelligence
           </button>
-          <button onClick={() => setActiveTab("diagnostics")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "diagnostics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => setActiveTab("advisory")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "advisory" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <Briefcase className="w-4 h-4" /> Strategic Advisory
+          </button>
+          <button onClick={() => setActiveTab("diagnostics")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "diagnostics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Activity className="w-4 h-4" /> Sync Diagnostics
           </button>
         </div>
@@ -701,7 +704,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
         {/* 3. TAB CONTENT */}
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           
-          {activeTab === "insights" && (
+          {activeTab === "executive" && (
             <ErrorBoundary title="Insights Module Error">
               <div className="space-y-8">
               {/* KPIs */}
@@ -784,13 +787,17 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                     </button>
                   </div>
                 </div>
+                
+                {/* Executive Health Scorecards */}
+                <PerformanceRatios clientId={client.id} selectedYear={selectedYear} mode="scores" />
               </div>
             </div>
           </ErrorBoundary>
         )}
 
-          {activeTab === "pnl" && (
+          {activeTab === "performance" && (
             <ErrorBoundary title="P&L Report Error">
+              <div className="space-y-8">
               <div className="bg-[#13131A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
               <div className="p-6 border-b border-white/5 flex flex-wrap justify-between items-center gap-4 bg-[#181821]">
                 <div className="flex items-center gap-3">
@@ -916,6 +923,23 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                 </table>
               </div>
             </div>
+            
+            {/* Extended Financial Performance Components */}
+            <PerformanceRatios clientId={client.id} selectedYear={selectedYear} mode="ratios" />
+            
+            {/* Placeholders for Working Capital, Cash Flow, Expense Intelligence */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 shadow-xl h-48 flex items-center justify-center">
+                 <p className="text-slate-500 font-bold uppercase text-xs tracking-widest text-center">Working Capital<br/><span className="text-[10px]">(Under Construction)</span></p>
+              </div>
+              <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 shadow-xl h-48 flex items-center justify-center">
+                 <p className="text-slate-500 font-bold uppercase text-xs tracking-widest text-center">Cash Flow Analysis<br/><span className="text-[10px]">(Under Construction)</span></p>
+              </div>
+              <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 shadow-xl h-48 flex items-center justify-center">
+                 <p className="text-slate-500 font-bold uppercase text-xs tracking-widest text-center">Expense Intelligence<br/><span className="text-[10px]">(Under Construction)</span></p>
+              </div>
+            </div>
+            </div>
           </ErrorBoundary>
         )}
 
@@ -931,21 +955,40 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
 
           {activeTab === "compliance" && (
             <ErrorBoundary title="Compliance Module Error">
-              <ComplianceDashboard 
-                clientId={client.id} 
-                selectedYear={selectedYear} 
-                displayCurrency={displayCurrency} 
-              />
+              <div className="space-y-8">
+                <ComplianceDashboard 
+                  clientId={client.id} 
+                  selectedYear={selectedYear} 
+                  displayCurrency={displayCurrency} 
+                />
+                <ScrutinyDashboard 
+                  clientId={client.id} 
+                  selectedYear={selectedYear} 
+                  displayCurrency={displayCurrency} 
+                />
+              </div>
             </ErrorBoundary>
           )}
 
-          {activeTab === "scrutiny" && (
-            <ErrorBoundary title="Ledger Scrutiny Module Error">
-              <ScrutinyDashboard 
-                clientId={client.id} 
-                selectedYear={selectedYear} 
-                displayCurrency={displayCurrency} 
-              />
+          {activeTab === "risk" && (
+            <ErrorBoundary title="Risk Module Error">
+              <div className="flex items-center justify-center h-64 bg-[#13131A] rounded-3xl border border-white/5 shadow-xl">
+                <div className="text-center">
+                  <AlertCircle className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Risk Intelligence Module (Under Construction)</p>
+                </div>
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {activeTab === "advisory" && (
+            <ErrorBoundary title="Advisory Module Error">
+              <div className="flex items-center justify-center h-64 bg-[#13131A] rounded-3xl border border-white/5 shadow-xl">
+                <div className="text-center">
+                  <Briefcase className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Strategic Advisory Module (Under Construction)</p>
+                </div>
+              </div>
             </ErrorBoundary>
           )}
 
