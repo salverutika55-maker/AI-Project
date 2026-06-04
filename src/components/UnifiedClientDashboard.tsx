@@ -783,7 +783,6 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                       <Zap className="w-4 h-4" /> Generate Full Report
                     </button>
                   </div>
-                  <PerformanceRatios clientId={client.id} selectedYear={selectedYear} mode="scores" />
                 </div>
               </div>
             </div>
