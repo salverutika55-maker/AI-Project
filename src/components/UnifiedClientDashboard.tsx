@@ -679,26 +679,26 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
         )}
 
         {/* 2. TAB NAVIGATION */}
-        <div className="flex flex-wrap items-center gap-1 bg-[#13131A] p-1.5 rounded-2xl border border-white/5 w-fit shadow-lg">
-          <button onClick={() => setActiveTab("executive")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "executive" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+        <div className="flex flex-nowrap overflow-x-auto items-center gap-1 bg-[#13131A] p-1.5 rounded-2xl border border-white/5 w-full md:w-fit shadow-lg scrollbar-hide">
+          <button onClick={() => setActiveTab("executive")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "executive" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <LayoutDashboard className="w-4 h-4" /> Executive Dashboard
           </button>
-          <button onClick={() => setActiveTab("performance")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "performance" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => setActiveTab("performance")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "performance" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <TableIcon className="w-4 h-4" /> Financial Performance
           </button>
-          <button onClick={() => setActiveTab("analytics")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "analytics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => setActiveTab("analytics")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "analytics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Users className="w-4 h-4" /> Business Analytics
           </button>
-          <button onClick={() => setActiveTab("compliance")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "compliance" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => setActiveTab("compliance")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "compliance" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <ShieldAlert className="w-4 h-4" /> Audit & Compliance
           </button>
-          <button onClick={() => setActiveTab("risk")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "risk" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => setActiveTab("risk")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "risk" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <AlertCircle className="w-4 h-4" /> Risk Intelligence
           </button>
-          <button onClick={() => setActiveTab("advisory")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "advisory" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => setActiveTab("advisory")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "advisory" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Briefcase className="w-4 h-4" /> Strategic Advisory
           </button>
-          <button onClick={() => setActiveTab("diagnostics")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === "diagnostics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => setActiveTab("diagnostics")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "diagnostics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Activity className="w-4 h-4" /> Sync Diagnostics
           </button>
         </div>
