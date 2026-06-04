@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { 
   Users, TrendingUp, DollarSign, Calendar, Clock, AlertTriangle, ArrowUpDown, 
-  ChevronRight, X, BarChart3, PieChart as PieChartIcon, Activity, Download, FileSpreadsheet, Search, CheckCircle2
+  ChevronRight, X, BarChart3, PieChart as PieChartIcon, Activity, Download, FileSpreadsheet, Search, CheckCircle2, Briefcase
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
