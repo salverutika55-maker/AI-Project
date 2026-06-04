@@ -1064,10 +1064,10 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
       </main>
 
       {/* MODALS */}
-      {isMappingOpen && <PNLMappingModal clientId={client.id} sections={sections} onClose={() => { setIsMappingOpen(false); fetchAllData(); }} />}
-      {isBudgetOpen && <BudgetUploadModal clientId={client.id} currentYear={selectedYear} fyType={fyType} sections={sections} onClose={() => { setIsBudgetOpen(false); fetchAllData(); }} />}
-      {isTBUploadOpen && <TrialBalanceUploadModal clientId={client.id} onClose={() => { setIsTBUploadOpen(false); fetchAllData(); }} />}
-      {isManagingStructure && <PNLStructureModal clientId={client.id} sections={sections} onClose={() => { setIsManagingStructure(false); fetchAllData(); }} />}
+      {isMappingOpen && <PNLMappingModal isOpen={isMappingOpen} clientId={client.id} sectorHeads={sections.map((s: any) => s.name)} onClose={() => { setIsMappingOpen(false); fetchAllData(); }} />}
+      {isBudgetOpen && <BudgetUploadModal isOpen={isBudgetOpen} clientId={client.id} currentYear={selectedYear} fyType={fyType} sections={sections} onClose={() => { setIsBudgetOpen(false); fetchAllData(); }} />}
+      {isTBUploadOpen && <TrialBalanceUploadModal isOpen={isTBUploadOpen} clientId={client.id} onClose={() => { setIsTBUploadOpen(false); fetchAllData(); }} />}
+      {isManagingStructure && <PNLStructureModal isOpen={isManagingStructure} clientId={client.id} sections={sections} onUpdate={fetchAllData} onClose={() => { setIsManagingStructure(false); fetchAllData(); }} />}
       <AICFOReport 
         isOpen={isMISModalOpen} 
         onClose={() => setIsMISModalOpen(false)} 
