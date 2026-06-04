@@ -38,40 +38,39 @@ export async function GET(
 
     // 3. Define standard BS Structure
     const structure: any = {
-      "EQUITY & LIABILITIES": {
-        "Shareholders Funds": {
+      "Liabilities": {
+        "Owner's Funds": {
           "Share Capital": {},
-          "Reserves & Surplus": {}
+          "Reserves & Surplus": {},
+          "Profit & Loss Account": {}
         },
         "Non-Current Liabilities": {
-          "Term Loans": {},
-          "Deferred Tax": {},
-          "Long-Term Provisions": {}
+          "Unsecured Loans": {}
         },
         "Current Liabilities": {
-          "Sundry Creditors": {},
+          "Short Term Borrowing": {},
           "Duties & Taxes": {},
-          "Statutory Payables": {},
-          "Short-Term Borrowings": {},
+          "Suspense A/c": {},
+          "Trade Payable": {},
+          "Provisions": {},
           "Other Current Liabilities": {}
         }
       },
-      "ASSETS": {
+      "Assets": {
         "Non-Current Assets": {
           "Fixed Assets": {},
-          "Capital Work in Progress": {},
-          "Investments": {},
-          "Long-Term Loans & Advances": {}
+          "Investments": {}
         },
         "Current Assets": {
-          "Inventory": {},
-          "Trade Receivables": {},
-          "Cash & Bank": {},
-          "Short-Term Loans": {},
-          "Advances": {},
-          "Deposits": {},
+          "Closing Stock": {},
+          "Trade Receivable": {},
+          "Cash-In-Hand": {},
+          "Bank Accounts": {},
+          "Deposits (Assets)": {},
+          "Short Term Loan & Advance": {},
           "Other Current Assets": {}
-        }
+        },
+        "Branch Account": {}
       }
     };
 
@@ -80,10 +79,10 @@ export async function GET(
 
     bsMappings.forEach(mapping => {
       let mainGroup = "";
-      if (mapping.groupName === "Shareholders Funds" || mapping.groupName === "Non-Current Liabilities" || mapping.groupName === "Current Liabilities") {
-        mainGroup = "EQUITY & LIABILITIES";
+      if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities"].includes(mapping.groupName)) {
+        mainGroup = "Liabilities";
       } else {
-        mainGroup = "ASSETS";
+        mainGroup = "Assets";
       }
 
       const balance = ledgerBalances[mapping.softwareLedgerName] || 0;
@@ -105,12 +104,12 @@ export async function GET(
     // We mock the Net Profit calculation if there are no mappings just for the prototype
     const netProfit = 4500000; // Simulated Current Year Profit
     
-    // Add it to Reserves & Surplus
+    // Add it to Profit & Loss Account
     dataNodes.push({
       id: "cy-profit-system",
-      mainGroup: "EQUITY & LIABILITIES",
-      groupName: "Shareholders Funds",
-      subGroupName: "Reserves & Surplus",
+      mainGroup: "Liabilities",
+      groupName: "Owner's Funds",
+      subGroupName: "Profit & Loss Account",
       subHeadName: "Current Year Profit",
       ledgerName: "P&L Account (Auto)",
       amount: netProfit,

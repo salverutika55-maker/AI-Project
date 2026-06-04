@@ -72,8 +72,8 @@ export default function BalanceSheetDashboard({ clientId }: BalanceSheetDashboar
     return nodes.reduce((sum: number, n: any) => sum + n.amount, 0);
   };
 
-  const totalAssets = getMainTotal("ASSETS");
-  const totalLiabilities = getMainTotal("EQUITY & LIABILITIES");
+  const totalAssets = getMainTotal("Assets");
+  const totalLiabilities = getMainTotal("Liabilities");
   const isBalanced = totalAssets === totalLiabilities;
   const diff = Math.abs(totalAssets - totalLiabilities);
 
@@ -185,11 +185,11 @@ export default function BalanceSheetDashboard({ clientId }: BalanceSheetDashboar
         {/* Liabilities */}
         <div className="bg-[#13131A] rounded-3xl border border-white/5 overflow-hidden shadow-2xl">
           <div className="p-6 bg-[#181821] border-b border-white/5 flex justify-between items-center">
-            <h3 className="text-lg font-black text-white uppercase tracking-widest">Equity & Liabilities</h3>
+            <h3 className="text-lg font-black text-white uppercase tracking-widest">Liabilities</h3>
             <span className="text-xl font-black text-purple-400">{formatCurrency(totalLiabilities)}</span>
           </div>
           <div className="p-2">
-             {renderTree("EQUITY & LIABILITIES", data.structure["EQUITY & LIABILITIES"])}
+             {renderTree("Liabilities", data.structure["Liabilities"])}
           </div>
         </div>
 
@@ -200,7 +200,7 @@ export default function BalanceSheetDashboard({ clientId }: BalanceSheetDashboar
             <span className="text-xl font-black text-cyan-400">{formatCurrency(totalAssets)}</span>
           </div>
           <div className="p-2">
-             {renderTree("ASSETS", data.structure["ASSETS"])}
+             {renderTree("Assets", data.structure["Assets"])}
           </div>
         </div>
 

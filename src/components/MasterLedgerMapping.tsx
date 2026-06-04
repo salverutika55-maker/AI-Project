@@ -21,13 +21,17 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
   const statementTypes = ["PNL", "BS"];
   const groups = {
     "PNL": ["Revenue", "Direct Expenses", "Employee Costs", "Operating Expenses", "Finance Costs", "Depreciation", "Other Income", "Taxes"],
-    "BS": ["Shareholders Funds", "Non-Current Liabilities", "Current Liabilities", "Non-Current Assets", "Current Assets"]
+    "BS": ["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Non-Current Assets", "Current Assets", "Branch Account"]
   };
   
-  // Simplified for prototype
+  // Structured from image
   const subGroups: any = {
-    "Current Assets": ["Inventory", "Trade Receivables", "Cash & Bank", "Short-Term Loans", "Advances", "Deposits", "Other Current Assets"],
-    "Current Liabilities": ["Sundry Creditors", "Duties & Taxes", "Statutory Payables", "Short-Term Borrowings", "Other Current Liabilities"]
+    "Owner's Funds": ["Share Capital", "Reserves & Surplus", "Profit & Loss Account"],
+    "Non-Current Liabilities": ["Unsecured Loans"],
+    "Current Liabilities": ["Short Term Borrowing", "Duties & Taxes", "Suspense A/c", "Trade Payable", "Provisions", "Other Current Liabilities"],
+    "Non-Current Assets": ["Fixed Assets", "Investments"],
+    "Current Assets": ["Closing Stock", "Trade Receivable", "Cash-In-Hand", "Bank Accounts", "Deposits (Assets)", "Short Term Loan & Advance", "Other Current Assets"],
+    "Branch Account": []
   };
 
   useEffect(() => {
