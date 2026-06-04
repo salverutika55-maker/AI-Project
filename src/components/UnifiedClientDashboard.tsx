@@ -26,6 +26,8 @@ import Papa from "papaparse";
 import ErrorBoundary from "./ErrorBoundary";
 import AICFOReport from "./AICFOReport";
 import PerformanceRatios from "./PerformanceRatios";
+import EarlyWarningSystem from "./EarlyWarningSystem";
+import ExceptionDashboard from "./ExceptionDashboard";
 
 interface UnifiedDashboardProps {
   client: any;
@@ -728,6 +730,9 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                 ))}
               </div>
 
+              {/* AI Predictive Alerts */}
+              <EarlyWarningSystem clientId={client.id} selectedYear={selectedYear} />
+
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Charts Area */}
                 <div className="lg:col-span-2 space-y-8">
@@ -956,6 +961,11 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
           {activeTab === "compliance" && (
             <ErrorBoundary title="Compliance Module Error">
               <div className="space-y-8">
+                <ExceptionDashboard 
+                  clientId={client.id} 
+                  selectedYear={selectedYear} 
+                  displayCurrency={displayCurrency} 
+                />
                 <ComplianceDashboard 
                   clientId={client.id} 
                   selectedYear={selectedYear} 

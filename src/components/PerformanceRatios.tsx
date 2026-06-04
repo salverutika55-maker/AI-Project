@@ -70,30 +70,76 @@ export default function PerformanceRatios({ clientId, selectedYear, mode = "all"
   return (
     <div className="space-y-8">
       {/* 1. Executive Summary Scorecards */}
-      {(mode === "scores" || mode === "all") && (
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        {[
-          { label: "Financial Health", score: scores.financialHealth, icon: Activity, bgClass: "bg-cyan-500/10", textClass: "text-cyan-400" },
-          { label: "Compliance", score: scores.compliance, icon: ShieldCheck, bgClass: "bg-emerald-500/10", textClass: "text-emerald-400" },
-          { label: "Cash Flow", score: scores.cashFlow, icon: RefreshCw, bgClass: "bg-indigo-500/10", textClass: "text-indigo-400" },
-          { label: "Risk Resilience", score: scores.risk, icon: ShieldAlert, bgClass: "bg-rose-500/10", textClass: "text-rose-400" },
-          { label: "Growth Potential", score: scores.growth, icon: TrendingUp, bgClass: "bg-amber-500/10", textClass: "text-amber-400" }
-        ].map((score, idx) => (
-          <div key={idx} className="bg-[#13131A] p-5 rounded-2xl border border-white/5 flex flex-col justify-between shadow-xl gap-4 hover:border-white/20 transition-all">
-            <div className="flex items-start justify-between w-full">
-              <div className={`w-10 h-10 rounded-xl ${score.bgClass} flex items-center justify-center`}>
-                <score.icon className={`w-5 h-5 ${score.textClass}`} />
+      {(mode === "scores" || mode === "all") && (() => {
+        const overallScore = Math.round(
+          (scores.financialHealth * 0.3) + 
+          (scores.compliance * 0.2) + 
+          (scores.cashFlow * 0.2) + 
+          (scores.risk * 0.2) + 
+          (scores.growth * 0.1)
+        );
+        const circumference = 2 * Math.PI * 38;
+        const strokeDasharray = `${(overallScore / 100) * circumference} ${circumference}`;
+
+        return (
+          <div className="space-y-4">
+            {/* Overall Business Health Banner */}
+            <div className="bg-gradient-to-r from-cyan-500/10 to-indigo-500/10 p-6 md:p-8 rounded-3xl border border-cyan-500/20 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl relative overflow-hidden">
+              <div className="absolute right-0 top-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-[80px] pointer-events-none" />
+              
+              <div className="flex items-center gap-6 relative z-10">
+                <div className="w-24 h-24 bg-[#13131A] rounded-full flex items-center justify-center shadow-xl relative shrink-0">
+                  <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                    <circle cx="48" cy="48" r="44" fill="none" stroke="currentColor" strokeWidth="4" className="text-white/5" />
+                    <circle cx="48" cy="48" r="44" fill="none" stroke="currentColor" strokeWidth="6" className="text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)] transition-all duration-1000 ease-out" strokeDasharray={strokeDasharray} />
+                  </svg>
+                  <div className="text-center">
+                    <span className="text-3xl font-black text-white leading-none">{overallScore}</span>
+                  </div>
+                </div>
+                <div>
+                  <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">Business Health Index</h2>
+                  <p className="text-[11px] font-black text-cyan-400 uppercase tracking-[0.2em] mt-1">AI Computed CFO Score</p>
+                </div>
               </div>
-              <div className="text-right">
-                <span className="text-3xl font-black text-white">{score.score}</span>
-                <span className="text-xs text-slate-500 font-bold ml-1">/100</span>
+
+              <div className="md:w-1/2 bg-[#13131A]/60 p-5 rounded-2xl border border-white/10 backdrop-blur-md relative z-10">
+                <div className="flex items-center gap-2 mb-2">
+                  <BrainCircuit className="w-4 h-4 text-indigo-400" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">AI Narrative</span>
+                </div>
+                <p className="text-sm text-slate-300 font-medium leading-relaxed">
+                  Strong compliance and robust growth trajectory are offsetting moderate liquidity constraints. Immediate action is recommended to improve Days Sales Outstanding (DSO) to free up working capital. Overall business trajectory remains highly positive.
+                </p>
               </div>
             </div>
-            <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{score.label}</p>
+
+            {/* Sub-scores Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+            {[
+              { label: "Financial Health", score: scores.financialHealth, icon: Activity, bgClass: "bg-cyan-500/10", textClass: "text-cyan-400" },
+              { label: "Compliance", score: scores.compliance, icon: ShieldCheck, bgClass: "bg-emerald-500/10", textClass: "text-emerald-400" },
+              { label: "Cash Flow", score: scores.cashFlow, icon: RefreshCw, bgClass: "bg-indigo-500/10", textClass: "text-indigo-400" },
+              { label: "Risk Resilience", score: scores.risk, icon: ShieldAlert, bgClass: "bg-rose-500/10", textClass: "text-rose-400" },
+              { label: "Growth Potential", score: scores.growth, icon: TrendingUp, bgClass: "bg-amber-500/10", textClass: "text-amber-400" }
+            ].map((score, idx) => (
+              <div key={idx} className="bg-[#13131A] p-5 rounded-2xl border border-white/5 flex flex-col justify-between shadow-xl gap-4 hover:border-white/20 transition-all">
+                <div className="flex items-start justify-between w-full">
+                  <div className={`w-10 h-10 rounded-xl ${score.bgClass} flex items-center justify-center`}>
+                    <score.icon className={`w-5 h-5 ${score.textClass}`} />
+                  </div>
+                  <div className="text-right">
+                    <span className="text-3xl font-black text-white">{score.score}</span>
+                    <span className="text-xs text-slate-500 font-bold ml-1">/100</span>
+                  </div>
+                </div>
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{score.label}</p>
+              </div>
+            ))}
+            </div>
           </div>
-        ))}
-      </div>
-      )}
+        );
+      })()}
 
       {/* 2. CFO Performance Metrics Grid (Ultra-Minimalist) */}
       {(mode === "ratios" || mode === "all") && (
