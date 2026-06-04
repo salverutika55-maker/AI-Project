@@ -462,8 +462,10 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
+      </>
+    )}
     </div>
   );
 }
