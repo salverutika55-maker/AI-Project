@@ -177,7 +177,8 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
             <Download className="w-3.5 h-3.5" /> CSV
           </button>
         </div>
-        <>
+      </div>
+      
       {/* 2. SUMMARY KPI ROW */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
