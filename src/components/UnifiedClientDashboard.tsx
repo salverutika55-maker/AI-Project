@@ -930,18 +930,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
               </div>
             </div>
             
-            {/* Placeholders for Working Capital, Cash Flow, Expense Intelligence */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 shadow-xl h-48 flex items-center justify-center">
-                 <p className="text-slate-500 font-bold uppercase text-xs tracking-widest text-center">Working Capital<br/><span className="text-[10px]">(Under Construction)</span></p>
-              </div>
-              <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 shadow-xl h-48 flex items-center justify-center">
-                 <p className="text-slate-500 font-bold uppercase text-xs tracking-widest text-center">Cash Flow Analysis<br/><span className="text-[10px]">(Under Construction)</span></p>
-              </div>
-              <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 shadow-xl h-48 flex items-center justify-center">
-                 <p className="text-slate-500 font-bold uppercase text-xs tracking-widest text-center">Expense Intelligence<br/><span className="text-[10px]">(Under Construction)</span></p>
-              </div>
-            </div>
+            {/* End of Financial Performance */}
             </div>
           </ErrorBoundary>
         )}
