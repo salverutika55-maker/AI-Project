@@ -10,9 +10,10 @@ import { motion, AnimatePresence } from "framer-motion";
 interface PerformanceRatiosProps {
   clientId: string;
   selectedYear: number;
+  mode?: "scores" | "ratios" | "all";
 }
 
-export default function PerformanceRatios({ clientId, selectedYear }: PerformanceRatiosProps) {
+export default function PerformanceRatios({ clientId, selectedYear, mode = "all" }: PerformanceRatiosProps) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [selectedRatio, setSelectedRatio] = useState<any>(null);
@@ -69,7 +70,8 @@ export default function PerformanceRatios({ clientId, selectedYear }: Performanc
   return (
     <div className="space-y-8">
       {/* 1. Executive Summary Scorecards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+      {(mode === "scores" || mode === "all") && (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {[
           { label: "Financial Health", score: scores.financialHealth, icon: Activity, color: "cyan" },
           { label: "Compliance", score: scores.compliance, icon: ShieldCheck, color: "emerald" },
@@ -91,8 +93,11 @@ export default function PerformanceRatios({ clientId, selectedYear }: Performanc
           </div>
         ))}
       </div>
+      )}
 
       {/* 2. CFO Performance Metrics Grid (Ultra-Minimalist) */}
+      {(mode === "ratios" || mode === "all") && (
+        <>
       <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 md:p-10 shadow-2xl relative overflow-hidden">
         {/* Background Accent */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none" />
@@ -198,6 +203,8 @@ export default function PerformanceRatios({ clientId, selectedYear }: Performanc
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* 5. Click-to-Expand Side Drawer */}
       <AnimatePresence>

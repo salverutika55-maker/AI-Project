@@ -783,8 +783,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                       <Zap className="w-4 h-4" /> Generate Full Report
                     </button>
                   </div>
-
-                  <PerformanceRatios clientId={client.id} selectedYear={selectedYear} />
+                  <PerformanceRatios clientId={client.id} selectedYear={selectedYear} mode="scores" />
                 </div>
               </div>
             </div>
@@ -923,11 +922,18 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
 
           {activeTab === "analytics" && (
             <ErrorBoundary title="Business Analytics Error">
-              <AnalyticsDashboard 
-                clientId={client.id} 
-                selectedYear={selectedYear} 
-                displayCurrency={displayCurrency} 
-              />
+              <div className="space-y-8">
+                <PerformanceRatios 
+                  clientId={client.id} 
+                  selectedYear={selectedYear} 
+                  mode="ratios" 
+                />
+                <AnalyticsDashboard 
+                  clientId={client.id} 
+                  selectedYear={selectedYear} 
+                  displayCurrency={displayCurrency} 
+                />
+              </div>
             </ErrorBoundary>
           )}
 
