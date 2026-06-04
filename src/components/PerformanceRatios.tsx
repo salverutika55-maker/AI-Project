@@ -73,23 +73,23 @@ export default function PerformanceRatios({ clientId, selectedYear, mode = "all"
       {(mode === "scores" || mode === "all") && (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {[
-          { label: "Financial Health", score: scores.financialHealth, icon: Activity, color: "cyan" },
-          { label: "Compliance", score: scores.compliance, icon: ShieldCheck, color: "emerald" },
-          { label: "Cash Flow", score: scores.cashFlow, icon: RefreshCw, color: "indigo" },
-          { label: "Risk Resilience", score: scores.risk, icon: ShieldAlert, color: "rose" },
-          { label: "Growth Potential", score: scores.growth, icon: TrendingUp, color: "amber" }
+          { label: "Financial Health", score: scores.financialHealth, icon: Activity, bgClass: "bg-cyan-500/10", textClass: "text-cyan-400" },
+          { label: "Compliance", score: scores.compliance, icon: ShieldCheck, bgClass: "bg-emerald-500/10", textClass: "text-emerald-400" },
+          { label: "Cash Flow", score: scores.cashFlow, icon: RefreshCw, bgClass: "bg-indigo-500/10", textClass: "text-indigo-400" },
+          { label: "Risk Resilience", score: scores.risk, icon: ShieldAlert, bgClass: "bg-rose-500/10", textClass: "text-rose-400" },
+          { label: "Growth Potential", score: scores.growth, icon: TrendingUp, bgClass: "bg-amber-500/10", textClass: "text-amber-400" }
         ].map((score, idx) => (
-          <div key={idx} className="bg-[#13131A] p-5 rounded-2xl border border-white/5 flex items-center justify-between shadow-xl">
-            <div>
-              <div className={`w-8 h-8 rounded-full bg-${score.color}-500/10 flex items-center justify-center mb-2`}>
-                <score.icon className={`w-4 h-4 text-${score.color}-400`} />
+          <div key={idx} className="bg-[#13131A] p-5 rounded-2xl border border-white/5 flex flex-col justify-between shadow-xl gap-4 hover:border-white/20 transition-all">
+            <div className="flex items-start justify-between w-full">
+              <div className={`w-10 h-10 rounded-xl ${score.bgClass} flex items-center justify-center`}>
+                <score.icon className={`w-5 h-5 ${score.textClass}`} />
               </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{score.label}</p>
+              <div className="text-right">
+                <span className="text-3xl font-black text-white">{score.score}</span>
+                <span className="text-xs text-slate-500 font-bold ml-1">/100</span>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-2xl font-black text-white">{score.score}</span>
-              <span className="text-xs text-slate-500 font-bold">/100</span>
-            </div>
+            <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{score.label}</p>
           </div>
         ))}
       </div>
