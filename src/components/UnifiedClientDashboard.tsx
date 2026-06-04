@@ -973,7 +973,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
 
           {activeTab === "balanceSheet" && (
             <ErrorBoundary title="Balance Sheet Error">
-              <BalanceSheetDashboard clientId={client.id} />
+              <BalanceSheetDashboard clientId={client.id} visibleMonths={visibleMonths} />
             </ErrorBoundary>
           )}
 

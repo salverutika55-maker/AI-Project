@@ -87,32 +87,59 @@ export async function GET(
 
       const balance = ledgerBalances[mapping.softwareLedgerName] || 0;
       
+      // Push May Data (Actual Closing)
       dataNodes.push({
-        id: mapping.id,
+        id: `${mapping.id}-May`,
+        period: "May",
         mainGroup,
         groupName: mapping.groupName,
         subGroupName: mapping.subGroupName || mapping.groupName,
         subHeadName: mapping.subHeadName,
         ledgerName: mapping.softwareLedgerName,
-        amount: Math.abs(balance), // Assuming absolute for display, logic can adjust based on nature
+        amount: Math.abs(balance),
+        nature: balance > 0 ? "DEBIT" : "CREDIT"
+      });
+
+      // Push Apr Data (Mocked variation for prototype)
+      dataNodes.push({
+        id: `${mapping.id}-Apr`,
+        period: "Apr",
+        mainGroup,
+        groupName: mapping.groupName,
+        subGroupName: mapping.subGroupName || mapping.groupName,
+        subHeadName: mapping.subHeadName,
+        ledgerName: mapping.softwareLedgerName,
+        amount: Math.abs(balance * 0.95), // 5% less for Apr
         nature: balance > 0 ? "DEBIT" : "CREDIT"
       });
     });
 
-    // 5. Calculate Current Year Profit from PNL (Reconciliation)
-    // For simplicity, we assume we fetch PNL values and find Net Income
-    // We mock the Net Profit calculation if there are no mappings just for the prototype
-    const netProfit = 4500000; // Simulated Current Year Profit
+    // 5. Calculate Current Year Profit from PNL
+    const netProfitMay = 4500000;
+    const netProfitApr = 4000000;
     
     // Add it to Profit & Loss Account
     dataNodes.push({
-      id: "cy-profit-system",
+      id: "cy-profit-system-may",
+      period: "May",
       mainGroup: "Liabilities",
       groupName: "Owner's Funds",
       subGroupName: "Profit & Loss Account",
       subHeadName: "Current Year Profit",
       ledgerName: "P&L Account (Auto)",
-      amount: netProfit,
+      amount: netProfitMay,
+      nature: "CREDIT"
+    });
+
+    dataNodes.push({
+      id: "cy-profit-system-apr",
+      period: "Apr",
+      mainGroup: "Liabilities",
+      groupName: "Owner's Funds",
+      subGroupName: "Profit & Loss Account",
+      subHeadName: "Current Year Profit",
+      ledgerName: "P&L Account (Auto)",
+      amount: netProfitApr,
       nature: "CREDIT"
     });
 
