@@ -922,18 +922,11 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
 
           {activeTab === "analytics" && (
             <ErrorBoundary title="Business Analytics Error">
-              <div className="space-y-8">
-                <PerformanceRatios 
-                  clientId={client.id} 
-                  selectedYear={selectedYear} 
-                  mode="ratios" 
-                />
-                <AnalyticsDashboard 
-                  clientId={client.id} 
-                  selectedYear={selectedYear} 
-                  displayCurrency={displayCurrency} 
-                />
-              </div>
+              <AnalyticsDashboard 
+                clientId={client.id} 
+                selectedYear={selectedYear} 
+                displayCurrency={displayCurrency} 
+              />
             </ErrorBoundary>
           )}
 

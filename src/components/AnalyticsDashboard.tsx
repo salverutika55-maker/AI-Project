@@ -9,6 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area
 } from "recharts";
+import PerformanceRatios from "./PerformanceRatios";
 
 interface PartyData {
   name: string;
@@ -30,7 +31,7 @@ interface AnalyticsDashboardProps {
 const COLORS = ["#22D3EE", "#10B981", "#6366F1", "#F59E0B", "#EC4899", "#8B5CF6", "#14B8A6", "#F43F5E", "#06B6D4", "#64748B"];
 
 export default function AnalyticsDashboard({ clientId, selectedYear, displayCurrency }: AnalyticsDashboardProps) {
-  const [activeType, setActiveType] = useState<"VENDORS" | "CUSTOMERS">("VENDORS");
+  const [activeType, setActiveType] = useState<"RATIOS" | "VENDORS" | "CUSTOMERS">("RATIOS");
   const [parties, setParties] = useState<PartyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<"totalValue" | "outstanding" | "overdue">("totalValue");
@@ -40,6 +41,7 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
   // Fetching Aggregated Data from API
   useEffect(() => {
     async function fetchAnalytics() {
+      if (activeType === "RATIOS") return;
       setLoading(true);
       try {
         const res = await fetch(`/api/clients/${clientId}/analytics?type=${activeType}&year=${selectedYear}`);
@@ -142,7 +144,13 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
     <div className="space-y-8">
       {/* 1. SECTOR TOGGLE & CONTROL BAR */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#13131A] p-4 rounded-3xl border border-white/5 shadow-xl">
-        <div className="flex items-center gap-1 bg-[#1a1a24] p-1.5 rounded-2xl border border-white/5 w-fit">
+        <div className="flex flex-wrap items-center gap-1 bg-[#1a1a24] p-1.5 rounded-2xl border border-white/5 w-fit">
+          <button 
+            onClick={() => { setActiveType("RATIOS"); setSelectedParty(null); }}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeType === "RATIOS" ? "bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
+          >
+            <Activity className="w-4 h-4" /> Executive Ratios
+          </button>
           <button 
             onClick={() => { setActiveType("VENDORS"); setSelectedParty(null); }}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeType === "VENDORS" ? "bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
@@ -157,6 +165,7 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
           </button>
         </div>
 
+        {activeType !== "RATIOS" && (
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="relative flex-1 md:flex-none">
             <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -175,8 +184,13 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
             <Download className="w-3.5 h-3.5" /> CSV
           </button>
         </div>
+        )}
       </div>
 
+      {activeType === "RATIOS" ? (
+        <PerformanceRatios clientId={clientId} selectedYear={selectedYear} mode="ratios" />
+      ) : (
+        <>
       {/* 2. SUMMARY KPI ROW */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
@@ -451,6 +465,8 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );
