@@ -174,7 +174,11 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
                       <tr key={account.id} className="hover:bg-white/5 group transition-colors">
                         <td className="p-3">
                           <p className="text-sm font-bold text-white">{account.name}</p>
-                          <p className="text-[9px] text-slate-500 uppercase">{account.groupName || "Tally Ledger"}</p>
+                          <p className="text-[9px] text-slate-500 uppercase">
+                            {(!account.groupName || account.groupName.toLowerCase() === "uncategorized" || account.groupName.toLowerCase() === "unknown") 
+                              ? "Tally Ledger" 
+                              : account.groupName}
+                          </p>
                         </td>
                         <td className="p-3">
                           <select 
