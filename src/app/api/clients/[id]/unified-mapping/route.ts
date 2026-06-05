@@ -27,14 +27,56 @@ export async function GET(
     });
 
     // Get COA from Normalized Ledgers
-    const chartOfAccounts = await prisma.normalizedLedger.findMany({
+    let chartOfAccounts = await prisma.normalizedLedger.findMany({
       where: { clientId: id, isActive: true },
       orderBy: { name: "asc" }
     });
 
-    const mappings = await prisma.unifiedLedgerMapping.findMany({
+    // Fallback/Merge with TallyVouchers to ensure no ledgers are missing
+    if (client?.software === "TALLY") {
+      const vouchers = await prisma.tallyVoucher.findMany({
+        where: { clientId: id },
+        select: { ledgerName: true },
+        distinct: ['ledgerName']
+      });
+      
+      const existingNames = new Set(chartOfAccounts.map(a => a.name));
+      const missingLedgers = vouchers
+        .filter(v => !existingNames.has(v.ledgerName))
+        .map(v => ({
+          id: v.ledgerName,
+          name: v.ledgerName,
+          parentGroup: "Unknown"
+        }));
+        
+      chartOfAccounts = [...chartOfAccounts, ...missingLedgers as any];
+      chartOfAccounts.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // Also pull legacy PNL mappings to auto-populate if unified is empty
+    const legacyPnl = await prisma.pNLMapping.findMany({
       where: { clientId: id }
     });
+
+    let mappings = await prisma.unifiedLedgerMapping.findMany({
+      where: { clientId: id }
+    });
+
+    // Auto-migrate legacy mappings to UI if they haven't been saved to unified yet
+    if (mappings.length === 0 && legacyPnl.length > 0) {
+      mappings = legacyPnl.map(m => ({
+        id: m.id,
+        clientId: id,
+        softwareLedgerName: m.softwareLedgerName,
+        statementType: "PNL",
+        groupName: "Legacy Map",
+        subGroupName: "",
+        subHeadName: m.sectorHead,
+        source: m.source,
+        createdAt: m.createdAt,
+        updatedAt: m.createdAt
+      }));
+    }
 
     return NextResponse.json({ 
       software: client?.software || "TALLY",
@@ -73,40 +115,50 @@ export async function POST(
     }
 
     await prisma.$transaction(async (tx) => {
-      // 1. Delete all existing unified mappings for this client
-      await tx.unifiedLedgerMapping.deleteMany({
-        where: { clientId: id }
-      });
-
-      // 2. Insert new unified mappings
-      if (mappings.length > 0) {
-        await tx.unifiedLedgerMapping.createMany({
-          data: mappings.map((m: any) => ({
-            clientId: id,
-            softwareLedgerName: m.softwareLedgerName,
-            statementType: m.statementType,
-            groupName: m.groupName,
-            subGroupName: m.subGroupName || null,
-            subHeadName: m.subHeadName
-          }))
-        });
+      // 2. Upsert new unified mappings instead of deleting all
+      for (const m of mappings) {
+        if (m.statementType && m.groupName) {
+          await tx.unifiedLedgerMapping.upsert({
+            where: {
+              clientId_softwareLedgerName: {
+                clientId: id,
+                softwareLedgerName: m.softwareLedgerName
+              }
+            },
+            update: {
+              statementType: m.statementType,
+              groupName: m.groupName,
+              subGroupName: m.subGroupName || null,
+              subHeadName: m.subHeadName || m.groupName // Fallback if empty
+            },
+            create: {
+              clientId: id,
+              softwareLedgerName: m.softwareLedgerName,
+              statementType: m.statementType,
+              groupName: m.groupName,
+              subGroupName: m.subGroupName || null,
+              subHeadName: m.subHeadName || m.groupName
+            }
+          });
+        }
       }
 
       // 3. For backward compatibility with P&L syncing, sync down to PNLMapping
       // If statementType is PNL, it goes to PNLMapping
       const pnlMappings = mappings.filter((m: any) => m.statementType === "PNL");
-      await tx.pNLMapping.deleteMany({
-        where: { clientId: id, source: "SYNC" }
-      });
       
-      if (pnlMappings.length > 0) {
-        await tx.pNLMapping.createMany({
-          data: pnlMappings.map((m: any) => ({
+      // Upsert legacy PNL mappings too
+      for (const m of pnlMappings) {
+        await tx.pNLMapping.deleteMany({
+          where: { clientId: id, softwareLedgerName: m.softwareLedgerName }
+        });
+        await tx.pNLMapping.create({
+          data: {
             clientId: id,
             softwareLedgerName: m.softwareLedgerName,
-            sectorHead: m.subHeadName, // Old PNLMapping used sectorHead for the line item
+            sectorHead: m.subHeadName || m.groupName,
             source: "SYNC"
-          }))
+          }
         });
       }
     });

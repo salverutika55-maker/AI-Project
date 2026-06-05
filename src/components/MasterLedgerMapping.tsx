@@ -102,8 +102,8 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
 
   const handleSave = async () => {
     setSaving(true);
-    // Filter out incomplete mappings
-    const validMappings = mappings.filter(m => m.statementType && m.groupName && m.subHeadName);
+    // Filter out incomplete mappings (subHeadName is now optional, defaults to groupName in backend)
+    const validMappings = mappings.filter(m => m.statementType && m.groupName);
     try {
       const res = await fetch(`/api/clients/${clientId}/unified-mapping`, {
         method: "POST",
@@ -168,13 +168,13 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
                 <tbody className="divide-y divide-white/5">
                   {filteredCoa.map((account) => {
                     const m = getMapping(account.name);
-                    const isFullyMapped = m.statementType && m.groupName && m.subHeadName;
+                    const isFullyMapped = m.statementType && m.groupName;
                     
                     return (
                       <tr key={account.id} className="hover:bg-white/5 group transition-colors">
                         <td className="p-3">
                           <p className="text-sm font-bold text-white">{account.name}</p>
-                          <p className="text-[9px] text-slate-500 uppercase">{account.parentGroup}</p>
+                          <p className="text-[9px] text-slate-500 uppercase">{account.parentGroup || "Tally Ledger"}</p>
                         </td>
                         <td className="p-3">
                           <select 
