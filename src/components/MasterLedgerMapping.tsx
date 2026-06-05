@@ -53,12 +53,12 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
     setLoading(false);
   };
 
-  const handleSuggest = async (ledgerName: string) => {
+  const handleSuggest = async (ledgerName: string, parentGroup?: string) => {
     setSuggestingFor(ledgerName);
     try {
       const res = await fetch(`/api/clients/${clientId}/unified-mapping/suggest`, {
         method: "POST",
-        body: JSON.stringify({ ledgerName })
+        body: JSON.stringify({ ledgerName, parentGroup })
       });
       const data = await res.json();
       if (data.suggestion) {
@@ -226,7 +226,7 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
                         <td className="p-3">
                           {!isFullyMapped ? (
                             <button 
-                              onClick={() => handleSuggest(account.name)}
+                              onClick={() => handleSuggest(account.name, account.parentGroup)}
                               disabled={suggestingFor === account.name}
                               className="flex items-center gap-1 px-3 py-1 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-lg text-[10px] font-bold hover:bg-purple-500/20 transition-all"
                             >
