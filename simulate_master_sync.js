@@ -2,9 +2,9 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function syncMasterCOA() {
-  const client = await prisma.client.findFirst();
-  if (!client) {
-    console.log("No client found");
+  const clients = await prisma.client.findMany();
+  if (!clients.length) {
+    console.log("No clients found");
     return;
   }
 
@@ -23,40 +23,42 @@ async function syncMasterCOA() {
     { name: "HDFC Bank", parentGroup: "Bank Accounts" }
   ];
 
-  console.log(`Syncing ${ledgersArray.length} ledgers for client ${client.name}...`);
+  for (const client of clients) {
+    console.log(`Syncing ${ledgersArray.length} ledgers for client ${client.name}...`);
 
-  for (const ledger of ledgersArray) {
-    const groupName = ledger.parentGroup || "Uncategorized";
-    const nature = groupName.toLowerCase().includes("creditor") || 
-                   groupName.toLowerCase().includes("liabilit") || 
-                   groupName.toLowerCase().includes("capital") || 
-                   groupName.toLowerCase().includes("income") || 
-                   groupName.toLowerCase().includes("sales") || 
-                   groupName.toLowerCase().includes("tax") ||
-                   groupName.toLowerCase().includes("duty")
-                   ? "CREDIT" : "DEBIT";
+    for (const ledger of ledgersArray) {
+      const groupName = ledger.parentGroup || "Uncategorized";
+      const nature = groupName.toLowerCase().includes("creditor") || 
+                     groupName.toLowerCase().includes("liabilit") || 
+                     groupName.toLowerCase().includes("capital") || 
+                     groupName.toLowerCase().includes("income") || 
+                     groupName.toLowerCase().includes("sales") || 
+                     groupName.toLowerCase().includes("tax") ||
+                     groupName.toLowerCase().includes("duty")
+                     ? "CREDIT" : "DEBIT";
 
-    const existingLedger = await prisma.normalizedLedger.findFirst({
-      where: { clientId: client.id, name: ledger.name }
-    });
-
-    if (existingLedger) {
-      await prisma.normalizedLedger.update({
-        where: { id: existingLedger.id },
-        data: { groupName, nature, isActive: true }
+      const existingLedger = await prisma.normalizedLedger.findFirst({
+        where: { clientId: client.id, name: ledger.name }
       });
-      console.log(`Updated ${ledger.name} -> ${groupName}`);
-    } else {
-      await prisma.normalizedLedger.create({
-        data: {
-          clientId: client.id,
-          name: ledger.name,
-          groupName,
-          nature,
-          isActive: true
-        }
-      });
-      console.log(`Created ${ledger.name} -> ${groupName}`);
+
+      if (existingLedger) {
+        await prisma.normalizedLedger.update({
+          where: { id: existingLedger.id },
+          data: { groupName, nature, isActive: true }
+        });
+        console.log(`[${client.name}] Updated ${ledger.name} -> ${groupName}`);
+      } else {
+        await prisma.normalizedLedger.create({
+          data: {
+            clientId: client.id,
+            name: ledger.name,
+            groupName,
+            nature,
+            isActive: true
+          }
+        });
+        console.log(`[${client.name}] Created ${ledger.name} -> ${groupName}`);
+      }
     }
   }
 

@@ -40,9 +40,9 @@ export async function GET(
         distinct: ['ledgerName']
       });
       
-      const existingNames = new Set(chartOfAccounts.map(a => a.name));
+      const existingNames = new Set(chartOfAccounts.map(a => a.name.toLowerCase()));
       const missingLedgers = vouchers
-        .filter(v => !existingNames.has(v.ledgerName))
+        .filter(v => !existingNames.has((v.ledgerName || "").toLowerCase()))
         .map(v => ({
           id: v.ledgerName,
           name: v.ledgerName,
