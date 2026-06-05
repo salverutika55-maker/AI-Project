@@ -70,12 +70,64 @@ export async function POST(req: Request) {
 
       // Save Chart of Accounts if provided by Tally
       if (result && Array.isArray((result as any).ledgers)) {
-        const encryptedLedgers = encrypt(JSON.stringify((result as any).ledgers));
-        await prisma.integrationCredential.upsert({
-          where: { clientId },
-          update: { encryptedApiKey: encryptedLedgers },
-          create: { clientId, encryptedApiKey: encryptedLedgers }
-        }).catch(console.error);
+        const ledgersArray = (result as any).ledgers;
+        const isObjectArray = ledgersArray.length > 0 && typeof ledgersArray[0] === 'object';
+        
+        try {
+          if (isObjectArray) {
+            // Upsert Master Chart of Accounts into NormalizedLedger
+            for (const ledger of ledgersArray) {
+              if (!ledger.name) continue;
+              
+              const groupName = ledger.parentGroup || "Uncategorized";
+              // Determine nature roughly based on group
+              const nature = groupName.toLowerCase().includes("creditor") || 
+                             groupName.toLowerCase().includes("liabilit") || 
+                             groupName.toLowerCase().includes("capital") || 
+                             groupName.toLowerCase().includes("income") || 
+                             groupName.toLowerCase().includes("sales") || 
+                             groupName.toLowerCase().includes("tax") ||
+                             groupName.toLowerCase().includes("duty")
+                             ? "CREDIT" : "DEBIT";
+
+              // Note: Prisma schema does not have a unique constraint on clientId_name in all versions, 
+              // but assuming it's supported or we can findFirst then update/create.
+              // Let's use findFirst to be safe if there's no unique compound key.
+              const existingLedger = await prisma.normalizedLedger.findFirst({
+                where: { clientId, name: ledger.name }
+              });
+
+              if (existingLedger) {
+                await prisma.normalizedLedger.update({
+                  where: { id: existingLedger.id },
+                  data: { groupName, nature, isActive: true }
+                });
+              } else {
+                await prisma.normalizedLedger.create({
+                  data: {
+                    clientId,
+                    name: ledger.name,
+                    groupName,
+                    nature,
+                    isActive: true
+                  }
+                });
+              }
+            }
+          }
+          
+          // Also save to IntegrationCredential for backward compatibility
+          const encryptedLedgers = encrypt(JSON.stringify(
+            isObjectArray ? ledgersArray.map((l: any) => l.name) : ledgersArray
+          ));
+          await prisma.integrationCredential.upsert({
+            where: { clientId },
+            update: { encryptedApiKey: encryptedLedgers },
+            create: { clientId, encryptedApiKey: encryptedLedgers }
+          });
+        } catch (dbErr) {
+          console.error("Failed to upsert ledgers:", dbErr);
+        }
       }
 
 

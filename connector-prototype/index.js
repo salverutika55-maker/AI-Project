@@ -135,28 +135,38 @@ async function performIncrementalSync(task) {
       });
       if (ledgersRes.ok) {
         const ledgersXml = await ledgersRes.text();
-        const nameRegex = /<LEDGER[^>]*\bNAME="([^"]+)"/gi;
-        let match;
-        while ((match = nameRegex.exec(ledgersXml)) !== null) {
-          if (match[1]) {
-            const cleanName = match[1].replace(/&amp;/g, '&');
-            if (!ledgers.includes(cleanName)) {
-              ledgers.push(cleanName);
-            }
+        const ledgerBlockRegex = /<LEDGER[^>]*\bNAME="([^"]+)"[\s\S]*?(?:<\/LEDGER>)/gi;
+        let blockMatch;
+        const ledgerMap = new Map();
+        
+        while ((blockMatch = ledgerBlockRegex.exec(ledgersXml)) !== null) {
+          const name = blockMatch[1].replace(/&amp;/g, '&');
+          const blockContent = blockMatch[0];
+          const parentRegex = /<PARENT[^>]*>([^<]+)<\/PARENT>/i;
+          const parentMatch = parentRegex.exec(blockContent);
+          const parentGroup = parentMatch ? parentMatch[1].replace(/&amp;/g, '&') : "Unknown";
+          
+          if (!ledgerMap.has(name)) {
+            ledgerMap.set(name, { name, parentGroup });
           }
         }
-        if (ledgers.length === 0) {
-          const fallbackRegex = /<NAME[^>]*>([^<]+)<\/NAME>/gi;
-          while ((match = fallbackRegex.exec(ledgersXml)) !== null) {
-            const name = match[1].trim();
-            if (name && !["Envelope", "Header", "Body", "Data", "Collection", "Ledger"].includes(name)) {
-              const cleanName = name.replace(/&amp;/g, '&');
-              if (!ledgers.includes(cleanName)) {
-                ledgers.push(cleanName);
+        
+        // Fallback for different XML formats
+        if (ledgerMap.size === 0) {
+           const fallbackRegex = /<NAME[^>]*>([^<]+)<\/NAME>[\s\S]*?<PARENT[^>]*>([^<]+)<\/PARENT>/gi;
+           let fMatch;
+           while ((fMatch = fallbackRegex.exec(ledgersXml)) !== null) {
+              const name = fMatch[1].trim().replace(/&amp;/g, '&');
+              const parentGroup = fMatch[2].trim().replace(/&amp;/g, '&');
+              if (name && !["Envelope", "Header", "Body", "Data", "Collection", "Ledger"].includes(name)) {
+                if (!ledgerMap.has(name)) {
+                  ledgerMap.set(name, { name, parentGroup });
+                }
               }
-            }
-          }
+           }
         }
+        
+        ledgers = Array.from(ledgerMap.values());
       }
       console.log(`Successfully fetched ${ledgers.length} ledgers from Tally Chart of Accounts.`);
     } catch (err) {
