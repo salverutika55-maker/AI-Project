@@ -174,7 +174,7 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
                       <tr key={account.id} className="hover:bg-white/5 group transition-colors">
                         <td className="p-3">
                           <p className="text-sm font-bold text-white">{account.name}</p>
-                          <p className="text-[9px] text-slate-500 uppercase">{account.parentGroup || "Tally Ledger"}</p>
+                          <p className="text-[9px] text-slate-500 uppercase">{account.groupName || "Tally Ledger"}</p>
                         </td>
                         <td className="p-3">
                           <select 
@@ -226,7 +226,7 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
                         <td className="p-3">
                           {!isFullyMapped ? (
                             <button 
-                              onClick={() => handleSuggest(account.name, account.parentGroup)}
+                              onClick={() => handleSuggest(account.name, account.groupName)}
                               disabled={suggestingFor === account.name}
                               className="flex items-center gap-1 px-3 py-1 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-lg text-[10px] font-bold hover:bg-purple-500/20 transition-all"
                             >

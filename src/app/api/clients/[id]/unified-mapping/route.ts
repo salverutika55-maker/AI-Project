@@ -46,7 +46,7 @@ export async function GET(
         .map(v => ({
           id: v.ledgerName,
           name: v.ledgerName,
-          parentGroup: "Unknown"
+          groupName: "Unknown"
         }));
         
       chartOfAccounts = [...chartOfAccounts, ...missingLedgers as any];
