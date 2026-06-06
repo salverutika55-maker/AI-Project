@@ -1,170 +1,161 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertCircle, AlertTriangle, Check, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, AlertTriangle, FileWarning, Search, Filter, Download, ArrowRight, ShieldAlert, BadgeIndianRupee, XCircle, CheckCircle2 } from "lucide-react";
+import { motion } from "framer-motion";
 
-interface ExceptionDashboardProps {
-  clientId: string;
+interface ExceptionItem {
+  id: string;
+  category: "UNUSUAL_EXPENSE" | "DUPLICATE_PAYMENT" | "GST_MISMATCH" | "TDS_ERROR" | "BANK_UNRECONCILED" | "NEGATIVE_INVENTORY" | "OVERDUE_RECEIVABLE";
+  severity: "HIGH" | "MEDIUM" | "LOW";
+  description: string;
+  amount: number;
+  date: string;
+  status: "OPEN" | "REVIEWING" | "RESOLVED";
 }
 
-export default function ExceptionDashboard({ clientId }: ExceptionDashboardProps) {
-  const [exceptions, setExceptions] = useState<any[]>([]);
+export default function ExceptionDashboard({ clientId, selectedYear, displayCurrency }: any) {
+  const [exceptions, setExceptions] = useState<ExceptionItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [applying, setApplying] = useState<string | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string>("ALL");
 
   useEffect(() => {
-    fetchExceptions();
-  }, [clientId]);
+    // Mock fetching exceptions based on CFO heuristics
+    setTimeout(() => {
+      setExceptions([
+        { id: "EX-101", category: "DUPLICATE_PAYMENT", severity: "HIGH", description: "Possible duplicate payment to 'TechCorp Services' for Invoice #4092.", amount: 45000, date: "2026-05-12", status: "OPEN" },
+        { id: "EX-102", category: "GST_MISMATCH", severity: "HIGH", description: "GSTR-2A mismatch: ITC claimed but vendor has not filed GSTR-1.", amount: 125000, date: "2026-05-15", status: "OPEN" },
+        { id: "EX-103", category: "UNUSUAL_EXPENSE", severity: "MEDIUM", description: "Travel & Entertainment expense is 300% higher than 6-month moving average.", amount: 210000, date: "2026-05-18", status: "REVIEWING" },
+        { id: "EX-104", category: "NEGATIVE_INVENTORY", severity: "MEDIUM", description: "Stock ledger showing negative balance for SKU 'WIRE-COPPER-2MM'.", amount: 0, date: "2026-05-20", status: "OPEN" },
+        { id: "EX-105", category: "BANK_UNRECONCILED", severity: "LOW", description: "Unreconciled credit entry in HDFC Bank ending 4455.", amount: 35000, date: "2026-05-22", status: "OPEN" },
+        { id: "EX-106", category: "OVERDUE_RECEIVABLE", severity: "HIGH", description: "Invoice #3320 to 'Apex Ltd' is overdue by 90+ days.", amount: 550000, date: "2026-02-10", status: "OPEN" },
+        { id: "EX-107", category: "TDS_ERROR", severity: "HIGH", description: "Professional fees paid > ₹30,000 without deducting TDS u/s 194J.", amount: 40000, date: "2026-05-25", status: "OPEN" }
+      ]);
+      setLoading(false);
+    }, 1500);
+  }, [clientId, selectedYear]);
 
-  const fetchExceptions = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/clients/${clientId}/exceptions`);
-      const data = await res.json();
-      if (data.exceptions) {
-        setExceptions(data.exceptions);
-      }
-    } catch (err) {
-      console.error(err);
+  const filteredExceptions = filterCategory === "ALL" ? exceptions : exceptions.filter(e => e.category === filterCategory);
+
+  const getSeverityStyles = (severity: string) => {
+    switch(severity) {
+      case "HIGH": return "text-rose-400 bg-rose-500/10 border-rose-500/20";
+      case "MEDIUM": return "text-amber-400 bg-amber-500/10 border-amber-500/20";
+      case "LOW": return "text-blue-400 bg-blue-500/10 border-blue-500/20";
+      default: return "text-slate-400 bg-slate-500/10 border-slate-500/20";
     }
-    setLoading(false);
   };
 
-  const handleApplyFix = async (exc: any) => {
-    setApplying(exc.ledgerName);
-    try {
-      // Find the proper mappings based on recommendation
-      let statementType = "BS";
-      let groupName = "";
-      let subGroupName = "";
-      let subHeadName = "";
-      
-      if (exc.recommendedMapping === "Trade Payables") {
-        groupName = "Current Liabilities";
-        subGroupName = "Trade Payable";
-        subHeadName = "Trade Payables";
-      } else if (exc.recommendedMapping === "Trade Receivables") {
-        groupName = "Current Assets";
-        subGroupName = "Trade Receivable";
-        subHeadName = "Trade Debtors";
-      } else {
-        // Fallback or skip if we can't map cleanly
-        setApplying(null);
-        return;
-      }
-
-      const res = await fetch(`/api/clients/${clientId}/unified-mapping`, {
-        method: "POST",
-        body: JSON.stringify({ 
-          mappings: [{ 
-            softwareLedgerName: exc.ledgerName, 
-            statementType, 
-            groupName, 
-            subGroupName, 
-            subHeadName 
-          }] 
-        })
-      });
-
-      if (res.ok) {
-        setExceptions(prev => prev.filter(e => e.ledgerName !== exc.ledgerName));
-      }
-    } catch (err) {
-      console.error(err);
-    }
-    setApplying(null);
-  };
+  const getCategoryLabel = (cat: string) => cat.replace(/_/g, ' ');
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 space-y-4">
-        <Loader2 className="w-12 h-12 text-rose-500 animate-spin" />
-        <p className="text-rose-400 font-bold tracking-widest uppercase">Scanning for Mapping Anomalies...</p>
-      </div>
-    );
-  }
-
-  if (exceptions.length === 0) {
-    return (
-      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-3xl p-12 text-center flex flex-col items-center justify-center">
-        <div className="w-16 h-16 bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-6">
-          <Check className="w-8 h-8 text-emerald-500" />
+      <div className="bg-[#13131A] rounded-3xl border border-white/5 p-8 shadow-xl flex items-center justify-center h-64">
+        <div className="flex flex-col items-center">
+          <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mb-4" />
+          <p className="text-slate-500 font-bold tracking-widest text-[10px] uppercase">Scanning ledgers for exceptions...</p>
         </div>
-        <h3 className="text-2xl font-black text-white mb-2">No Exceptions Found</h3>
-        <p className="text-emerald-400 font-medium">Your Chart of Accounts mapping aligns perfectly with voucher behavior.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-3">
-            <AlertCircle className="w-6 h-6 text-rose-500" />
-            AI Mapping Exceptions
-          </h2>
-          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Detected anomalies between ERP groups and transaction behavior</p>
+    <div className="bg-[#13131A] rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden">
+      {/* Header */}
+      <div className="p-6 md:p-8 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#181821]">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500/20 to-purple-500/20 flex items-center justify-center border border-rose-500/20">
+            <ShieldAlert className="w-6 h-6 text-rose-400" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-white tracking-tight">Exception Management</h2>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">AI-Powered Ledger Anomaly Detection</p>
+          </div>
         </div>
-        <button onClick={fetchExceptions} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-all">
-          <RefreshCw className="w-5 h-5 text-slate-400" />
-        </button>
+        
+        <div className="flex items-center gap-3">
+          <select 
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="bg-[#1A1A24] border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-300 focus:outline-none focus:border-cyan-500/50"
+          >
+            <option value="ALL">All Categories</option>
+            <option value="DUPLICATE_PAYMENT">Duplicate Payments</option>
+            <option value="GST_MISMATCH">GST Mismatches</option>
+            <option value="TDS_ERROR">TDS Errors</option>
+            <option value="UNUSUAL_EXPENSE">Unusual Expenses</option>
+            <option value="BANK_UNRECONCILED">Bank Unreconciled</option>
+          </select>
+          <button className="flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-slate-300 hover:bg-white/10 transition-all">
+            <Download className="w-3.5 h-3.5" /> Export
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        {exceptions.map((exc, idx) => (
-          <div key={idx} className="bg-[#13131A] border border-rose-500/20 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-1 h-full bg-rose-500" />
-            
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <h3 className="text-lg font-black text-white">{exc.ledgerName}</h3>
-                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  ERP: {exc.erpGroup || "Uncategorized"}
-                </span>
-                {exc.severity === "HIGH" && (
-                  <span className="px-2 py-0.5 rounded-md bg-rose-500/20 border border-rose-500/30 text-[10px] font-bold text-rose-400 uppercase tracking-widest flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" /> High Severity
-                  </span>
-                )}
-              </div>
-              
-              <div className="flex items-center gap-4 text-xs font-bold mt-3 mb-4 p-3 bg-white/[0.02] rounded-xl border border-white/5">
-                <div className="text-rose-400 line-through opacity-70">
-                  <span className="text-slate-500 block text-[9px] uppercase tracking-widest mb-0.5">Current Mapping</span>
-                  {exc.currentMapping}
-                </div>
-                <div className="w-8 h-[1px] bg-white/10 relative">
-                   <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 border-t border-r border-white/10 rotate-45" />
-                </div>
-                <div className="text-emerald-400">
-                  <span className="text-emerald-500/50 block text-[9px] uppercase tracking-widest mb-0.5">AI Recommendation</span>
-                  {exc.recommendedMapping}
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-400 flex items-start gap-2">
-                <span className="text-amber-500 mt-0.5">💡</span> {exc.reason}
-              </p>
-            </div>
-
-            <div className="flex flex-col items-center justify-center min-w-[140px] p-4 bg-[#181821] rounded-xl border border-white/5">
-              <div className="text-2xl font-black text-emerald-400 mb-1">{exc.confidence}%</div>
-              <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mb-4">AI Confidence</p>
-              
-              {exc.recommendedMapping !== "Review Classification" && (
-                <button 
-                  onClick={() => handleApplyFix(exc)}
-                  disabled={applying === exc.ledgerName}
-                  className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex justify-center items-center gap-2 disabled:opacity-50"
+      {/* Exception Table */}
+      <div className="p-6 md:p-8">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-white/5 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                <th className="pb-4 pr-4">Exception ID</th>
+                <th className="pb-4 pr-4">Category</th>
+                <th className="pb-4 pr-4">Severity</th>
+                <th className="pb-4 pr-4">Description</th>
+                <th className="pb-4 pr-4 text-right">Amount Impact</th>
+                <th className="pb-4 pl-4 text-center">Status</th>
+                <th className="pb-4 pl-4">Action</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm">
+              {filteredExceptions.map((ex, i) => (
+                <motion.tr 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  key={ex.id} 
+                  className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group"
                 >
-                  {applying === exc.ledgerName ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                  Apply Fix
-                </button>
-              )}
+                  <td className="py-4 pr-4 text-xs font-mono font-bold text-slate-400">{ex.id}</td>
+                  <td className="py-4 pr-4">
+                    <span className="text-[10px] font-black tracking-widest uppercase text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-md border border-cyan-500/20">
+                      {getCategoryLabel(ex.category)}
+                    </span>
+                  </td>
+                  <td className="py-4 pr-4">
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border ${getSeverityStyles(ex.severity)}`}>
+                      {ex.severity}
+                    </span>
+                  </td>
+                  <td className="py-4 pr-4 max-w-sm">
+                    <p className="text-slate-300 font-medium truncate" title={ex.description}>{ex.description}</p>
+                    <p className="text-[10px] text-slate-500 font-bold mt-1">Detected: {ex.date}</p>
+                  </td>
+                  <td className="py-4 pr-4 text-right font-mono font-black text-white">
+                    {ex.amount > 0 ? `₹${(ex.amount / 100000).toFixed(2)}L` : "-"}
+                  </td>
+                  <td className="py-4 pl-4 text-center">
+                    {ex.status === "OPEN" && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-amber-400"><XCircle className="w-3 h-3" /> Open</span>}
+                    {ex.status === "REVIEWING" && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-blue-400"><Search className="w-3 h-3" /> Reviewing</span>}
+                  </td>
+                  <td className="py-4 pl-4">
+                    <button className="p-2 bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-400 rounded-lg transition-colors border border-transparent hover:border-cyan-500/30">
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+          
+          {filteredExceptions.length === 0 && (
+            <div className="py-12 text-center flex flex-col items-center">
+              <CheckCircle2 className="w-12 h-12 text-emerald-500/50 mb-4" />
+              <h3 className="text-white font-bold text-lg mb-2">No Exceptions Found</h3>
+              <p className="text-slate-500 text-sm">The AI scan returned clean ledgers for this category.</p>
             </div>
-          </div>
-        ))}
+          )}
+        </div>
       </div>
     </div>
   );

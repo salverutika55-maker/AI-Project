@@ -29,7 +29,7 @@ import AICFOReport from "./AICFOReport";
 import PerformanceRatios from "./PerformanceRatios";
 import EarlyWarningSystem from "./EarlyWarningSystem";
 import ExceptionDashboard from "./ExceptionDashboard";
-import ExceptionDashboardUI from "./ExceptionDashboard"; // Actually just use the one
+import MappingExceptionsDashboard from "./MappingExceptionsDashboard";
 import StrategicAdvisoryDashboard from "./StrategicAdvisoryDashboard";
 import RiskIntelligenceDashboard from "./RiskIntelligenceDashboard";
 interface UnifiedDashboardProps {
@@ -1007,6 +1007,15 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
           )}
 
           {activeTab === "diagnostics" && (
+            <ErrorBoundary title="Diagnostics Module Error">
+              <div className="space-y-8">
+              <div className="bg-[#13131A] border border-white/5 rounded-3xl p-8 shadow-xl">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center"><RefreshCw className="w-6 h-6 text-emerald-400" /></div>
+                    <div>
+                      <h3 className="text-xl font-black text-white">Sync Diagnostics</h3>
+                      <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Live data tracing from {softwareConfig.label}</p>
                     </div>
                   </div>
                   <div className="flex gap-4 items-center">
@@ -1072,7 +1081,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
 
           {activeTab === "exceptions" && (
             <ErrorBoundary title="Exceptions Dashboard Error">
-              <ExceptionDashboardUI clientId={client.id} />
+              <MappingExceptionsDashboard clientId={client.id} />
             </ErrorBoundary>
           )}
         </div>
