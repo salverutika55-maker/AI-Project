@@ -26,15 +26,31 @@ export async function POST(
     const groupStr = (parentGroup || "").toLowerCase();
 
     // 1. Fetch Existing Company Structure (Layer 1)
-    // In a real advanced AI, we would pass all `unifiedMappings` to the LLM to see if similar names exist.
-    // We will simulate this by checking if the exact name exists, though the UI prevents mapping an already mapped ledger.
+    // See how similar ledgers were mapped in the past by this company
+    const similarMappings = await prisma.unifiedLedgerMapping.findMany({
+      where: { 
+        clientId: id,
+        softwareLedgerName: { contains: nameStr.split(' ')[0] } // basic similarity
+      }
+    });
+
+    let existingMappingPreference = null;
+    if (similarMappings.length > 0) {
+      // Find the most common mapping for similar ledgers
+      const frequency: Record<string, number> = {};
+      similarMappings.forEach(m => {
+        if (m.subGroupName) {
+          frequency[m.subGroupName] = (frequency[m.subGroupName] || 0) + 1;
+        }
+      });
+      existingMappingPreference = Object.keys(frequency).reduce((a, b) => frequency[a] > frequency[b] ? a : b);
+    }
 
     // 2. Fetch Transactions / Voucher Behavior (Layer 2 & 3)
     const vouchers = await prisma.tallyVoucher.findMany({
       where: { clientId: id, ledgerName: ledgerName }
     });
 
-    // Calculate Behavioral Metrics
     let purchaseCount = 0;
     let salesCount = 0;
     let paymentCount = 0;
@@ -58,18 +74,18 @@ export async function POST(
     const totalVouchers = vouchers.length;
 
     // 3. Opening / Closing Balance Behavior (Layer 5)
-    // Look up NormalizedLedger to see if it has a Dr/Cr nature
     const ledger = await prisma.normalizedLedger.findFirst({
       where: { clientId: id, name: ledgerName }
     });
+    
+    // Balance Analysis: if transactions exist, we calculate balance, otherwise fallback to normalized nature.
+    const isDebitBalance = totalVouchers > 0 ? (debitSum > creditSum) : (ledger ? ledger.nature === "DEBIT" : false);
 
-    const isDebitBalance = ledger ? ledger.nature === "DEBIT" : debitSum > creditSum;
-
-    // --- BEHAVIORAL AI SCORING ENGINE ---
+    // --- BEHAVIORAL AI SCORING ENGINE (100 Point Scale) ---
     
     let aiScores: Record<string, number> = {
-      "Trade Receivables": 0,
-      "Trade Payables": 0,
+      "Trade Receivable": 0,
+      "Trade Payable": 0,
       "Duties & Taxes": 0,
       "Fixed Assets": 0,
       "Bank Accounts": 0,
@@ -80,68 +96,82 @@ export async function POST(
       "Revenue": 0
     };
 
-    let baseReason = [];
+    let reasons: string[] = [];
 
-    // Evaluate ERP Group Input (Baseline Weight)
-    if (groupStr.includes("debtor")) aiScores["Trade Receivables"] += 30;
-    if (groupStr.includes("creditor")) aiScores["Trade Payables"] += 30;
-    if (groupStr.includes("indirect expense")) aiScores["Operating Expenses"] += 30;
-    if (groupStr.includes("direct expense")) aiScores["Direct Expenses"] += 30;
-    if (groupStr.includes("fixed asset")) aiScores["Fixed Assets"] += 30;
-    if (groupStr.includes("bank") || groupStr.includes("cash")) { aiScores["Bank Accounts"] += 30; aiScores["Cash-In-Hand"] += 30; }
+    // Factor 1: ERP Group Match (Max 20 Points)
+    if (groupStr.includes("debtor")) { aiScores["Trade Receivable"] += 20; }
+    if (groupStr.includes("creditor")) { aiScores["Trade Payable"] += 20; }
+    if (groupStr.includes("indirect expense")) { aiScores["Operating Expenses"] += 20; }
+    if (groupStr.includes("direct expense")) { aiScores["Direct Expenses"] += 20; }
+    if (groupStr.includes("fixed asset")) { aiScores["Fixed Assets"] += 20; }
+    if (groupStr.includes("bank") || groupStr.includes("cash")) { aiScores["Bank Accounts"] += 20; aiScores["Cash-In-Hand"] += 20; }
 
-    // Evaluate Name Input (Layer 1)
-    if (nameStr.includes("supplier") || nameStr.includes("vendor") || nameStr.includes("payable")) {
-      aiScores["Trade Payables"] += 40;
-      baseReason.push("Name indicates a vendor relationship.");
+    // Factor 2: Ledger Name Analysis (Max 20 Points)
+    if (nameStr.includes("supplier") || nameStr.includes("vendor") || nameStr.includes("payable") || nameStr.includes("creditor")) {
+      aiScores["Trade Payable"] += 20;
+      reasons.push("Ledger name indicates a vendor/supplier relationship.");
     }
-    if (nameStr.includes("customer") || nameStr.includes("buyer") || nameStr.includes("receivable")) {
-      aiScores["Trade Receivables"] += 40;
-      baseReason.push("Name indicates a customer relationship.");
+    if (nameStr.includes("customer") || nameStr.includes("buyer") || nameStr.includes("receivable") || nameStr.includes("debtor") || nameStr.includes("client")) {
+      aiScores["Trade Receivable"] += 20;
+      reasons.push("Ledger name indicates a customer relationship.");
     }
     if (nameStr.includes("salary") || nameStr.includes("wage") || nameStr.includes("pf")) {
-      aiScores["Employee Costs"] += 50;
-      baseReason.push("Name indicates payroll/employee expense.");
+      aiScores["Employee Costs"] += 20;
+      reasons.push("Ledger name indicates payroll or employee expense.");
     }
-    if (nameStr.includes("gst") || nameStr.includes("tax") || nameStr.includes("tds")) {
-      aiScores["Duties & Taxes"] += 50;
-      baseReason.push("Name indicates statutory taxation.");
+    if (nameStr.includes("gst") || nameStr.includes("tax") || nameStr.includes("tds") || nameStr.includes("cgst") || nameStr.includes("sgst")) {
+      aiScores["Duties & Taxes"] += 20;
+      reasons.push("Ledger name indicates statutory taxation.");
     }
 
-    // Evaluate Voucher Behavior (Layer 2 & 3)
+    // Factor 3 & 4: Transaction Behavior & Counter Ledger Analysis (Combined Max 40 Points)
+    // We use voucher types as a proxy for counter-ledgers (e.g. Sales Voucher implies Revenue counter ledger)
     if (totalVouchers > 0) {
-      if (purchaseCount > 0 || paymentCount > 0) {
-        let pct = ((purchaseCount + paymentCount) / totalVouchers) * 100;
-        if (pct > 50) {
-          aiScores["Trade Payables"] += 50;
-          baseReason.push(`${pct.toFixed(0)}% of transactions are Purchases/Payments.`);
-        }
+      let pctPurchase = ((purchaseCount + paymentCount) / totalVouchers) * 100;
+      let pctSales = ((salesCount + receiptCount) / totalVouchers) * 100;
+
+      if (pctPurchase > 50) {
+        let awardedPoints = Math.round((pctPurchase / 100) * 40);
+        aiScores["Trade Payable"] += awardedPoints;
+        reasons.push(`${pctPurchase.toFixed(0)}% of transactions are Purchases or Vendor Payments.`);
       }
-      
-      if (salesCount > 0 || receiptCount > 0) {
-        let pct = ((salesCount + receiptCount) / totalVouchers) * 100;
-        if (pct > 50) {
-          aiScores["Trade Receivables"] += 50;
-          baseReason.push(`${pct.toFixed(0)}% of transactions are Sales/Receipts.`);
-        }
+      if (pctSales > 50) {
+        let awardedPoints = Math.round((pctSales / 100) * 40);
+        aiScores["Trade Receivable"] += awardedPoints;
+        reasons.push(`${pctSales.toFixed(0)}% of transactions are Sales or Customer Receipts.`);
       }
+    } else {
+      // If no vouchers, we can't award 40 points for behavior. We boost the existing weights to compensate.
+      // E.g., if ERP Group says Debtor and Name has no strong hints, we must still be confident.
+      if (groupStr.includes("debtor")) { aiScores["Trade Receivable"] += 35; reasons.push("Mapped based on strict ERP group due to zero transaction history."); }
+      if (groupStr.includes("creditor")) { aiScores["Trade Payable"] += 35; reasons.push("Mapped based on strict ERP group due to zero transaction history."); }
     }
 
-    // Evaluate Balances (Layer 5)
+    // Factor 5: Balance / Narration Analysis (Max 10 Points)
     if (isDebitBalance) {
-      aiScores["Trade Receivables"] += 15;
+      aiScores["Trade Receivable"] += 10;
       aiScores["Fixed Assets"] += 10;
       aiScores["Operating Expenses"] += 10;
-      aiScores["Trade Payables"] -= 20; // Penalize Payables if Debit balance
+      aiScores["Trade Payable"] -= 15; // Strongly penalize Vendor if it carries debit balance
+      if (aiScores["Trade Receivable"] > 0) reasons.push("Predominantly Debit balance aligns with Asset/Receivable nature.");
     } else {
-      aiScores["Trade Payables"] += 15;
+      aiScores["Trade Payable"] += 10;
       aiScores["Duties & Taxes"] += 10;
       aiScores["Revenue"] += 10;
-      aiScores["Trade Receivables"] -= 20; // Penalize Receivables if Credit balance
+      aiScores["Trade Receivable"] -= 15; // Strongly penalize Customer if it carries credit balance
+      if (aiScores["Trade Payable"] > 0) reasons.push("Predominantly Credit balance aligns with Liability/Payable nature.");
     }
 
-    // Find the highest score
-    let highestCategory = "Operating Expenses";
+    // Factor 6: Existing Company Mapping Similarity (Max 10 Points)
+    if (existingMappingPreference) {
+      if (aiScores[existingMappingPreference] !== undefined) {
+        aiScores[existingMappingPreference] += 10;
+        reasons.push(`Similar to other ledgers mapped as ${existingMappingPreference} in your structure.`);
+      }
+    }
+
+    // --- FINALIZE SCORE AND CATEGORY ---
+    let highestCategory = "Operating Expenses"; // fallback
     let highestScore = 0;
     
     for (const [cat, score] of Object.entries(aiScores)) {
@@ -151,34 +181,46 @@ export async function POST(
       }
     }
 
-    // Calculate final Confidence percentage (capped at 98%)
-    // Base confidence is roughly (highestScore / 135) * 100
-    let confidence = Math.min(Math.round((highestScore / 120) * 100), 98);
-    
-    // If no vouchers and no strong name clues, lower confidence
-    if (totalVouchers === 0 && highestScore <= 30) {
-      confidence = 45; 
-      baseReason.push("Low confidence due to lack of transaction history and vague naming.");
+    // Normalize confidence to 0-100% bounds
+    let confidence = Math.max(0, Math.min(highestScore, 99));
+
+    // Special Condition: Perfect Match (Everything aligns perfectly)
+    if (
+      (highestCategory === "Trade Receivable" && groupStr.includes("debtor") && isDebitBalance && (totalVouchers === 0 || salesCount > 0)) ||
+      (highestCategory === "Trade Payable" && groupStr.includes("creditor") && !isDebitBalance && (totalVouchers === 0 || purchaseCount > 0))
+    ) {
+      confidence = Math.max(confidence, 92); // Automatically boost to Very High if everything perfectly aligns.
     }
 
-    // Debtor/Creditor Anomaly Detection!
-    if (groupStr.includes("debtor") && highestCategory === "Trade Payables") {
-      baseReason.unshift("⚠️ ERP MISCLASSIFICATION DETECTED: Ledger is grouped as Sundry Debtors in ERP, but transaction behavior strongly indicates a Vendor (Creditor).");
-      confidence = Math.min(confidence, 92); // High confidence, but acknowledge the override
-    } else if (groupStr.includes("creditor") && highestCategory === "Trade Receivables") {
-      baseReason.unshift("⚠️ ERP MISCLASSIFICATION DETECTED: Ledger is grouped as Sundry Creditors in ERP, but transaction behavior strongly indicates a Customer (Debtor).");
-      confidence = Math.min(confidence, 92);
-    } else if (baseReason.length === 0) {
-      baseReason.push("Mapped based on standard ERP grouping and typical balance behavior.");
+    // Misclassification Anomaly Detection Override
+    if (groupStr.includes("debtor") && highestCategory === "Trade Payable") {
+      reasons.unshift("⚠️ ERP MISCLASSIFICATION: Grouped as Debtors in ERP, but behavior/balance strongly indicates a Creditor.");
+      confidence = Math.max(confidence, 85); // We are confident it's wrong in ERP
+    } else if (groupStr.includes("creditor") && highestCategory === "Trade Receivable") {
+      reasons.unshift("⚠️ ERP MISCLASSIFICATION: Grouped as Creditors in ERP, but behavior/balance strongly indicates a Debtor.");
+      confidence = Math.max(confidence, 85);
     }
+
+    // Assign Confidence Categories
+    let confidenceCategory = "MANUAL_REVIEW";
+    if (confidence >= 95) confidenceCategory = "VERY_HIGH";
+    else if (confidence >= 85) confidenceCategory = "HIGH";
+    else if (confidence >= 70) confidenceCategory = "MODERATE";
+
+    if (confidence < 70) {
+      reasons.push("Low confidence score. Manual review is required.");
+    }
+
+    // Ensure we don't return duplicate reasons
+    reasons = Array.from(new Set(reasons));
 
     // Map Category to precise unified schema
     let suggestion = null;
     switch (highestCategory) {
-      case "Trade Receivables":
+      case "Trade Receivable":
         suggestion = { statementType: "BS", groupName: "Current Assets", subGroupName: "Trade Receivable", subHeadName: "Trade Debtors" };
         break;
-      case "Trade Payables":
+      case "Trade Payable":
         suggestion = { statementType: "BS", groupName: "Current Liabilities", subGroupName: "Trade Payable", subHeadName: "Trade Payables" };
         break;
       case "Duties & Taxes":
@@ -212,7 +254,8 @@ export async function POST(
     return NextResponse.json({ 
       suggestion, 
       confidence, 
-      reason: baseReason.join(" ") 
+      confidenceCategory,
+      reasons 
     });
 
   } catch (error: any) {

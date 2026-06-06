@@ -16,7 +16,7 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [suggestingFor, setSuggestingFor] = useState<string | null>(null);
-  const [aiResults, setAiResults] = useState<Record<string, { confidence: number, reason: string }>>({});
+  const [aiResults, setAiResults] = useState<Record<string, { confidence: number, confidenceCategory: string, reasons: string[] }>>({});
 
   // Group definitions for the dropdowns
   const statementTypes = ["PNL", "BS"];
@@ -68,8 +68,8 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
         if (data.suggestion.subGroupName) updateMapping(ledgerName, "subGroupName", data.suggestion.subGroupName);
         updateMapping(ledgerName, "subHeadName", data.suggestion.subHeadName);
         
-        if (data.confidence && data.reason) {
-          setAiResults(prev => ({ ...prev, [ledgerName]: { confidence: data.confidence, reason: data.reason } }));
+        if (data.confidence !== undefined && data.reasons) {
+          setAiResults(prev => ({ ...prev, [ledgerName]: { confidence: data.confidence, confidenceCategory: data.confidenceCategory, reasons: data.reasons } }));
         }
       }
     } catch (e) {
@@ -253,28 +253,40 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
                       {aiResults[account.name] && (
                         <tr key={`${account.id}-ai`}>
                           <td colSpan={6} className="p-0 border-b border-white/5 bg-[#13131A]">
-                            <div className={`p-3 mx-3 mb-3 rounded-xl border flex items-start gap-3 ${
-                              aiResults[account.name].confidence >= 90 ? 'bg-emerald-500/10 border-emerald-500/20' :
-                              aiResults[account.name].confidence >= 70 ? 'bg-amber-500/10 border-amber-500/20' :
+                            <div className={`p-4 mx-3 mb-3 rounded-xl border flex items-start gap-4 ${
+                              aiResults[account.name].confidenceCategory === "VERY_HIGH" ? 'bg-emerald-500/10 border-emerald-500/20' :
+                              aiResults[account.name].confidenceCategory === "HIGH" ? 'bg-teal-500/10 border-teal-500/20' :
+                              aiResults[account.name].confidenceCategory === "MODERATE" ? 'bg-amber-500/10 border-amber-500/20' :
                               'bg-rose-500/10 border-rose-500/20'
                             }`}>
-                              <Sparkles className={`w-4 h-4 mt-0.5 ${
-                                aiResults[account.name].confidence >= 90 ? 'text-emerald-400' :
-                                aiResults[account.name].confidence >= 70 ? 'text-amber-400' :
+                              <Sparkles className={`w-5 h-5 mt-0.5 ${
+                                aiResults[account.name].confidenceCategory === "VERY_HIGH" ? 'text-emerald-400' :
+                                aiResults[account.name].confidenceCategory === "HIGH" ? 'text-teal-400' :
+                                aiResults[account.name].confidenceCategory === "MODERATE" ? 'text-amber-400' :
                                 'text-rose-400'
                               }`} />
-                              <div>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-white flex items-center gap-2">
-                                  AI Suggested Mapping 
-                                  <span className={`px-1.5 py-0.5 rounded text-[9px] ${
-                                    aiResults[account.name].confidence >= 90 ? 'bg-emerald-500/20 text-emerald-400' :
-                                    aiResults[account.name].confidence >= 70 ? 'bg-amber-500/20 text-amber-400' :
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-white">
+                                    AI Suggested Mapping 
+                                  </p>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${
+                                    aiResults[account.name].confidenceCategory === "VERY_HIGH" ? 'bg-emerald-500/20 text-emerald-400' :
+                                    aiResults[account.name].confidenceCategory === "HIGH" ? 'bg-teal-500/20 text-teal-400' :
+                                    aiResults[account.name].confidenceCategory === "MODERATE" ? 'bg-amber-500/20 text-amber-400' :
                                     'bg-rose-500/20 text-rose-400'
                                   }`}>
                                     {aiResults[account.name].confidence}% Confidence
                                   </span>
-                                </p>
-                                <p className="text-[10px] text-slate-400 mt-1">{aiResults[account.name].reason}</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  {aiResults[account.name].reasons.map((r, idx) => (
+                                    <p key={idx} className="text-xs text-slate-300 flex items-start gap-2">
+                                      <Check className="w-3.5 h-3.5 text-cyan-500 mt-0.5 shrink-0" />
+                                      {r}
+                                    </p>
+                                  ))}
+                                </div>
                               </div>
                             </div>
                           </td>
