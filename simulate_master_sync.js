@@ -10,7 +10,7 @@ async function syncMasterCOA() {
 
   const ledgersArray = [
     { name: "Aaliya Enterprises", parentGroup: "Sundry Debtors" },
-    { name: "ABZ Automation", parentGroup: "Sundry Creditors" },
+    { name: "ABZ Automation", parentGroup: "Sundry Debtors" },
     { name: "Accounting Chargres", parentGroup: "Indirect Expenses" },
     { name: "Advance Paints Private Limited", parentGroup: "Sundry Creditors" },
     { name: "Ajit Pathak", parentGroup: "Sundry Debtors" },

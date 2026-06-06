@@ -306,6 +306,11 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     return months.slice(0, idx + 1); // All months from start of FY up to selected month
   }, [selectedMonth, months]);
 
+  const bsVisibleMonths = useMemo(() => {
+    const openingMonth = fyType === "APR_MAR" ? "Mar" : "Dec";
+    return [openingMonth, ...visibleMonths];
+  }, [visibleMonths, fyType]);
+
   // CALCULATION ENGINE (Copied from SectorDashboard)
   const calculateMetrics = (sourceGrid: Record<string, Record<string, number>>) => {
     const newData: Record<string, Record<string, number>> = {};
@@ -973,7 +978,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
 
           {activeTab === "balanceSheet" && (
             <ErrorBoundary title="Balance Sheet Error">
-              <BalanceSheetDashboard clientId={client.id} visibleMonths={visibleMonths} />
+              <BalanceSheetDashboard clientId={client.id} visibleMonths={bsVisibleMonths} />
             </ErrorBoundary>
           )}
 

@@ -87,60 +87,52 @@ export async function GET(
 
       const balance = ledgerBalances[mapping.softwareLedgerName] || 0;
       
-      // Push May Data (Actual Closing)
-      dataNodes.push({
-        id: `${mapping.id}-May`,
-        period: "May",
-        mainGroup,
-        groupName: mapping.groupName,
-        subGroupName: mapping.subGroupName || mapping.groupName,
-        subHeadName: mapping.subHeadName,
-        ledgerName: mapping.softwareLedgerName,
-        amount: Math.abs(balance),
-        nature: balance > 0 ? "DEBIT" : "CREDIT"
-      });
+      const months = ["Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
+      
+      months.forEach((month, idx) => {
+        // Simple mock variation logic: 
+        // We assume "May" is the current actual balance, and previous months decrease slightly.
+        // For prototype purposes, let's just use balance * (1 - (months.indexOf("May") - idx) * 0.05)
+        // Wait, simpler:
+        // Let's just randomize or apply a flat mock calculation.
+        // Actually, just making Mar = 0.9*balance, Apr = 0.95*balance, May = balance, Jun = 1.05*balance etc.
+        const mayIdx = 2; // May is index 2
+        const multiplier = 1 + ((idx - mayIdx) * 0.05);
+        const mockedBalance = Math.abs(balance * multiplier);
 
-      // Push Apr Data (Mocked variation for prototype)
-      dataNodes.push({
-        id: `${mapping.id}-Apr`,
-        period: "Apr",
-        mainGroup,
-        groupName: mapping.groupName,
-        subGroupName: mapping.subGroupName || mapping.groupName,
-        subHeadName: mapping.subHeadName,
-        ledgerName: mapping.softwareLedgerName,
-        amount: Math.abs(balance * 0.95), // 5% less for Apr
-        nature: balance > 0 ? "DEBIT" : "CREDIT"
+        dataNodes.push({
+          id: `${mapping.id}-${month}`,
+          period: month,
+          mainGroup,
+          groupName: mapping.groupName,
+          subGroupName: mapping.subGroupName || mapping.groupName,
+          subHeadName: mapping.subHeadName,
+          ledgerName: mapping.softwareLedgerName,
+          amount: mockedBalance,
+          nature: balance > 0 ? "DEBIT" : "CREDIT"
+        });
       });
     });
 
     // 5. Calculate Current Year Profit from PNL
-    const netProfitMay = 4500000;
-    const netProfitApr = 4000000;
-    
-    // Add it to Profit & Loss Account
-    dataNodes.push({
-      id: "cy-profit-system-may",
-      period: "May",
-      mainGroup: "Liabilities",
-      groupName: "Owner's Funds",
-      subGroupName: "Profit & Loss Account",
-      subHeadName: "Current Year Profit",
-      ledgerName: "P&L Account (Auto)",
-      amount: netProfitMay,
-      nature: "CREDIT"
-    });
-
-    dataNodes.push({
-      id: "cy-profit-system-apr",
-      period: "Apr",
-      mainGroup: "Liabilities",
-      groupName: "Owner's Funds",
-      subGroupName: "Profit & Loss Account",
-      subHeadName: "Current Year Profit",
-      ledgerName: "P&L Account (Auto)",
-      amount: netProfitApr,
-      nature: "CREDIT"
+    // Add it to Profit & Loss Account for all months
+    const monthsForProfit = ["Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
+    monthsForProfit.forEach((month, idx) => {
+      const mayIdx = 2;
+      const profitBase = 4500000;
+      const multiplier = 1 + ((idx - mayIdx) * 0.05);
+      
+      dataNodes.push({
+        id: `cy-profit-system-${month}`,
+        period: month,
+        mainGroup: "Liabilities",
+        groupName: "Owner's Funds",
+        subGroupName: "Profit & Loss Account",
+        subHeadName: "Current Year Profit",
+        ledgerName: "P&L Account (Auto)",
+        amount: profitBase * multiplier,
+        nature: "CREDIT"
+      });
     });
 
     return NextResponse.json({
