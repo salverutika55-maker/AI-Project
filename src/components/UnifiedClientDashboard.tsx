@@ -29,6 +29,7 @@ import AICFOReport from "./AICFOReport";
 import PerformanceRatios from "./PerformanceRatios";
 import EarlyWarningSystem from "./EarlyWarningSystem";
 import ExceptionDashboard from "./ExceptionDashboard";
+import ExceptionDashboardUI from "./ExceptionDashboard"; // Actually just use the one
 import StrategicAdvisoryDashboard from "./StrategicAdvisoryDashboard";
 import RiskIntelligenceDashboard from "./RiskIntelligenceDashboard";
 interface UnifiedDashboardProps {
@@ -42,7 +43,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const isAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(userRole);
 
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"executive" | "performance" | "balanceSheet" | "analytics" | "compliance" | "risk" | "advisory" | "diagnostics" | "insights">("executive");
+  const [activeTab, setActiveTab] = useState<"executive" | "performance" | "balanceSheet" | "analytics" | "compliance" | "risk" | "advisory" | "diagnostics" | "insights" | "exceptions">("executive");
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedMonth, setSelectedMonth] = useState("May");
@@ -711,6 +712,9 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
           <button onClick={() => setActiveTab("diagnostics")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "diagnostics" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Activity className="w-4 h-4" /> Sync Diagnostics
           </button>
+          <button onClick={() => setActiveTab("exceptions")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "exceptions" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <AlertTriangle className="w-4 h-4" /> Mapping Exceptions
+          </button>
         </div>
 
         {/* 3. TAB CONTENT */}
@@ -1003,15 +1007,6 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
           )}
 
           {activeTab === "diagnostics" && (
-            <ErrorBoundary title="Diagnostics Module Error">
-              <div className="space-y-8">
-              <div className="bg-[#13131A] border border-white/5 rounded-3xl p-8 shadow-xl">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center"><RefreshCw className="w-6 h-6 text-emerald-400" /></div>
-                    <div>
-                      <h3 className="text-xl font-black text-white">Sync Diagnostics</h3>
-                      <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Live data tracing from {softwareConfig.label}</p>
                     </div>
                   </div>
                   <div className="flex gap-4 items-center">
@@ -1072,6 +1067,12 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                   )}
                 </div>
               </div>
+            </ErrorBoundary>
+          )}
+
+          {activeTab === "exceptions" && (
+            <ErrorBoundary title="Exceptions Dashboard Error">
+              <ExceptionDashboardUI clientId={client.id} />
             </ErrorBoundary>
           )}
         </div>
