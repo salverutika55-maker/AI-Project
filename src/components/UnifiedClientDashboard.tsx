@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { 
   Factory, Briefcase, ArrowRightLeft, Download, FolderDown, Link2, UploadCloud, RefreshCw,
   TrendingDown, BarChart3, WalletCards, GitMerge, BrainCircuit, Activity, DollarSign,
-  FileText, FileSpreadsheet, Zap, LayoutDashboard, Table as TableIcon, Search, AlertCircle, Settings2, Users, ShieldAlert, Scale
+  FileText, FileSpreadsheet, Zap, LayoutDashboard, Table as TableIcon, Search, AlertCircle, AlertTriangle, Settings2, Users, ShieldAlert, Scale
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
