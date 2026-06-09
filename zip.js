@@ -19,5 +19,5 @@ archive.on('error', function(err) {
 });
 
 archive.pipe(output);
-archive.directory('scripts/desktop_agent/dist/', false);
+archive.file('scripts/desktop_agent/FinAnalyzerSync.exe', { name: 'FinAnalyzerSync.exe' });
 archive.finalize();
