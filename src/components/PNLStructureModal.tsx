@@ -74,6 +74,24 @@ export default function PNLStructureModal({ isOpen, onClose, clientId, sections,
     setLoading(false);
   };
 
+  const handleDeleteHead = async (headName: string) => {
+    if (!confirm(`Are you sure you want to delete the Head "${headName}"? This will hide it from the P&L structure.`)) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/subheads`, {
+        method: "POST",
+        body: JSON.stringify({ name: headName, headName: "__DELETED_SECTION__" })
+      });
+      if (res.ok) {
+        await fetchSubheads();
+        onUpdate();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -102,7 +120,7 @@ export default function PNLStructureModal({ isOpen, onClose, clientId, sections,
                 onChange={(e) => setSelectedHead(e.target.value)}
                 className="bg-[#1a1a24] border border-white/10 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
               >
-                {(sections || []).filter(s => s && !s.isCalculated).map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                {(sections || []).filter(s => s && !s.isCalculated && !subheads.some(c => c.headName === "__DELETED_SECTION__" && c.name === s.name)).map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
               </select>
               <div className="relative">
                 <input 
@@ -125,11 +143,20 @@ export default function PNLStructureModal({ isOpen, onClose, clientId, sections,
 
           {/* List Sections */}
           <div className="space-y-6">
-            {(sections || []).filter(s => s && !s.isCalculated).map(section => {
+            {(sections || []).filter(s => s && !s.isCalculated && !subheads.some(c => c.headName === "__DELETED_SECTION__" && c.name === s.name)).map(section => {
               const items = (subheads || []).filter(sh => sh && sh.headName === section.name);
               return (
                 <div key={section.name} className="space-y-3">
-                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{section.name}</h4>
+                  <div className="flex items-center justify-between mb-2 group">
+                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{section.name}</h4>
+                    <button 
+                      onClick={() => handleDeleteHead(section.name)}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-600 hover:text-rose-500 transition-all"
+                      title="Delete Head"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {items.map(item => (
                       <div key={item.id} className="group flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5 hover:border-white/10 transition-all">

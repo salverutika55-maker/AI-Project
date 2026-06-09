@@ -864,7 +864,7 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
                     </tr>
                   </thead>
                   <tbody>
-                    {(sections || []).map((section, sIdx) => (
+                    {(sections || []).filter(s => !customSubHeads.some(c => c.headName === "__DELETED_SECTION__" && c.name === s.name)).map((section, sIdx) => (
                       <Fragment key={sIdx}>
                         <tr className="bg-white/[0.02]">
                           <td className="sticky left-0 z-30 bg-[#1a1a24] p-4 text-[11px] font-black text-cyan-400 uppercase tracking-widest border-b border-white/5" colSpan={(viewMode === "MONTHLY_BUDGET" ? visibleMonths.length * 2 : visibleMonths.length) + (viewMode === "MONTHLY_BUDGET" ? 4 : 2)}>{section.name}</td>
@@ -1089,9 +1089,9 @@ link.download = 'FinAnalyzer_Connector_Setup.exe';
       </main>
 
       {/* MODALS */}
-      {isMappingOpen && <MasterLedgerMapping isOpen={isMappingOpen} clientId={client.id} onClose={() => { setIsMappingOpen(false); fetchAllData(); }} />}
-      {isBudgetOpen && <BudgetUploadModal isOpen={isBudgetOpen} clientId={client.id} sectorHeads={sections.map((s: any) => s.name)} onClose={() => { setIsBudgetOpen(false); fetchAllData(); }} />}
-      {isTBUploadOpen && <TrialBalanceUploadModal isOpen={isTBUploadOpen} clientId={client.id} sectorHeads={sections.map((s: any) => s.name)} onClose={() => { setIsTBUploadOpen(false); fetchAllData(); }} />}
+      {isMappingOpen && <MasterLedgerMapping isOpen={isMappingOpen} clientId={client.id} sections={sections} customSubHeads={customSubHeads} onClose={() => { setIsMappingOpen(false); fetchAllData(); }} />}
+      {isBudgetOpen && <BudgetUploadModal isOpen={isBudgetOpen} clientId={client.id} sectorHeads={sections.filter(s => !customSubHeads.some(c => c.headName === "__DELETED_SECTION__" && c.name === s.name)).map((s: any) => s.name)} onClose={() => { setIsBudgetOpen(false); fetchAllData(); }} />}
+      {isTBUploadOpen && <TrialBalanceUploadModal isOpen={isTBUploadOpen} clientId={client.id} sectorHeads={sections.filter(s => !customSubHeads.some(c => c.headName === "__DELETED_SECTION__" && c.name === s.name)).map((s: any) => s.name)} onClose={() => { setIsTBUploadOpen(false); fetchAllData(); }} />}
       {isManagingStructure && <PNLStructureModal isOpen={isManagingStructure} clientId={client.id} sections={sections} onUpdate={fetchAllData} onClose={() => { setIsManagingStructure(false); fetchAllData(); }} />}
       <AICFOReport 
         isOpen={isMISModalOpen} 

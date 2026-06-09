@@ -7,9 +7,11 @@ interface MasterLedgerMappingProps {
   isOpen: boolean;
   onClose: () => void;
   clientId: string;
+  sections?: any[];
+  customSubHeads?: any[];
 }
 
-export default function MasterLedgerMapping({ isOpen, onClose, clientId }: MasterLedgerMappingProps) {
+export default function MasterLedgerMapping({ isOpen, onClose, clientId, sections = [], customSubHeads = [] }: MasterLedgerMappingProps) {
   const [coa, setCoa] = useState<any[]>([]);
   const [mappings, setMappings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,10 +20,13 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
   const [suggestingFor, setSuggestingFor] = useState<string | null>(null);
   const [aiResults, setAiResults] = useState<Record<string, { confidence: number, confidenceCategory: string, reasons: string[] }>>({});
 
+  const deletedSections = customSubHeads.filter(c => c.headName === "__DELETED_SECTION__").map(c => c.name);
+  const activeSections = sections.filter(s => !s.isCalculated && !deletedSections.includes(s.name));
+
   // Group definitions for the dropdowns
   const statementTypes = ["PNL", "BS"];
   const groups = {
-    "PNL": ["Revenue", "Direct Expenses", "Employee Costs", "Operating Expenses", "Finance Costs", "Depreciation", "Other Income", "Taxes"],
+    "PNL": activeSections.length > 0 ? activeSections.map(s => s.name) : ["Revenue", "Direct Expenses", "Employee Costs", "Operating Expenses", "Finance Costs", "Depreciation", "Other Income", "Taxes"],
     "BS": ["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Non-Current Assets", "Current Assets", "Branch Account"]
   };
   
@@ -214,24 +219,41 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId }: Maste
                           <select 
                             value={m.subGroupName || ""} 
                             onChange={e => updateMapping(account.name, "subGroupName", e.target.value)}
-                            disabled={!m.groupName}
+                            disabled={!m.groupName || m.statementType === "PNL"}
                             className="bg-[#1a1a24] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white disabled:opacity-50"
                           >
-                            <option value="">Select...</option>
-                            {(subGroups[m.groupName] || []).map((sg: string) => (
+                            <option value="">{m.statementType === "PNL" ? "N/A" : "Select..."}</option>
+                            {m.statementType !== "PNL" && (subGroups[m.groupName] || []).map((sg: string) => (
                               <option key={sg} value={sg}>{sg}</option>
                             ))}
                           </select>
                         </td>
                         <td className="p-3">
-                          <input 
-                            type="text"
-                            value={m.subHeadName || ""}
-                            onChange={e => updateMapping(account.name, "subHeadName", e.target.value)}
-                            disabled={!m.groupName}
-                            placeholder="e.g. Axis Bank OD"
-                            className="bg-[#1a1a24] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white disabled:opacity-50 w-full"
-                          />
+                          {m.statementType === "PNL" ? (
+                            <select
+                              value={m.subHeadName || ""}
+                              onChange={e => updateMapping(account.name, "subHeadName", e.target.value)}
+                              disabled={!m.groupName}
+                              className="bg-[#1a1a24] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white disabled:opacity-50 w-full"
+                            >
+                              <option value="">Select Line Item...</option>
+                              {[
+                                ...(activeSections.find(s => s.name === m.groupName)?.items || []),
+                                ...customSubHeads.filter(c => c.headName === m.groupName).map(c => c.name)
+                              ].map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input 
+                              type="text"
+                              value={m.subHeadName || ""}
+                              onChange={e => updateMapping(account.name, "subHeadName", e.target.value)}
+                              disabled={!m.groupName}
+                              placeholder="e.g. Axis Bank OD"
+                              className="bg-[#1a1a24] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white disabled:opacity-50 w-full"
+                            />
+                          )}
                         </td>
                         <td className="p-3">
                           {!isFullyMapped ? (
