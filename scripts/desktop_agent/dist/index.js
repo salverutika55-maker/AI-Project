@@ -36676,13 +36676,7 @@ async function startBackgroundSync(config) {
     const currentConfig = loadConfig() || { companies: {} };
     let companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
     
-    // Fallback: If not paired by active Tally company name, but exactly one company is paired, use it!
-    if (!companyConfig && currentConfig.companies) {
-      const keys = Object.keys(currentConfig.companies);
-      if (keys.length === 1) {
-        companyConfig = currentConfig.companies[keys[0]];
-      }
-    }
+    // Fallback removed: We must require exact Tally Company Name matching to prevent pushing data to the wrong dashboard.
     
     if (!companyConfig || !companyConfig.apiKey) {
       console.log(`[AGENT] Executing Sync: Active Tally company "${activeCompany}" is not paired yet.`);
@@ -36935,13 +36929,7 @@ async function startBackgroundSync(config) {
       const currentConfig = loadConfig();
       let companyConfig = currentConfig && currentConfig.companies && currentConfig.companies[activeCompany];
       
-      // Fallback: If not paired by active Tally company name, but exactly one company is paired, use it!
-      if (!companyConfig && currentConfig && currentConfig.companies) {
-        const keys = Object.keys(currentConfig.companies);
-        if (keys.length === 1) {
-          companyConfig = currentConfig.companies[keys[0]];
-        }
-      }
+      // Fallback removed for security
       
       if (companyConfig && companyConfig.apiKey) {
         const res = await axios.post(`${VERCEL_API}/connector/heartbeat`, {
@@ -37059,13 +37047,7 @@ async function init() {
     
     let companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
     
-    // Fallback: If not paired by active Tally company name, but exactly one company is paired, use it!
-    if (!companyConfig && currentConfig.companies) {
-      const keys = Object.keys(currentConfig.companies);
-      if (keys.length === 1) {
-        companyConfig = currentConfig.companies[keys[0]];
-      }
-    }
+    // Fallback removed for security
 
     if (companyConfig && companyConfig.apiKey) {
       console.log(`[AGENT] Found paired credentials for "${activeCompany}" (Client: "${companyConfig.clientName}").`);
