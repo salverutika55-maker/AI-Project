@@ -250,7 +250,7 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId, section
                               value={m.subHeadName || ""}
                               onChange={e => updateMapping(account.name, "subHeadName", e.target.value)}
                               disabled={!m.groupName}
-                              placeholder="e.g. Axis Bank OD"
+                              placeholder="Type line item name..."
                               className="bg-[#1a1a24] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white disabled:opacity-50 w-full"
                             />
                           )}
