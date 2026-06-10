@@ -3,9 +3,8 @@ const prisma = new PrismaClient();
 
 async function main() {
   const ledgers = await prisma.normalizedLedger.findMany({
-    where: { clientId: 'REDACTED_TEST_BEARER', closingBalance: 6000 }
+    where: { clientId: 'REDACTED_TEST_BEARER', name: { in: ['Rajesh Shinde', 'Supriya Shinde'] } }
   });
-  console.log("Ledgers with exactly 6000 balance:");
-  ledgers.forEach(l => console.log(`${l.name} (${l.nature})`));
+  console.log("Ledgers:", ledgers.map(l => ({ name: l.name, bal: l.closingBalance })));
 }
 main().catch(console.error).finally(() => prisma.$disconnect());
