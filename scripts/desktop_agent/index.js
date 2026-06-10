@@ -189,21 +189,13 @@ async function startBackgroundSync(config) {
         const totDrAmt = getVal(info, 'DSPTOTDRAMT') || getVal(info, 'DSPDRAMT') || getVal(info, 'DSPTRDRAMT') || getVal(info, 'DSPTRANSDR') || 0;
         const totCrAmt = getVal(info, 'DSPTOTCRAMT') || getVal(info, 'DSPCRAMT') || getVal(info, 'DSPTRCRAMT') || getVal(info, 'DSPTRANSCR') || 0;
         
-        // For P&L reports, we need the NET movement during this period.
-        const periodNet = Math.abs(totCrAmt - totDrAmt);
-        
-        // Fallback to closing net balance if transactions aren't available
+        // For Balance Sheet, we need the ACTUAL CLOSING BALANCE, not the net movement.
+        // P&L uses /ingest/vouchers directly, so Trial Balance ledgers are exclusively for Balance Sheet.
         const clDrAmt = getVal(info, 'DSPCLDRAMT') || getVal(info, 'DSPCLOSDR') || getVal(info, 'DSPCLAMT') || 0;
         const clCrAmt = getVal(info, 'DSPCLCRAMT') || getVal(info, 'DSPCLOSCR') || getVal(info, 'DSPCLAMT') || 0;
-        const opDrAmt = getVal(info, 'DSPOPDRAMT') || getVal(info, 'DSPOPENDR') || getVal(info, 'DSPOPAMT') || 0;
-        const opCrAmt = getVal(info, 'DSPOPCRAMT') || getVal(info, 'DSPOPENCR') || getVal(info, 'DSPOPAMT') || 0;
         
         const closingNet = clCrAmt - clDrAmt;
-        const openingNet = opCrAmt - opDrAmt;
-        const derivedNet = Math.abs(closingNet - openingNet);
-
-        // If Tally returned actual transaction figures, ALWAYS prioritize them.
-        const amt = (totDrAmt > 0 || totCrAmt > 0) ? periodNet : derivedNet;
+        const amt = Math.abs(closingNet);
         
         if (amt !== 0) {
           ledgers[name] = amt;
