@@ -173,9 +173,13 @@ async function startBackgroundSync(config) {
 
     const getVal = (infoObj, baseTag) => {
       if (!infoObj || !infoObj[baseTag]) return 0;
-      const node = infoObj[baseTag];
-      if (typeof node === 'object' && node[`${baseTag}A`] !== undefined) {
-          return parseTallyAmount(node[`${baseTag}A`]);
+      let node = infoObj[baseTag];
+      if (Array.isArray(node)) node = node[0]; // Unwrap xml2js array
+      
+      if (node && typeof node === 'object' && node[`${baseTag}A`] !== undefined) {
+          let inner = node[`${baseTag}A`];
+          if (Array.isArray(inner)) inner = inner[0];
+          return parseTallyAmount(inner);
       }
       return parseTallyAmount(node);
     };
