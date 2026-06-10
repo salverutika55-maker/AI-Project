@@ -238,7 +238,6 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId, section
                             >
                               <option value="">Select Line Item...</option>
                               {[
-                                ...(activeSections.find(s => s.name === m.groupName)?.items || []),
                                 ...customSubHeads.filter(c => c.headName === m.groupName).map(c => c.name)
                               ].map(opt => (
                                 <option key={opt} value={opt}>{opt}</option>
