@@ -117,13 +117,19 @@ export default function MasterLedgerMapping({ isOpen, onClose, clientId, section
     try {
       const res = await fetch(`/api/clients/${clientId}/unified-mapping`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mappings: validMappings })
       });
       if (res.ok) {
+        alert("✅ Mappings saved successfully!");
         onClose();
+      } else {
+        const errorData = await res.json();
+        alert(`❌ Failed to save mappings: ${errorData.error || "Unknown error"}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert(`❌ Failed to save mappings: ${err.message || "Network error"}`);
     }
     setSaving(false);
   };

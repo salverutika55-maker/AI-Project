@@ -115,51 +115,43 @@ export async function POST(
     }
 
     await prisma.$transaction(async (tx) => {
-      // 2. Upsert new unified mappings instead of deleting all
-      for (const m of mappings) {
-        if (m.statementType && m.groupName) {
-          await tx.unifiedLedgerMapping.upsert({
-            where: {
-              clientId_softwareLedgerName: {
-                clientId: id,
-                softwareLedgerName: m.softwareLedgerName
-              }
-            },
-            update: {
-              statementType: m.statementType,
-              groupName: m.groupName,
-              subGroupName: m.subGroupName || null,
-              subHeadName: m.subHeadName || m.groupName // Fallback if empty
-            },
-            create: {
-              clientId: id,
-              softwareLedgerName: m.softwareLedgerName,
-              statementType: m.statementType,
-              groupName: m.groupName,
-              subGroupName: m.subGroupName || null,
-              subHeadName: m.subHeadName || m.groupName
-            }
-          });
-        }
-      }
+      const validMappings = mappings.filter((m: any) => m.statementType && m.groupName);
+      if (validMappings.length > 0) {
+        const ledgerNames = validMappings.map((m: any) => m.softwareLedgerName);
 
-      // 3. For backward compatibility with P&L syncing, sync down to PNLMapping
-      // If statementType is PNL, it goes to PNLMapping
-      const pnlMappings = mappings.filter((m: any) => m.statementType === "PNL");
-      
-      // Upsert legacy PNL mappings too
-      for (const m of pnlMappings) {
-        await tx.pNLMapping.deleteMany({
-          where: { clientId: id, softwareLedgerName: m.softwareLedgerName }
+        // 1. Bulk replace unified mappings
+        await tx.unifiedLedgerMapping.deleteMany({
+          where: { clientId: id, softwareLedgerName: { in: ledgerNames } }
         });
-        await tx.pNLMapping.create({
-          data: {
+        
+        await tx.unifiedLedgerMapping.createMany({
+          data: validMappings.map((m: any) => ({
             clientId: id,
             softwareLedgerName: m.softwareLedgerName,
-            sectorHead: m.subHeadName || m.groupName,
-            source: "SYNC"
-          }
+            statementType: m.statementType,
+            groupName: m.groupName,
+            subGroupName: m.subGroupName || null,
+            subHeadName: m.subHeadName || m.groupName
+          }))
         });
+
+        // 2. Bulk replace legacy PNL mappings
+        const pnlMappings = validMappings.filter((m: any) => m.statementType === "PNL");
+        if (pnlMappings.length > 0) {
+          const pnlLedgerNames = pnlMappings.map((m: any) => m.softwareLedgerName);
+          await tx.pNLMapping.deleteMany({
+            where: { clientId: id, softwareLedgerName: { in: pnlLedgerNames } }
+          });
+
+          await tx.pNLMapping.createMany({
+            data: pnlMappings.map((m: any) => ({
+              clientId: id,
+              softwareLedgerName: m.softwareLedgerName,
+              sectorHead: m.subHeadName || m.groupName,
+              source: "SYNC"
+            }))
+          });
+        }
       }
     });
 
