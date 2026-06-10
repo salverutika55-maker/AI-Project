@@ -548,8 +548,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                   <button 
                     onClick={() => {
                       const link = document.createElement('a');
-                      link.href = '/downloads/FinAnalyzerSync_Portable.zip';
-                      link.download = 'FinAnalyzerSync_Portable.zip';
+                      link.href = '/downloads/FinAnalyzer_Connector_v2.zip';
+                      link.download = 'FinAnalyzer_Connector_v2.zip';
                       link.click();
                     }}
                     className="w-full text-left px-4 py-3 text-xs font-bold text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
