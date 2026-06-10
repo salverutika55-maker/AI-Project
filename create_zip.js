@@ -17,13 +17,16 @@ archive.on('error', function(err) {
 
 archive.pipe(output);
 
-// Add the newly built .exe
-archive.file('scripts/desktop_agent/FinAnalyzerSync.exe', { name: 'FinAnalyzerSync.exe' });
-
 // Add the Start_Connector.bat
 archive.file('scripts/desktop_agent/Start_Connector.bat', { name: 'Start_Connector.bat' });
 
 // Add the Reset_Connector.bat
 archive.file('scripts/desktop_agent/Reset_Connector.bat', { name: 'Reset_Connector.bat' });
+
+// Add the official node.exe
+archive.file('scripts/desktop_agent/FinAnalyzer_Connector/node.exe', { name: 'node.exe' });
+
+// Add the raw javascript file
+archive.file('scripts/desktop_agent/index.js', { name: 'agent.js' });
 
 archive.finalize();
