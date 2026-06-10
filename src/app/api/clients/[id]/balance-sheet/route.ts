@@ -26,28 +26,15 @@ export async function GET(
       where: { clientId: id, statementType: "BS" }
     });
 
-    const client = await prisma.client.findUnique({ where: { id }, select: { software: true } });
-
     // 2. Fetch Normalized Ledgers for Closing Balances
-    const ledgerBalances: Record<string, number> = {};
+    const ledgers = await prisma.normalizedLedger.findMany({
+      where: { clientId: id, isActive: true }
+    });
 
-    if (client?.software === "TALLY") {
-      const vouchers = await prisma.tallyVoucher.findMany({
-        where: { clientId: id }
-      });
-      vouchers.forEach(v => {
-        if (!ledgerBalances[v.ledgerName]) ledgerBalances[v.ledgerName] = 0;
-        // Assets/Expenses are DEBIT (positive), Liabilities/Income are CREDIT (negative)
-        ledgerBalances[v.ledgerName] += v.isDebit ? v.amount : -v.amount;
-      });
-    } else {
-      const ledgers = await prisma.normalizedLedger.findMany({
-        where: { clientId: id, isActive: true }
-      });
-      ledgers.forEach(l => {
-        ledgerBalances[l.name] = l.closingBalance;
-      });
-    }
+    const ledgerBalances: Record<string, number> = {};
+    ledgers.forEach(l => {
+      ledgerBalances[l.name] = l.closingBalance;
+    });
 
     // 3. Define standard BS Structure
     const structure: any = {

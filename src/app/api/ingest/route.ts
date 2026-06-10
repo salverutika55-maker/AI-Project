@@ -141,17 +141,17 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4c. Update Unique Ledgers for the Mapping UI
+    // 4c. Update Unique Ledgers for the Mapping UI & Save Closing Balances
     if (client.software === 'TALLY') {
-      const uniqueLedgers = new Map<string, string>(); // lower -> original
+      const uniqueLedgers = new Map<string, { original: string, balance: number }>();
       
-      // Add all ledgers from the Trial Balance records
+      // Since records are chronological, the last record has the latest Trial Balance
       for (const record of records) {
         if (record.ledgers) {
-          Object.keys(record.ledgers).forEach(k => {
+          Object.entries(record.ledgers).forEach(([k, v]) => {
              const original = k.trim();
              const lower = original.toLowerCase();
-             if (!uniqueLedgers.has(lower)) uniqueLedgers.set(lower, original);
+             uniqueLedgers.set(lower, { original, balance: Number(v) || 0 });
           });
         }
       }
@@ -161,12 +161,12 @@ export async function POST(req: Request) {
         body.chartOfAccounts.forEach((k: string) => {
              const original = k.trim();
              const lower = original.toLowerCase();
-             if (!uniqueLedgers.has(lower)) uniqueLedgers.set(lower, original);
+             if (!uniqueLedgers.has(lower)) uniqueLedgers.set(lower, { original, balance: 0 });
         });
       }
       
       if (uniqueLedgers.size > 0) {
-        const ledgersArr = Array.from(uniqueLedgers.values());
+        const ledgersArr = Array.from(uniqueLedgers.values()).map(x => x.original);
         const encryptedLedgers = encrypt(JSON.stringify(ledgersArr));
         
         await prisma.integrationCredential.upsert({
@@ -179,6 +179,28 @@ export async function POST(req: Request) {
             encryptedApiKey: encryptedLedgers
           }
         });
+
+        // Upsert into NormalizedLedger with real closing balances
+        for (const data of uniqueLedgers.values()) {
+          await prisma.normalizedLedger.upsert({
+            where: {
+              clientId_name: {
+                clientId: client.id,
+                name: data.original
+              }
+            },
+            update: {
+              closingBalance: Math.abs(data.balance)
+            },
+            create: {
+              clientId: client.id,
+              name: data.original,
+              groupName: "Uncategorized",
+              closingBalance: Math.abs(data.balance),
+              nature: data.balance > 0 ? "DEBIT" : "CREDIT"
+            }
+          });
+        }
       }
     }
 
