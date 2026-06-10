@@ -19,7 +19,7 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
   const fetchBalanceSheet = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/clients/${clientId}/balance-sheet`);
+      const res = await fetch(`/api/clients/${clientId}/balance-sheet?t=${Date.now()}`);
       const bsData = await res.json();
       setData(bsData);
     } catch (e) {
