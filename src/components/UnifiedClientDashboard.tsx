@@ -588,29 +588,18 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
             <div className="flex flex-col items-end gap-1">
               <button 
                 onClick={() => {
-                  if (client.software === 'TALLY' && client.connectorStatus === 'OFFLINE') {
-                    const link = document.createElement('a');
-                    link.href = '/downloads/FinAnalyzer_Connector_Setup.exe';
-link.download = 'FinAnalyzer_Connector_Setup.exe';
-                    link.click();
-                  } else {
-                    handleSync();
-                  }
+                  handleSync();
                 }} 
                 disabled={isSyncing || client.connectorStatus === 'SYNCING'} 
                 className={`flex items-center gap-2 px-4 py-1.5 ${softwareConfig.bg} border ${softwareConfig.border} rounded-lg text-xs font-black ${softwareConfig.color} hover:opacity-80 transition-all disabled:opacity-50`}
               >
                 {isSyncing || client.connectorStatus === 'SYNCING' ? (
                   <RefreshCw className="w-3 h-3 animate-spin" />
-                ) : client.software === 'TALLY' && client.connectorStatus === 'OFFLINE' ? (
-                  <Download className="w-3 h-3" />
                 ) : (
                   <softwareConfig.icon className="w-3 h-3" />
                 )}
                 
-                {client.software === 'TALLY' && client.connectorStatus === 'OFFLINE' 
-                  ? 'Download Connector' 
-                  : client.connectorStatus === 'SYNCING' || isSyncing
+                {client.connectorStatus === 'SYNCING' || isSyncing
                     ? 'Syncing...' 
                     : `Sync ${softwareConfig.label}`}
               </button>
