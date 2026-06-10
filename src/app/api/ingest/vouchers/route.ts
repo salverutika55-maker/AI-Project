@@ -87,9 +87,18 @@ export async function POST(req: Request) {
     const vouchersToCreate = [];
     const linesToCreate = [];
     const vouchersToDeleteLines = [];
+    const seenRefsThisBatch = new Set();
 
     for (const v of vouchers) {
       const referenceNo = v.guid || v.voucherNumber || `VCH-${v.date}-${processedCount}`;
+      
+      // Prevent duplicates within the same batch payload
+      if (seenRefsThisBatch.has(referenceNo)) {
+         processedCount++;
+         continue;
+      }
+      seenRefsThisBatch.add(referenceNo);
+
       const existingId = existingMap.get(referenceNo);
 
       let voucherId = existingId;
