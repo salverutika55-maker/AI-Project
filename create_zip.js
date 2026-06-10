@@ -23,14 +23,7 @@ archive.file('scripts/desktop_agent/FinAnalyzerSync.exe', { name: 'FinAnalyzerSy
 // Add the Start_Connector.bat
 archive.file('scripts/desktop_agent/Start_Connector.bat', { name: 'Start_Connector.bat' });
 
-// Create a Reset_Connector.bat
-const resetBatContent = `
-@echo off
-echo Resetting FinAnalyzer Connector configuration...
-del /F /Q FinAnalyzer_Connector\\config.json
-echo Config deleted. You can now pair a new client.
-pause
-`;
-archive.append(resetBatContent, { name: 'Reset_Connector.bat' });
+// Add the Reset_Connector.bat
+archive.file('scripts/desktop_agent/Reset_Connector.bat', { name: 'Reset_Connector.bat' });
 
 archive.finalize();
