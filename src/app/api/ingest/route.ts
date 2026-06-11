@@ -215,6 +215,7 @@ export async function POST(req: Request) {
           }
         });
       }
+    }
 
     // 5. Resolve any pending UI sync tasks
     await prisma.syncTask.updateMany({
