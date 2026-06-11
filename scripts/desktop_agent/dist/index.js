@@ -36703,8 +36703,25 @@ async function startBackgroundSync(config) {
     const allFinancialPayloads = [];
     const allUniqueLedgersMap = new Map();
 
-    for (const period of periodsToSync) {
-        // 1. Fetch Trial Balance for high-level FinancialRecord (Assets, Liab, Cash)
+    // Process periods concurrently to reduce sync time from minutes to seconds
+    const concurrencyLimit = 12; // Tally and Vercel can easily handle 12 concurrent requests
+    
+    // Helper for concurrency
+    async function processConcurrently(items, limit, asyncFn) {
+        const results = [];
+        let index = 0;
+        const exec = async () => {
+            while (index < items.length) {
+                const i = index++;
+                results[i] = await asyncFn(items[i]);
+            }
+        };
+        const workers = Array(Math.min(limit, items.length)).fill(null).map(exec);
+        await Promise.all(workers);
+        return results;
+    }
+
+    await processConcurrently(periodsToSync, concurrencyLimit, async (period) => {
         // 1. Fetch Trial Balance for high-level FinancialRecord (Assets, Liab, Cash)
         const tbXmlPayload = `<ENVELOPE>
   <HEADER>
@@ -36729,7 +36746,6 @@ async function startBackgroundSync(config) {
 </ENVELOPE>`;
 
         // 2. Fetch Day Book for Transaction-Level Granularity
-        // Convert YYYYMMDD to DD-Mmm-YYYY for TDL filter
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const formatTdlDate = (yyyymmdd) => {
             const d = String(yyyymmdd);
@@ -36771,94 +36787,83 @@ async function startBackgroundSync(config) {
 </ENVELOPE>`;
 
         try {
-            // -- Trial Balance Request --
-            const tbResponse = await axios.post("http://localhost:9000", tbXmlPayload, {
-                headers: { "Content-Type": "text/xml" },
-                timeout: 10000 
-            });
-            const parsedTb = await parser.parseStringPromise(tbResponse.data);
-            const rawLedgers = extractAllLedgers(parsedTb);
-            // We NO LONGER add these to allUniqueLedgersMap because Trial Balance includes Groups!
-            
-            let rawRevenue = 0, rawCOGS = 0, rawOpEx = 0;
-            for (const [name, amt] of Object.entries(rawLedgers)) {
-                const lowerName = name.toLowerCase();
-                if (["sales", "income", "revenue"].some(kw => lowerName.includes(kw))) rawRevenue += amt;
-                else if (["purchase", "direct expenses", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) rawCOGS += amt;
-                else if (["indirect expenses", "operating expenses", "admin", "office"].some(kw => lowerName.includes(kw))) rawOpEx += amt;
+            // -- Trial Balance & Day Book Requests Concurrently --
+            const [tbResponse, dbResponse] = await Promise.all([
+                axios.post("http://localhost:9000", tbXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 15000 }).catch(() => null),
+                axios.post("http://localhost:9000", dayBookXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 20000 }).catch(() => null)
+            ]);
+
+            if (tbResponse && tbResponse.data) {
+                const parsedTb = await parser.parseStringPromise(tbResponse.data);
+                const rawLedgers = extractAllLedgers(parsedTb);
+                
+                let rawRevenue = 0, rawCOGS = 0, rawOpEx = 0;
+                for (const [name, amt] of Object.entries(rawLedgers)) {
+                    const lowerName = name.toLowerCase();
+                    if (["sales", "income", "revenue"].some(kw => lowerName.includes(kw))) rawRevenue += amt;
+                    else if (["purchase", "direct expenses", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) rawCOGS += amt;
+                    else if (["indirect expenses", "operating expenses", "admin", "office"].some(kw => lowerName.includes(kw))) rawOpEx += amt;
+                }
+                const rawCash = extractTrialBalance(parsedTb, ["Cash-in-hand", "Bank Accounts"]);
+                const rawCurrentAssets = extractTrialBalance(parsedTb, ["Current Assets"]);
+                const rawCurrentLiab = extractTrialBalance(parsedTb, ["Current Liabilities"]);
+                const rawAR = extractTrialBalance(parsedTb, ["Sundry Debtors", "Accounts Receivable"]);
+                const rawAP = extractTrialBalance(parsedTb, ["Sundry Creditors", "Accounts Payable"]);
+                const rawInventory = extractTrialBalance(parsedTb, ["Closing Stock", "Stock-in-hand", "Inventory"]);
+
+                const finalRevenue = rawRevenue > 0 ? rawRevenue : 0;
+                const finalCOGS = rawCOGS > 0 ? rawCOGS : 0;
+                const finalOpEx = rawOpEx > 0 ? rawOpEx : 0;
+                const netIncome = finalRevenue - finalCOGS - finalOpEx;
+
+                allFinancialPayloads.push({
+                    period: period.periodKey,
+                    source: "Tally Prime Agent",
+                    revenue: finalRevenue,
+                    cogs: finalCOGS,
+                    operatingExpenses: finalOpEx,
+                    netIncome: netIncome,
+                    totalAssets: rawCurrentAssets,
+                    currentAssets: rawCurrentAssets,
+                    currentLiabilities: rawCurrentLiab,
+                    totalEquity: rawCurrentAssets - rawCurrentLiab,
+                    operatingCashFlow: netIncome * 0.8,
+                    cashBalance: rawCash,
+                    burnRate: finalOpEx * 1.2,
+                    accountsReceivable: rawAR,
+                    accountsPayable: rawAP,
+                    inventory: rawInventory,
+                    ledgers: rawLedgers
+                });
             }
-            const rawCash = extractTrialBalance(parsedTb, ["Cash-in-hand", "Bank Accounts"]);
-            const rawCurrentAssets = extractTrialBalance(parsedTb, ["Current Assets"]);
-            const rawCurrentLiab = extractTrialBalance(parsedTb, ["Current Liabilities"]);
-            const rawAR = extractTrialBalance(parsedTb, ["Sundry Debtors", "Accounts Receivable"]);
-            const rawAP = extractTrialBalance(parsedTb, ["Sundry Creditors", "Accounts Payable"]);
-            const rawInventory = extractTrialBalance(parsedTb, ["Closing Stock", "Stock-in-hand", "Inventory"]);
 
-            const finalRevenue = rawRevenue > 0 ? rawRevenue : 0;
-            const finalCOGS = rawCOGS > 0 ? rawCOGS : 0;
-            const finalOpEx = rawOpEx > 0 ? rawOpEx : 0;
-            const netIncome = finalRevenue - finalCOGS - finalOpEx;
-
-            allFinancialPayloads.push({
-                period: period.periodKey,
-                source: "Tally Prime Agent",
-                revenue: finalRevenue,
-                cogs: finalCOGS,
-                operatingExpenses: finalOpEx,
-                netIncome: netIncome,
-                totalAssets: rawCurrentAssets,
-                currentAssets: rawCurrentAssets,
-                currentLiabilities: rawCurrentLiab,
-                totalEquity: rawCurrentAssets - rawCurrentLiab,
-                operatingCashFlow: netIncome * 0.8,
-                cashBalance: rawCash,
-                burnRate: finalOpEx * 1.2,
-                accountsReceivable: rawAR,
-                accountsPayable: rawAP,
-                inventory: rawInventory,
-                ledgers: rawLedgers
-            });
-
-            // -- Day Book Request --
-            try {
-              const dbResponse = await axios.post("http://localhost:9000", dayBookXmlPayload, {
-                  headers: { "Content-Type": "text/xml" },
-                  timeout: 15000 
-              });
-              const parsedDb = await parser.parseStringPromise(dbResponse.data);
-              const stats = { outOfBounds: 0 };
-              const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
-              
-              if (periodVouchers.length > 0) {
-                 console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}...`);
-                 try {
-                     await axios.post(`${VERCEL_API}/ingest/vouchers`, 
-                         { vouchers: periodVouchers },
-                         {
-                             headers: {
-                                 'Content-Type': 'application/json',
-                                 'Authorization': `Bearer ${companyConfig.apiKey}`
-                             },
-                             timeout: 60000
-                         }
-                     );
-                 } catch(pushErr) {
-                     console.error(`    -> Backend timeout/error pushing ${period.periodKey}: ${pushErr.message}`);
-                 }
-              }
-              
-              if (periodVouchers.length > 0 || finalRevenue > 0) {
-                 console.log(`    -> Fetched ${period.periodKey} | Vouchers: ${periodVouchers.length}`);
-              }
-            } catch (dbErr) {
-              console.error(`    -> Warning: Failed to fetch Day Book vouchers for ${period.periodKey}`);
-              console.log(`    -> Fetched ${period.periodKey} | Vouchers: 0 (Failed)`);
+            if (dbResponse && dbResponse.data) {
+                const parsedDb = await parser.parseStringPromise(dbResponse.data);
+                const stats = { outOfBounds: 0 };
+                const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
+                
+                if (periodVouchers.length > 0) {
+                   console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}...`);
+                   try {
+                       await axios.post(`${VERCEL_API}/ingest/vouchers`, 
+                           { vouchers: periodVouchers },
+                           {
+                               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${companyConfig.apiKey}` },
+                               timeout: 60000
+                           }
+                       );
+                   } catch(pushErr) {
+                       console.error(`    -> Backend timeout/error pushing ${period.periodKey}: ${pushErr.message}`);
+                   }
+                }
+                
+                console.log(`    -> Fetched ${period.periodKey} | Vouchers: ${periodVouchers.length}`);
             }
 
         } catch (e) {
             console.error(`    -> Error fetching ${period.periodKey}: Tally not running or unreachable.`);
         }
-    }
+    });
 
     if (allFinancialPayloads.length > 0) {
         try {
