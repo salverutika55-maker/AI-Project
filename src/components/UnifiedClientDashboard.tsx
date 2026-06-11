@@ -314,9 +314,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   }, [selectedMonth, months]);
 
   const bsVisibleMonths = useMemo(() => {
-    const openingMonth = fyType === "APR_MAR" ? "Mar" : "Dec";
-    return [openingMonth, ...visibleMonths];
-  }, [visibleMonths, fyType]);
+    return ["Opening", ...visibleMonths];
+  }, [visibleMonths]);
 
   // CALCULATION ENGINE (Copied from SectorDashboard)
   const calculateMetrics = (sourceGrid: Record<string, Record<string, number>>) => {
