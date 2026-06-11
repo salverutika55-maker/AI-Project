@@ -79,15 +79,33 @@ export async function GET(
     // 4. Map ledgers into structure
     const dataNodes: any[] = [];
 
-    bsMappings.forEach(mapping => {
+    // Combine manual mappings with native Tally groupings for any unmapped ledgers
+    ledgers.forEach(ledger => {
+      const manualMapping = bsMappings.find(m => m.softwareLedgerName === ledger.name);
+      
+      // Use manual mapping if it exists, otherwise fall back to native Tally group
+      let effectiveGroup = manualMapping ? manualMapping.groupName : ledger.groupName;
+      let effectiveSubGroup = manualMapping ? (manualMapping.subGroupName || effectiveGroup) : effectiveGroup;
+      
+      // If the group is still unknown/uncategorized, skip it from BS calculations
+      if (!effectiveGroup || effectiveGroup.toLowerCase() === "unknown" || effectiveGroup.toLowerCase() === "uncategorized") {
+          return;
+      }
+
       let mainGroup = "";
-      if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities"].includes(mapping.groupName)) {
+      if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans"].includes(effectiveGroup)) {
         mainGroup = "Liabilities";
+      } else if (["Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors", "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"].includes(effectiveGroup)) {
+        mainGroup = "Assets";
       } else {
+        // Fallback for PNL groups (skip them for BS)
+        if (["Sales Accounts", "Purchase Accounts", "Direct Expenses", "Direct Incomes", "Indirect Expenses", "Indirect Incomes"].includes(effectiveGroup)) return;
+        
+        // If we can't reliably guess the BS side, default to Assets
         mainGroup = "Assets";
       }
 
-      const ledgerInfo = ledgerBalances[mapping.softwareLedgerName] || { bal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
+      const ledgerInfo = ledgerBalances[ledger.name] || { bal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
       let balance = ledgerInfo.bal;
       
       // If it's a Liability, Credit increases it, Debit decreases it.
@@ -110,13 +128,13 @@ export async function GET(
         const mockedBalance = balance * percentage; 
 
         dataNodes.push({
-          id: `${mapping.id}-${month}`,
+          id: `${ledger.id}-${month}`,
           period: month,
           mainGroup,
-          groupName: mapping.groupName,
-          subGroupName: mapping.subGroupName || mapping.groupName,
-          subHeadName: mapping.subHeadName,
-          ledgerName: mapping.softwareLedgerName,
+          groupName: effectiveGroup,
+          subGroupName: effectiveSubGroup,
+          subHeadName: manualMapping?.subHeadName,
+          ledgerName: ledger.name,
           amount: mockedBalance,
           nature: ledgerInfo.nature
         });
