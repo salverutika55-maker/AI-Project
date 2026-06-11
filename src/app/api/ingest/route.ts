@@ -41,11 +41,11 @@ export async function POST(req: Request) {
 
     let processedCount = 0;
 
-    for (const record of records) {
+    await Promise.all(records.map(async (record) => {
       const { period, source, ledgers, ...financials } = record;
 
       if (!period) {
-        continue; // Skip invalid rows missing mandatory 'period' string (e.g. "2024-01")
+        return; // Skip invalid rows missing mandatory 'period' string (e.g. "2024-01")
       }
 
       const syncSource = source || "Webhook_API";
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
           await prisma.pNLValue.createMany({ data: finalEntries });
         }
       }
-    }
+    }));
 
     // 4c. Update Unique Ledgers for the Mapping UI & Save Closing Balances
     if (client.software === 'TALLY') {
@@ -180,9 +180,9 @@ export async function POST(req: Request) {
           }
         });
 
-        // Upsert into NormalizedLedger with real closing balances
-        for (const data of uniqueLedgers.values()) {
-          await prisma.normalizedLedger.upsert({
+        // Upsert into NormalizedLedger with real closing balances concurrently
+        const ledgerUpserts = Array.from(uniqueLedgers.values()).map(data => 
+          prisma.normalizedLedger.upsert({
             where: {
               clientId_name: {
                 clientId: client.id,
@@ -199,7 +199,13 @@ export async function POST(req: Request) {
               closingBalance: Math.abs(data.balance),
               nature: data.balance > 0 ? "DEBIT" : "CREDIT"
             }
-          });
+          })
+        );
+        
+        // Execute in chunks of 50 to avoid connection pool exhaustion
+        const chunkSize = 50;
+        for (let i = 0; i < ledgerUpserts.length; i += chunkSize) {
+            await Promise.all(ledgerUpserts.slice(i, i + chunkSize));
         }
       }
     }
