@@ -41,105 +41,103 @@ export async function POST(req: Request) {
 
     let processedCount = 0;
 
-    await Promise.all(records.map(async (record) => {
-      const { period, source, ledgers, ...financials } = record;
+    // Process records in chunks of 10 to avoid Prisma connection pool exhaustion
+    const recordChunkSize = 10;
+    for (let i = 0; i < records.length; i += recordChunkSize) {
+      const chunk = records.slice(i, i + recordChunkSize);
+      
+      await Promise.all(chunk.map(async (record) => {
+        const { period, source, ledgers, ...financials } = record;
 
-      if (!period) {
-        return; // Skip invalid rows missing mandatory 'period' string (e.g. "2024-01")
-      }
-
-      const syncSource = source || "Webhook_API";
-
-      // 4. Implement Upsert Logic
-      // Since [clientId, period] is a unique compound index, we intelligently
-      // overwrite existing data for that period to prevent duplicate entries
-      await prisma.financialRecord.upsert({
-        where: {
-          clientId_period: {
-            clientId: client.id,
-            period: period
-          }
-        },
-        update: {
-          source: syncSource,
-          ...financials
-        },
-        create: {
-          clientId: client.id,
-          period,
-          source: syncSource,
-          revenue: financials.revenue || 0,
-          cogs: financials.cogs || 0,
-          operatingExpenses: financials.operatingExpenses || 0,
-          netIncome: financials.netIncome || 0,
-          totalAssets: financials.totalAssets || 0,
-          currentAssets: financials.currentAssets || 0,
-          currentLiabilities: financials.currentLiabilities || 0,
-          totalEquity: financials.totalEquity || 0,
-          operatingCashFlow: financials.operatingCashFlow || 0,
-          cashBalance: financials.cashBalance || 0,
-          burnRate: financials.burnRate || 0,
-          accountsReceivable: financials.accountsReceivable || 0,
-          accountsPayable: financials.accountsPayable || 0,
-          inventory: financials.inventory || 0,
-          budgetedRevenue: financials.budgetedRevenue || 0,
-          budgetedExpenses: financials.budgetedExpenses || 0
+        if (!period) {
+          return; // Skip invalid rows missing mandatory 'period' string
         }
-      });
-      processedCount++;
 
-      // 4b. Map and Save PNLValues for Detailed P&L
-      // Skip this if the source is Tally Prime Agent, because Tally now uses the granular /ingest/vouchers endpoint
-      // which aggregates PNLValues dynamically from transaction movements instead of Trial Balance.
-      if (syncSource !== "Tally Prime Agent" && record.ledgers && Object.keys(record.ledgers).length > 0 && client.pnlMappings) {
-        // period is e.g. "2026-04"
-        const [yearStr, monthStr] = period.split("-");
-        const dateObj = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
-        const mShort = dateObj.toLocaleString('default', { month: 'short' }); // "Apr"
-        
-        // Target year is the fiscal year start.
-        // E.g. Apr 2026 -> 2026. Jan 2027 -> 2026.
-        const monthNum = parseInt(monthStr);
-        const syncYearToSave = monthNum < 4 ? parseInt(yearStr) - 1 : parseInt(yearStr);
-        
-        const headBalances: Record<string, number> = {};
-        const accounts = record.ledgers;
-        
-        for (const m of client.pnlMappings) {
-          const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
-          let balance = 0;
+        const syncSource = source || "Webhook_API";
+
+        await prisma.financialRecord.upsert({
+          where: {
+            clientId_period: {
+              clientId: client.id,
+              period: period
+            }
+          },
+          update: {
+            source: syncSource,
+            ...financials
+          },
+          create: {
+            clientId: client.id,
+            period,
+            source: syncSource,
+            revenue: financials.revenue || 0,
+            cogs: financials.cogs || 0,
+            operatingExpenses: financials.operatingExpenses || 0,
+            netIncome: financials.netIncome || 0,
+            totalAssets: financials.totalAssets || 0,
+            currentAssets: financials.currentAssets || 0,
+            currentLiabilities: financials.currentLiabilities || 0,
+            totalEquity: financials.totalEquity || 0,
+            operatingCashFlow: financials.operatingCashFlow || 0,
+            cashBalance: financials.cashBalance || 0,
+            burnRate: financials.burnRate || 0,
+            accountsReceivable: financials.accountsReceivable || 0,
+            accountsPayable: financials.accountsPayable || 0,
+            inventory: financials.inventory || 0,
+            budgetedRevenue: financials.budgetedRevenue || 0,
+            budgetedExpenses: financials.budgetedExpenses || 0
+          }
+        });
+        processedCount++;
+
+        // Map and Save PNLValues for Detailed P&L
+        if (syncSource !== "Tally Prime Agent" && record.ledgers && Object.keys(record.ledgers).length > 0 && client.pnlMappings) {
+          const [yearStr, monthStr] = period.split("-");
+          const dateObj = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+          const mShort = dateObj.toLocaleString('default', { month: 'short' });
           
-          for (const alias of aliases) {
-            const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
-            if (exactMatchKey) {
-              balance += accounts[exactMatchKey];
-            } else {
-              const fuzzyMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase().includes(alias));
-              if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
+          const monthNum = parseInt(monthStr);
+          const syncYearToSave = monthNum < 4 ? parseInt(yearStr) - 1 : parseInt(yearStr);
+          
+          const headBalances: Record<string, number> = {};
+          const accounts = record.ledgers;
+          
+          for (const m of client.pnlMappings) {
+            const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
+            let balance = 0;
+            
+            for (const alias of aliases) {
+              const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
+              if (exactMatchKey) {
+                balance += accounts[exactMatchKey];
+              } else {
+                const fuzzyMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase().includes(alias));
+                if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
+              }
+            }
+
+            if (balance !== 0) {
+              headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
             }
           }
 
-          if (balance !== 0) {
-            headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
+          const finalEntries = Object.entries(headBalances).map(([headName, balance]) => ({
+            clientId: client.id,
+            headName,
+            month: mShort,
+            year: syncYearToSave,
+            amount: encrypt(balance.toString())
+          }));
+
+          if (finalEntries.length > 0) {
+            await prisma.pNLValue.deleteMany({
+              where: { clientId: client.id, month: mShort, year: syncYearToSave }
+            });
+            await prisma.pNLValue.createMany({ data: finalEntries });
           }
         }
-
-        const finalEntries = Object.entries(headBalances).map(([headName, balance]) => ({
-          clientId: client.id,
-          headName,
-          month: mShort,
-          year: syncYearToSave,
-          amount: encrypt(balance.toString())
-        }));
-
-        if (finalEntries.length > 0) {
-          await prisma.pNLValue.deleteMany({
-            where: { clientId: client.id, month: mShort, year: syncYearToSave }
-          });
-          await prisma.pNLValue.createMany({ data: finalEntries });
-        }
-      }
-    }));
+      }));
+    }
 
     // 4c. Update Unique Ledgers for the Mapping UI & Save Closing Balances
     if (client.software === 'TALLY') {
@@ -180,32 +178,31 @@ export async function POST(req: Request) {
           }
         });
 
-        // Upsert into NormalizedLedger with real closing balances concurrently
-        const ledgerUpserts = Array.from(uniqueLedgers.values()).map(data => 
-          prisma.normalizedLedger.upsert({
-            where: {
-              clientId_name: {
-                clientId: client.id,
-                name: data.original
-              }
-            },
-            update: {
-              closingBalance: Math.abs(data.balance)
-            },
-            create: {
-              clientId: client.id,
-              name: data.original,
-              groupName: "Uncategorized",
-              closingBalance: Math.abs(data.balance),
-              nature: data.balance > 0 ? "DEBIT" : "CREDIT"
-            }
-          })
-        );
-        
-        // Execute in chunks of 50 to avoid connection pool exhaustion
-        const chunkSize = 50;
-        for (let i = 0; i < ledgerUpserts.length; i += chunkSize) {
-            await Promise.all(ledgerUpserts.slice(i, i + chunkSize));
+        // Upsert into NormalizedLedger with real closing balances concurrently in small chunks
+        const ledgerUpsertsData = Array.from(uniqueLedgers.values());
+        const chunkSize = 20;
+        for (let i = 0; i < ledgerUpsertsData.length; i += chunkSize) {
+            const chunk = ledgerUpsertsData.slice(i, i + chunkSize);
+            await Promise.all(chunk.map(data => 
+              prisma.normalizedLedger.upsert({
+                where: {
+                  clientId_name: {
+                    clientId: client.id,
+                    name: data.original
+                  }
+                },
+                update: {
+                  closingBalance: Math.abs(data.balance)
+                },
+                create: {
+                  clientId: client.id,
+                  name: data.original,
+                  groupName: "Uncategorized",
+                  closingBalance: Math.abs(data.balance),
+                  nature: data.balance > 0 ? "DEBIT" : "CREDIT"
+                }
+              })
+            ));
         }
       }
     }
