@@ -156,10 +156,17 @@ export async function POST(req: Request) {
       
       // Also add explicit chartOfAccounts if provided by the agent
       if (body.chartOfAccounts && Array.isArray(body.chartOfAccounts)) {
-        body.chartOfAccounts.forEach((k: string) => {
-             const original = k.trim();
+        body.chartOfAccounts.forEach((c: any) => {
+             const original = typeof c === 'string' ? c.trim() : c.name.trim();
+             const groupName = typeof c === 'string' ? "Unknown" : (c.groupName || "Unknown");
              const lower = original.toLowerCase();
-             if (!uniqueLedgers.has(lower)) uniqueLedgers.set(lower, { original, balance: 0 });
+             if (!uniqueLedgers.has(lower)) uniqueLedgers.set(lower, { original, balance: 0, groupName });
+             else {
+                 const existing = uniqueLedgers.get(lower);
+                 if (existing) {
+                     existing.groupName = groupName;
+                 }
+             }
         });
       }
       
@@ -178,34 +185,36 @@ export async function POST(req: Request) {
           }
         });
 
-        // Upsert into NormalizedLedger with real closing balances concurrently in small chunks
-        const ledgerUpsertsData = Array.from(uniqueLedgers.values());
-        const chunkSize = 20;
-        for (let i = 0; i < ledgerUpsertsData.length; i += chunkSize) {
-            const chunk = ledgerUpsertsData.slice(i, i + chunkSize);
-            await Promise.all(chunk.map(data => 
-              prisma.normalizedLedger.upsert({
-                where: {
-                  clientId_name: {
+        // Use $transaction to handle ledger updates
+        await prisma.$transaction(async (tx) => {
+          // 1. Update closing balances
+          const ledgerUpsertsData = Array.from(uniqueLedgers.values());
+          for (const data of ledgerUpsertsData) {
+              const groupName = data.groupName || "Uncategorized";
+              await tx.normalizedLedger.upsert({
+                  where: {
+                    clientId_name: {
+                      clientId: client.id,
+                      name: data.original
+                    }
+                  },
+                  update: {
+                    closingBalance: Math.abs(data.balance),
+                    // Only update group name if the Tally agent actually sent a real group
+                    ...(groupName !== "Unknown" && groupName !== "Uncategorized" ? { groupName } : {})
+                  },
+                  create: {
                     clientId: client.id,
-                    name: data.original
+                    name: data.original,
+                    groupName: groupName,
+                    closingBalance: Math.abs(data.balance),
+                    nature: data.balance > 0 ? "DEBIT" : "CREDIT",
+                    isActive: true
                   }
-                },
-                update: {
-                  closingBalance: Math.abs(data.balance)
-                },
-                create: {
-                  clientId: client.id,
-                  name: data.original,
-                  groupName: "Uncategorized",
-                  closingBalance: Math.abs(data.balance),
-                  nature: data.balance > 0 ? "DEBIT" : "CREDIT"
-                }
-              })
-            ));
-        }
+              });
+          }
+        });
       }
-    }
 
     // 5. Resolve any pending UI sync tasks
     await prisma.syncTask.updateMany({
