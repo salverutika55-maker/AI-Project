@@ -26,7 +26,10 @@ archive.file('scripts/desktop_agent/Reset_Connector.bat', { name: 'Reset_Connect
 // Add the official node.exe
 archive.file('scripts/desktop_agent/FinAnalyzer_Connector/node.exe', { name: 'node.exe' });
 
-// Add the raw javascript file
-archive.file('scripts/desktop_agent/index.js', { name: 'agent.js' });
+// Add the compiled bundled javascript file
+archive.file('scripts/desktop_agent/dist/index.js', { name: 'agent.js' });
+
+// Add the bundled HTML file
+archive.file('scripts/desktop_agent/dist/index.html', { name: 'index.html' });
 
 archive.finalize();
