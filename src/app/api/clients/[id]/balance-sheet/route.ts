@@ -100,10 +100,8 @@ export async function GET(
       
       const months = ["Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
       
-      months.forEach((month, idx) => {
-        const mayIdx = 2; // May is index 2
-        const multiplier = 1 + ((idx - mayIdx) * 0.05);
-        const mockedBalance = balance * multiplier; // Maintain negative if it was negative
+      months.forEach((month) => {
+        const mockedBalance = balance; // Do not mock, use exact balance
 
         dataNodes.push({
           id: `${mapping.id}-${month}`,
@@ -120,13 +118,13 @@ export async function GET(
     });
 
     // 5. Calculate Current Year Profit from PNL
-    // Add it to Profit & Loss Account for all months
+    // Profit = Total Assets - Total Liabilities
+    const totalAssets = dataNodes.filter(n => n.mainGroup === "Assets").reduce((sum, n) => sum + (n.amount || 0), 0);
+    const totalLiabs = dataNodes.filter(n => n.mainGroup === "Liabilities").reduce((sum, n) => sum + (n.amount || 0), 0);
+    const profitBase = (totalAssets / 12) - (totalLiabs / 12); // Since dataNodes contains 12 months of identical data, we divide by 12 to get the base for ONE month!
+
     const monthsForProfit = ["Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
-    monthsForProfit.forEach((month, idx) => {
-      const mayIdx = 2;
-      const profitBase = 4500000;
-      const multiplier = 1 + ((idx - mayIdx) * 0.05);
-      
+    monthsForProfit.forEach((month) => {
       dataNodes.push({
         id: `cy-profit-system-${month}`,
         period: month,
@@ -135,8 +133,8 @@ export async function GET(
         subGroupName: "Profit & Loss Account",
         subHeadName: "Current Year Profit",
         ledgerName: "P&L Account (Auto)",
-        amount: profitBase * multiplier,
-        nature: "CREDIT"
+        amount: profitBase,
+        nature: profitBase >= 0 ? "CREDIT" : "DEBIT"
       });
     });
 
