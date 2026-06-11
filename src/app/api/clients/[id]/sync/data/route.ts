@@ -77,7 +77,8 @@ export async function POST(
         if (!monthlyData[actualMonthStr]) monthlyData[actualMonthStr] = {};
         if (!monthlyData[actualMonthStr][v.ledgerName]) monthlyData[actualMonthStr][v.ledgerName] = 0;
         
-        monthlyData[actualMonthStr][v.ledgerName] += Math.abs(v.amount);
+        const amt = v.isDebit ? -v.amount : v.amount;
+        monthlyData[actualMonthStr][v.ledgerName] += amt;
       }
 
       // 4. Map and Save to PNLValue
