@@ -204,12 +204,19 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     const maxAttempts = 450; // 15 minutes max (450 * 2s)
 
     const interval = setInterval(async () => {
+      // Prevent duplicate polling loops caused by React StrictMode or re-renders
+      if (!localStorage.getItem(`sync_task_${client.id}`)) {
+         clearInterval(interval);
+         return;
+      }
+
       try {
         const res = await fetch(`/api/sync/tasks/${taskId}`);
         const data = await res.json();
 
         if (data.status === "COMPLETED") {
           clearInterval(interval);
+          localStorage.removeItem(`sync_task_${client.id}`); // Remove immediately to stop other intervals
           setSyncProgress("Aggregating Tally P&L data...");
           try {
             await fetch(`/api/clients/${client.id}/sync/data?year=${selectedYear}&fyType=${fyType}`, {
@@ -218,7 +225,6 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           } catch (err) {
             console.error("P&L Aggregation Error:", err);
           }
-          localStorage.removeItem(`sync_task_${client.id}`);
           setSyncProgress("Data received! Finalizing view...");
           await fetchAllData();
           setIsSyncing(false);

@@ -200,9 +200,10 @@ async function startBackgroundSync(config) {
         let clCrAmt = getVal(info, 'DSPCLCRAMT') || getVal(info, 'DSPCLOSCR') || 0;
         
         if (clDrAmt === 0 && clCrAmt === 0) {
-            const clAmt = getVal(info, 'DSPCLAMT', true); // KEEP SIGN
-            if (clAmt > 0) clDrAmt = clAmt;
-            else if (clAmt < 0) clCrAmt = Math.abs(clAmt);
+          const clAmt = getVal(info, 'DSPCLAMT', true); // KEEP SIGN
+          // In Tally XML: Negative is DEBIT, Positive is CREDIT
+          if (clAmt < 0) clDrAmt = Math.abs(clAmt);
+          else if (clAmt > 0) clCrAmt = clAmt;
         }
         
         const closingNet = clDrAmt - clCrAmt;
@@ -431,6 +432,8 @@ async function startBackgroundSync(config) {
         <REPORTNAME>Trial Balance</REPORTNAME>
         <STATICVARIABLES>
           <EXPLODEFLAG>Yes</EXPLODEFLAG>
+          <EXPLODEALLLEVELS>Yes</EXPLODEALLLEVELS>
+          <ISLEDGERWISE>Yes</ISLEDGERWISE>
           <DSPSHOWOPENING>Yes</DSPSHOWOPENING>
           <DSPSHOWTRANS>Yes</DSPSHOWTRANS>
           <DSPSHOWCLOSING>Yes</DSPSHOWCLOSING>
