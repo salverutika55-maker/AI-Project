@@ -122,11 +122,12 @@ async function startBackgroundSync(config) {
    * Parse a Tally amount string safely.
    * Handles empty strings, negative values, and comma-separated numbers.
    */
-  function parseTallyAmount(str) {
+  function parseTallyAmount(str, keepSign = false) {
     if (!str || str.trim() === '') return 0;
     const cleaned = String(str).replace(/[^0-9.-]+/g, '');
     const val = parseFloat(cleaned);
-    return isNaN(val) ? 0 : Math.abs(val);
+    if (isNaN(val)) return 0;
+    return keepSign ? val : Math.abs(val);
   }
 
   /**
@@ -171,7 +172,7 @@ async function startBackgroundSync(config) {
     const nameArr = Array.isArray(names) ? names : [names];
     const infoArr = Array.isArray(infos) ? infos : [infos];
 
-    const getVal = (infoObj, baseTag) => {
+    const getVal = (infoObj, baseTag, keepSign = false) => {
       if (!infoObj || !infoObj[baseTag]) return 0;
       let node = infoObj[baseTag];
       if (Array.isArray(node)) node = node[0]; // Unwrap xml2js array
@@ -179,9 +180,9 @@ async function startBackgroundSync(config) {
       if (node && typeof node === 'object' && node[`${baseTag}A`] !== undefined) {
           let inner = node[`${baseTag}A`];
           if (Array.isArray(inner)) inner = inner[0];
-          return parseTallyAmount(inner);
+          return parseTallyAmount(inner, keepSign);
       }
-      return parseTallyAmount(node);
+      return parseTallyAmount(node, keepSign);
     };
 
     nameArr.forEach((nameObj, idx) => {
@@ -195,14 +196,19 @@ async function startBackgroundSync(config) {
         
         // For Balance Sheet, we need the ACTUAL CLOSING BALANCE, not the net movement.
         // P&L uses /ingest/vouchers directly, so Trial Balance ledgers are exclusively for Balance Sheet.
-        const clDrAmt = getVal(info, 'DSPCLDRAMT') || getVal(info, 'DSPCLOSDR') || getVal(info, 'DSPCLAMT') || 0;
-        const clCrAmt = getVal(info, 'DSPCLCRAMT') || getVal(info, 'DSPCLOSCR') || getVal(info, 'DSPCLAMT') || 0;
+        let clDrAmt = getVal(info, 'DSPCLDRAMT') || getVal(info, 'DSPCLOSDR') || 0;
+        let clCrAmt = getVal(info, 'DSPCLCRAMT') || getVal(info, 'DSPCLOSCR') || 0;
         
-        const closingNet = clCrAmt - clDrAmt;
-        const amt = Math.abs(closingNet);
+        if (clDrAmt === 0 && clCrAmt === 0) {
+            const clAmt = getVal(info, 'DSPCLAMT', true); // KEEP SIGN
+            if (clAmt > 0) clDrAmt = clAmt;
+            else if (clAmt < 0) clCrAmt = Math.abs(clAmt);
+        }
         
-        if (amt !== 0) {
-          ledgers[name] = amt;
+        const closingNet = clDrAmt - clCrAmt;
+        
+        if (closingNet !== 0) {
+          ledgers[name] = closingNet;
         }
       }
     });

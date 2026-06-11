@@ -33,9 +33,9 @@ export async function GET(
       where: { clientId: id, isActive: true }
     });
 
-    const ledgerBalances: Record<string, number> = {};
+    const ledgerBalances: Record<string, { bal: number, nature: string }> = {};
     ledgers.forEach(l => {
-      ledgerBalances[l.name] = l.closingBalance;
+      ledgerBalances[l.name] = { bal: l.closingBalance, nature: l.nature };
     });
 
     // 3. Define standard BS Structure
@@ -87,20 +87,23 @@ export async function GET(
         mainGroup = "Assets";
       }
 
-      const balance = ledgerBalances[mapping.softwareLedgerName] || 0;
+      const ledgerInfo = ledgerBalances[mapping.softwareLedgerName] || { bal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
+      let balance = ledgerInfo.bal;
+      
+      // If it's a Liability, Credit increases it, Debit decreases it.
+      // If it's an Asset, Debit increases it, Credit decreases it.
+      if (mainGroup === "Liabilities" && ledgerInfo.nature === "DEBIT") {
+          balance = -Math.abs(balance);
+      } else if (mainGroup === "Assets" && ledgerInfo.nature === "CREDIT") {
+          balance = -Math.abs(balance);
+      }
       
       const months = ["Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
       
       months.forEach((month, idx) => {
-        // Simple mock variation logic: 
-        // We assume "May" is the current actual balance, and previous months decrease slightly.
-        // For prototype purposes, let's just use balance * (1 - (months.indexOf("May") - idx) * 0.05)
-        // Wait, simpler:
-        // Let's just randomize or apply a flat mock calculation.
-        // Actually, just making Mar = 0.9*balance, Apr = 0.95*balance, May = balance, Jun = 1.05*balance etc.
         const mayIdx = 2; // May is index 2
         const multiplier = 1 + ((idx - mayIdx) * 0.05);
-        const mockedBalance = Math.abs(balance * multiplier);
+        const mockedBalance = balance * multiplier; // Maintain negative if it was negative
 
         dataNodes.push({
           id: `${mapping.id}-${month}`,
@@ -111,7 +114,7 @@ export async function GET(
           subHeadName: mapping.subHeadName,
           ledgerName: mapping.softwareLedgerName,
           amount: mockedBalance,
-          nature: balance > 0 ? "DEBIT" : "CREDIT"
+          nature: ledgerInfo.nature
         });
       });
     });
