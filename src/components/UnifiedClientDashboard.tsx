@@ -613,7 +613,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                   {syncProgress}
                 </span>
               )}
-              {client.software === 'TALLY' && (
+              {client.software === 'TALLY' && client.connectorStatus === 'OFFLINE' && (
                 <button 
                   onClick={async () => {
                     try {

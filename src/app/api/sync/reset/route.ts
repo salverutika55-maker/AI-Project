@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     // 4. Reset Client Status
     await prisma.client.update({
       where: { id: clientId },
-      data: { connectorStatus: "ONLINE" }
+      data: { connectorStatus: "OFFLINE" }
     });
 
     return NextResponse.json({ 
