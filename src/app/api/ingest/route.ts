@@ -187,9 +187,12 @@ export async function POST(req: Request) {
 
         // Use $transaction to handle ledger updates
         await prisma.$transaction(async (tx) => {
-          // 1. Update closing balances
+          // 1. Update closing balances (Chunked to prevent Vercel 10s Timeout)
           const ledgerUpsertsData = Array.from(uniqueLedgers.values());
-          for (const data of ledgerUpsertsData) {
+          const CHUNK_SIZE = 25;
+          for (let i = 0; i < ledgerUpsertsData.length; i += CHUNK_SIZE) {
+            const chunk = ledgerUpsertsData.slice(i, i + CHUNK_SIZE);
+            await Promise.all(chunk.map(async (data) => {
               const groupName = data.groupName || "Uncategorized";
               await tx.normalizedLedger.upsert({
                   where: {
@@ -212,6 +215,7 @@ export async function POST(req: Request) {
                     isActive: true
                   }
               });
+            }));
           }
         });
       }
