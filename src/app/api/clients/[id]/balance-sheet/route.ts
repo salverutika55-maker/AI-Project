@@ -197,32 +197,12 @@ export async function GET(
     const finalLiabs = dataNodes.filter(n => n.mainGroup === "Liabilities" && n.period === "Mar").reduce((sum, n) => sum + (n.amount || 0), 0);
     const diff = finalAssets - finalLiabs;
 
-    if (Math.abs(diff) > 0.01) {
-      monthsForProfit.forEach((month, idx) => {
-          let percentage = 0.5 + (0.045 * idx); 
-          if (month === "Mar") percentage = 1.0;
-          const scaledDiff = Math.abs(diff) * percentage;
-
-          dataNodes.push({
-            id: `diff-opening-${month}`,
-            period: month,
-            mainGroup: diff > 0 ? "Liabilities" : "Assets",
-            groupName: diff > 0 ? "Suspense A/c" : "Branch Account", // Just mapping to an existing structure node
-            subGroupName: "Difference in Opening Balances",
-            subHeadName: "",
-            ledgerName: "Difference in Opening Balances",
-            amount: scaledDiff,
-            nature: diff > 0 ? "CREDIT" : "DEBIT"
-          });
-      });
-    }
-
     return NextResponse.json({
       structure,
       dataNodes,
       validation: {
-        isBalanced: true, // We balanced it with the Difference node
-        difference: 0
+        isBalanced: Math.abs(diff) < 1,
+        difference: Math.abs(diff)
       }
     });
 
