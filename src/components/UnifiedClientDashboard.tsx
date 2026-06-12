@@ -57,7 +57,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [drilldownState, setDrilldownState] = useState<{ isOpen: boolean, statementType: "PNL" | "BS", subHeadName: string, month: string, year: number, totalAmount: number } | null>(null);
+  const [drilldownState, setDrilldownState] = useState<{ isOpen: boolean, statementType: "PNL" | "BS", subHeadName: string, months: string[], year: number, totalAmounts: Record<string, number> } | null>(null);
 
   // Data States
   const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
@@ -83,13 +83,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
 
   useEffect(() => {
     setIsMounted(true);
-    return () => {
-      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (client?.id) {
+    if (client.id) {
       fetchAllData();
       
       // Check for active sync task on mount
@@ -330,6 +324,15 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     if (idx === -1) return [selectedMonth];
     return months.slice(0, idx + 1); // All months from start of FY up to selected month
   }, [selectedMonth, months]);
+
+  // Helper to extract totals for all visible months to pass to drilldown
+  const getTotalsForDrilldown = (itemName: string) => {
+    const totals: Record<string, number> = {};
+    visibleMonths.forEach(m => {
+      totals[m] = gridData[m]?.[itemName] || 0;
+    });
+    return totals;
+  };
 
   const bsVisibleMonths = useMemo(() => {
     return ["Opening", ...visibleMonths];
@@ -894,9 +897,9 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                                     isOpen: true, 
                                     statementType: "PNL", 
                                     subHeadName: item, 
-                                    month: visibleMonths[visibleMonths.length - 1], 
+                                    months: visibleMonths, 
                                     year: selectedYear, 
-                                    totalAmount: gridData[visibleMonths[visibleMonths.length - 1]]?.[item] || 0 
+                                    totalAmounts: getTotalsForDrilldown(item)
                                   })}
                                   className="hover:text-cyan-400 hover:underline transition-all text-left"
                                 >
@@ -909,7 +912,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                                 return viewMode === "STANDARD" ? (
                                   <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px] font-mono text-xs font-bold text-slate-300">
                                     <button 
-                                      onClick={() => setDrilldownState({ isOpen: true, statementType: "PNL", subHeadName: item, month: m, year: selectedYear, totalAmount: actualVal })}
+                                      onClick={() => setDrilldownState({ 
+                                        isOpen: true, 
+                                        statementType: "PNL", 
+                                        subHeadName: item, 
+                                        months: visibleMonths, 
+                                        year: selectedYear, 
+                                        totalAmounts: getTotalsForDrilldown(item)
+                                      })}
                                       className="hover:text-cyan-400 hover:underline transition-all w-full h-full"
                                     >
                                       {formatCurrency(actualVal)}
@@ -919,7 +929,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                                   <Fragment key={m}>
                                     <td className="p-2 text-center border-l border-white/5 min-w-[120px] bg-cyan-500/5 font-mono text-xs font-bold text-cyan-400">
                                       <button 
-                                        onClick={() => setDrilldownState({ isOpen: true, statementType: "PNL", subHeadName: item, month: m, year: selectedYear, totalAmount: actualVal })}
+                                        onClick={() => setDrilldownState({ 
+                                          isOpen: true, 
+                                          statementType: "PNL", 
+                                          subHeadName: item, 
+                                          months: visibleMonths, 
+                                          year: selectedYear, 
+                                          totalAmounts: getTotalsForDrilldown(item)
+                                        })}
                                         className="hover:text-cyan-300 hover:underline transition-all w-full h-full"
                                       >
                                         {formatCurrency(actualVal)}
@@ -1149,9 +1166,9 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           clientId={client.id}
           statementType={drilldownState.statementType}
           subHeadName={drilldownState.subHeadName}
-          month={drilldownState.month}
+          months={drilldownState.months}
           year={drilldownState.year}
-          totalAmount={drilldownState.totalAmount}
+          totalAmounts={drilldownState.totalAmounts}
         />
       )}
 

@@ -6,7 +6,7 @@ interface Ledger {
   name: string;
   nature: string;
   groupName: string;
-  amount: number;
+  amounts: Record<string, number>;
   isMapped: boolean;
 }
 
@@ -16,9 +16,9 @@ interface DrilldownDrawerProps {
   clientId: string;
   statementType: "PNL" | "BS";
   subHeadName: string;
-  month: string;
+  months: string[];
   year: number;
-  totalAmount: number; // Pre-calculated total from the main statement
+  totalAmounts: Record<string, number>; // Pre-calculated totals from the main statement per month
 }
 
 export default function LedgerDrilldownDrawer({
@@ -27,24 +27,24 @@ export default function LedgerDrilldownDrawer({
   clientId,
   statementType,
   subHeadName,
-  month,
+  months,
   year,
-  totalAmount
+  totalAmounts
 }: DrilldownDrawerProps) {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    if (isOpen && subHeadName) {
+    if (isOpen && subHeadName && months.length > 0) {
       fetchLedgers();
     }
-  }, [isOpen, subHeadName, month, year]);
+  }, [isOpen, subHeadName, months.join(','), year]);
 
   const fetchLedgers = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/clients/${clientId}/drilldown?statementType=${statementType}&subHeadName=${encodeURIComponent(subHeadName)}&month=${month}&year=${year}`);
+      const res = await fetch(`/api/clients/${clientId}/drilldown?statementType=${statementType}&subHeadName=${encodeURIComponent(subHeadName)}&months=${months.join(',')}&year=${year}`);
       const data = await res.json();
       if (res.ok) {
         setLedgers(data.ledgers || []);
@@ -58,7 +58,6 @@ export default function LedgerDrilldownDrawer({
   if (!isOpen) return null;
 
   const filteredLedgers = ledgers.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const calculatedTotal = ledgers.reduce((sum, l) => sum + (l.amount || 0), 0);
   
   // Format currency
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
@@ -72,7 +71,7 @@ export default function LedgerDrilldownDrawer({
       />
       
       {/* Drawer */}
-      <div className={`fixed inset-y-0 right-0 w-full max-w-md bg-[#0F0F16] border-l border-white/10 z-[110] shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out translate-x-0`}>
+      <div className={`fixed inset-y-0 right-0 w-full max-w-2xl bg-[#0F0F16] border-l border-white/10 z-[110] shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out translate-x-0`}>
         
         {/* Header */}
         <div className="p-6 border-b border-white/5 bg-[#13131A]">
@@ -83,7 +82,7 @@ export default function LedgerDrilldownDrawer({
                   {statementType === 'PNL' ? 'Profit & Loss' : 'Balance Sheet'}
                 </span>
                 <span className="px-2 py-0.5 rounded-md text-[9px] font-black tracking-widest uppercase bg-white/5 text-slate-400">
-                  {month} {year}
+                  {months.join(', ')} {year}
                 </span>
               </div>
               <h2 className="text-xl font-black text-white">{subHeadName}</h2>
@@ -97,23 +96,45 @@ export default function LedgerDrilldownDrawer({
           </div>
 
           {/* Totals Summary */}
-          <div className="bg-white/5 border border-white/5 rounded-xl p-4 flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-400 font-bold">Statement Total</span>
-              <span className="text-base font-black text-white">{formatCurrency(totalAmount)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-400 font-bold">Ledgers Sum</span>
-              <span className="text-base font-black text-emerald-400">{formatCurrency(calculatedTotal)}</span>
-            </div>
-            {Math.abs(totalAmount - calculatedTotal) > 1 && (
-               <div className="mt-2 pt-2 border-t border-white/10 flex items-start gap-2 text-rose-400">
-                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                 <p className="text-[10px] leading-relaxed font-semibold">
-                   Variance detected. Ensure all related ledgers have data synchronized for this period.
-                 </p>
-               </div>
-            )}
+          <div className="bg-white/5 border border-white/5 rounded-xl overflow-hidden flex flex-col">
+            <table className="w-full text-left border-collapse">
+               <thead>
+                 <tr className="bg-white/5">
+                   <th className="p-3 text-xs text-slate-400 font-bold border-b border-white/5">Totals</th>
+                   {months.map(m => (
+                     <th key={m} className="p-3 text-xs text-slate-400 font-bold text-right border-b border-white/5">{m}</th>
+                   ))}
+                 </tr>
+               </thead>
+               <tbody>
+                 <tr>
+                   <td className="p-3 text-sm text-slate-300 font-bold border-b border-white/5">Statement Total</td>
+                   {months.map(m => (
+                     <td key={m} className="p-3 text-sm font-black text-white text-right border-b border-white/5">{formatCurrency(totalAmounts[m] || 0)}</td>
+                   ))}
+                 </tr>
+                 <tr>
+                   <td className="p-3 text-sm text-slate-300 font-bold">Ledgers Sum</td>
+                   {months.map(m => {
+                     const calculatedTotal = ledgers.reduce((sum, l) => sum + (l.amounts[m] || 0), 0);
+                     const diff = Math.abs((totalAmounts[m] || 0) - calculatedTotal);
+                     return (
+                       <td key={m} className="p-3 text-sm font-black text-emerald-400 text-right">
+                         <div className="flex flex-col items-end">
+                           <span>{formatCurrency(calculatedTotal)}</span>
+                           {diff > 1 && (
+                             <span className="text-[10px] text-rose-400 flex items-center gap-1 mt-1">
+                               <AlertCircle className="w-3 h-3" />
+                               Var: {formatCurrency(diff)}
+                             </span>
+                           )}
+                         </div>
+                       </td>
+                     );
+                   })}
+                 </tr>
+               </tbody>
+            </table>
           </div>
         </div>
 
@@ -144,24 +165,38 @@ export default function LedgerDrilldownDrawer({
               <span className="text-sm font-bold">No ledgers found</span>
             </div>
           ) : (
-            filteredLedgers.map(ledger => (
-              <div key={ledger.id} className="bg-[#1A1A24] border border-white/5 rounded-xl p-4 hover:border-white/10 transition-colors">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1 pr-4">
-                    <h4 className="text-sm font-bold text-white mb-1">{ledger.name}</h4>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{ledger.groupName}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-black text-white">{formatCurrency(ledger.amount)}</span>
-                    <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase">{ledger.nature}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-white/5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Mapped</span>
-                </div>
-              </div>
-            ))
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="sticky top-0 bg-[#0F0F16] z-10">
+                  <th className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest border-b border-white/5">Ledger Details</th>
+                  {months.map(m => (
+                    <th key={m} className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest text-right border-b border-white/5">{m}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLedgers.map(ledger => (
+                  <tr key={ledger.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
+                    <td className="p-3">
+                      <div className="flex flex-col">
+                        <h4 className="text-sm font-bold text-white mb-1">{ledger.name}</h4>
+                        <div className="flex items-center gap-2">
+                           <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{ledger.groupName}</span>
+                           <span className="text-[10px] text-slate-600 font-bold uppercase px-1.5 py-0.5 bg-white/5 rounded">
+                             {ledger.nature}
+                           </span>
+                        </div>
+                      </div>
+                    </td>
+                    {months.map(m => (
+                      <td key={m} className="p-3 text-right">
+                        <span className="text-sm font-mono font-black text-slate-300 group-hover:text-white transition-colors">{formatCurrency(ledger.amounts[m] || 0)}</span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
         
