@@ -33,6 +33,19 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
   const userRole = await getUserRoleInOrg(user.id, client.organizationId);
   if (!userRole) redirect("/dashboard"); // Not in this org
 
+  // Automatically mark as OFFLINE if no heartbeat received for > 40 seconds
+  if (client.connectorStatus === "ONLINE" && client.lastHeartbeat) {
+    const timeSinceHeartbeat = Date.now() - client.lastHeartbeat.getTime();
+    if (timeSinceHeartbeat > 40000) {
+      client.connectorStatus = "OFFLINE";
+      // Background update
+      prisma.client.update({
+        where: { id: client.id },
+        data: { connectorStatus: "OFFLINE" }
+      }).catch(console.error);
+    }
+  }
+
   try {
 
     const config = SECTOR_CONFIGS[client.sector as Sector];
