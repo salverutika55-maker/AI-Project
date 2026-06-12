@@ -32,6 +32,8 @@ import ExceptionDashboard from "./ExceptionDashboard";
 import MappingExceptionsDashboard from "./MappingExceptionsDashboard";
 import StrategicAdvisoryDashboard from "./StrategicAdvisoryDashboard";
 import RiskIntelligenceDashboard from "./RiskIntelligenceDashboard";
+import LedgerDrilldownDrawer from "./LedgerDrilldownDrawer";
+
 interface UnifiedDashboardProps {
   client: any;
   allClients: any[];
@@ -55,6 +57,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [drilldownState, setDrilldownState] = useState<{ isOpen: boolean, statementType: "PNL" | "BS", subHeadName: string, month: string, year: number, totalAmount: number } | null>(null);
 
   // Data States
   const [gridData, setGridData] = useState<Record<string, Record<string, number>>>({});
@@ -890,10 +893,24 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                                 const actualVal = gridData[m]?.[item] || 0;
                                 const budgetVal = budgetData[m]?.[item] || 0;
                                 return viewMode === "STANDARD" ? (
-                                  <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px] font-mono text-xs font-bold text-slate-300">{formatCurrency(actualVal)}</td>
+                                  <td key={m} className="p-2 text-center border-l border-white/5 min-w-[120px] font-mono text-xs font-bold text-slate-300">
+                                    <button 
+                                      onClick={() => setDrilldownState({ isOpen: true, statementType: "PNL", subHeadName: item, month: m, year: selectedYear, totalAmount: actualVal })}
+                                      className="hover:text-cyan-400 hover:underline transition-all w-full h-full"
+                                    >
+                                      {formatCurrency(actualVal)}
+                                    </button>
+                                  </td>
                                 ) : (
                                   <Fragment key={m}>
-                                    <td className="p-2 text-center border-l border-white/5 min-w-[120px] bg-cyan-500/5 font-mono text-xs font-bold text-cyan-400">{formatCurrency(actualVal)}</td>
+                                    <td className="p-2 text-center border-l border-white/5 min-w-[120px] bg-cyan-500/5 font-mono text-xs font-bold text-cyan-400">
+                                      <button 
+                                        onClick={() => setDrilldownState({ isOpen: true, statementType: "PNL", subHeadName: item, month: m, year: selectedYear, totalAmount: actualVal })}
+                                        className="hover:text-cyan-300 hover:underline transition-all w-full h-full"
+                                      >
+                                        {formatCurrency(actualVal)}
+                                      </button>
+                                    </td>
                                     <td className="p-2 text-center border-l border-white/5 min-w-[120px] bg-purple-500/5 font-mono text-xs font-bold text-purple-400">{budgetVal > 0 ? formatCurrency(budgetVal) : "-"}</td>
                                   </Fragment>
                                 );
@@ -1109,6 +1126,20 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
         clientName={client.name} 
         selectedYear={selectedYear}
       />
+
+      {/* Ledger Drill-Down Drawer */}
+      {drilldownState && (
+        <LedgerDrilldownDrawer 
+          isOpen={drilldownState.isOpen}
+          onClose={() => setDrilldownState(null)}
+          clientId={client.id}
+          statementType={drilldownState.statementType}
+          subHeadName={drilldownState.subHeadName}
+          month={drilldownState.month}
+          year={drilldownState.year}
+          totalAmount={drilldownState.totalAmount}
+        />
+      )}
 
 
       {loading && (

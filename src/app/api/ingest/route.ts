@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     for (let i = 0; i < records.length; i += recordChunkSize) {
       const chunk = records.slice(i, i + recordChunkSize);
       
-      await Promise.all(chunk.map(async (record) => {
+      await Promise.all(chunk.map(async (record: any) => {
         const { period, source, ledgers, ...financials } = record;
 
         if (!period) {
@@ -141,7 +141,7 @@ export async function POST(req: Request) {
 
     // 4c. Update Unique Ledgers for the Mapping UI & Save Closing Balances
     if (client.software === 'TALLY') {
-      const uniqueLedgers = new Map<string, { original: string, balance: number }>();
+      const uniqueLedgers = new Map<string, { original: string, balance: number, groupName?: string }>();
       
       // Since records are chronological, the last record has the latest Trial Balance
       for (const record of records) {

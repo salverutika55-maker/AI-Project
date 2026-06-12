@@ -2,15 +2,18 @@
 
 import { useState, useEffect, Fragment } from "react";
 import { AlertTriangle, TrendingUp, DollarSign, Activity } from "lucide-react";
+import LedgerDrilldownDrawer from "./LedgerDrilldownDrawer";
 
 interface BalanceSheetDashboardProps {
   clientId: string;
   visibleMonths?: string[];
+  selectedYear?: number;
 }
 
-export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr", "May"] }: BalanceSheetDashboardProps) {
+export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr", "May"], selectedYear = 2024 }: BalanceSheetDashboardProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [drilldownState, setDrilldownState] = useState<{ isOpen: boolean, statementType: "PNL" | "BS", subHeadName: string, month: string, year: number, totalAmount: number } | null>(null);
 
   useEffect(() => {
     fetchBalanceSheet();
@@ -97,11 +100,19 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
         rows.push(
           <tr key={`${main}-${group}-${subGroup}`} className="bg-[#13131A] border-b border-white/5 hover:bg-white/[0.02] transition-colors">
             <td className="sticky left-0 z-30 p-4 pl-12 text-sm font-medium text-slate-400">{subGroup}</td>
-            {visibleMonths.map(month => (
-              <td key={month} className="p-4 text-right text-sm font-mono font-bold text-slate-300 border-l border-white/5">
-                {formatCurrency(getSubGroupTotal(main, group, subGroup, month))}
-              </td>
-            ))}
+            {visibleMonths.map(month => {
+              const actualVal = getSubGroupTotal(main, group, subGroup, month);
+              return (
+                <td key={month} className="p-4 text-right text-sm font-mono font-bold text-slate-300 border-l border-white/5">
+                  <button 
+                    onClick={() => setDrilldownState({ isOpen: true, statementType: "BS", subHeadName: subGroup, month: month, year: selectedYear, totalAmount: actualVal })}
+                    className="hover:text-cyan-400 hover:underline transition-all w-full h-full text-right"
+                  >
+                    {formatCurrency(actualVal)}
+                  </button>
+                </td>
+              );
+            })}
           </tr>
         );
       });
@@ -199,6 +210,20 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
           </div>
         </div>
       </div>
+
+      {/* Ledger Drill-Down Drawer */}
+      {drilldownState && (
+        <LedgerDrilldownDrawer 
+          isOpen={drilldownState.isOpen}
+          onClose={() => setDrilldownState(null)}
+          clientId={clientId}
+          statementType={drilldownState.statementType}
+          subHeadName={drilldownState.subHeadName}
+          month={drilldownState.month}
+          year={drilldownState.year}
+          totalAmount={drilldownState.totalAmount}
+        />
+      )}
     </div>
   );
 }
