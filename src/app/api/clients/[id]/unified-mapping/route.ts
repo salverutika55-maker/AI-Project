@@ -27,10 +27,23 @@ export async function GET(
     });
 
     // Get COA from Normalized Ledgers
-    let chartOfAccounts = await prisma.normalizedLedger.findMany({
+    let rawLedgers = await prisma.normalizedLedger.findMany({
       where: { clientId: id, isActive: true },
       orderBy: { name: "asc" }
     });
+
+    // Filter out standard Tally Group Heads that might have been accidentally imported from CSVs
+    const tallyGroups = new Set([
+      "Branch / Divisions", "Capital Account", "Reserves & Surplus", "Current Assets", 
+      "Bank Accounts", "Cash-in-hand", "Deposits (Asset)", "Loans & Advances (Asset)", 
+      "Stock-in-hand", "Sundry Debtors", "Current Liabilities", "Duties & Taxes", 
+      "Provisions", "Sundry Creditors", "Direct Expenses", "Direct Incomes", 
+      "Fixed Assets", "Indirect Expenses", "Indirect Incomes", "Investments", 
+      "Loans (Liability)", "Bank OD A/c", "Secured Loans", "Unsecured Loans", 
+      "Misc. Expenses (AS)", "Purchase Accounts", "Sales Accounts", "Suspense A/c", "Primary"
+    ].map(g => g.toLowerCase()));
+
+    let chartOfAccounts = rawLedgers.filter(l => !tallyGroups.has(l.name.toLowerCase()));
 
     // Fallback/Merge with TallyVouchers to ensure no ledgers are missing
     if (client?.software === "TALLY") {
