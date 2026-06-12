@@ -99,7 +99,21 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
       Object.entries(subGroups).forEach(([subGroup, _]: any) => {
         rows.push(
           <tr key={`${main}-${group}-${subGroup}`} className="bg-[#13131A] border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-            <td className="sticky left-0 z-30 p-4 pl-12 text-sm font-medium text-slate-400">{subGroup}</td>
+            <td className="sticky left-0 z-30 p-4 pl-12 text-sm font-medium text-slate-400">
+              <button 
+                onClick={() => setDrilldownState({ 
+                  isOpen: true, 
+                  statementType: "BS", 
+                  subHeadName: subGroup, 
+                  month: visibleMonths[visibleMonths.length - 1], 
+                  year: selectedYear, 
+                  totalAmount: getSubGroupTotal(main, group, subGroup, visibleMonths[visibleMonths.length - 1]) 
+                })}
+                className="hover:text-cyan-400 hover:underline transition-all text-left"
+              >
+                {subGroup}
+              </button>
+            </td>
             {visibleMonths.map(month => {
               const actualVal = getSubGroupTotal(main, group, subGroup, month);
               return (

@@ -888,7 +888,21 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                           const totalBgt = getBudgetRowTotal(item);
                           return (
                             <tr key={subhead.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                              <td className="sticky left-0 z-30 p-4 text-sm border-r border-white/5 bg-[#13131A] text-slate-400 font-medium">{item}</td>
+                              <td className="sticky left-0 z-30 p-4 text-sm border-r border-white/5 bg-[#13131A] text-slate-400 font-medium">
+                                <button 
+                                  onClick={() => setDrilldownState({ 
+                                    isOpen: true, 
+                                    statementType: "PNL", 
+                                    subHeadName: item, 
+                                    month: visibleMonths[visibleMonths.length - 1], 
+                                    year: selectedYear, 
+                                    totalAmount: gridData[visibleMonths[visibleMonths.length - 1]]?.[item] || 0 
+                                  })}
+                                  className="hover:text-cyan-400 hover:underline transition-all text-left"
+                                >
+                                  {item}
+                                </button>
+                              </td>
                               {visibleMonths.map(m => {
                                 const actualVal = gridData[m]?.[item] || 0;
                                 const budgetVal = budgetData[m]?.[item] || 0;
