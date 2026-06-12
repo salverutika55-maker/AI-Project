@@ -62,8 +62,8 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
   const latestMonth = visibleMonths[visibleMonths.length - 1];
   const totalAssets = getMainTotal("Assets", latestMonth);
   const totalLiabilities = getMainTotal("Liabilities", latestMonth);
-  const isBalanced = totalAssets === totalLiabilities;
   const diff = Math.abs(totalAssets - totalLiabilities);
+  const isBalanced = diff < 1;
 
   const getTotalsForDrilldown = (main: string, group: string, subGroup: string) => {
     const totals: Record<string, number> = {};
