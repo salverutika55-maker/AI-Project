@@ -87,13 +87,16 @@ export async function GET(
       let effectiveGroup = manualMapping ? manualMapping.groupName : ledger.groupName;
       let effectiveSubGroup = manualMapping ? (manualMapping.subGroupName || effectiveGroup) : effectiveGroup;
       
+      // Clean non-printable characters from effectiveGroup
+      effectiveGroup = effectiveGroup.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
+      
       // If the group is still unknown/uncategorized, skip it from BS calculations
       if (!effectiveGroup || effectiveGroup.toLowerCase() === "unknown" || effectiveGroup.toLowerCase() === "uncategorized") {
           return;
       }
 
       let mainGroup = "";
-      if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans"].includes(effectiveGroup)) {
+      if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup)) {
         mainGroup = "Liabilities";
       } else if (["Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors", "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"].includes(effectiveGroup)) {
         mainGroup = "Assets";
@@ -101,8 +104,14 @@ export async function GET(
         // Fallback for PNL groups (skip them for BS)
         if (["Sales Accounts", "Purchase Accounts", "Direct Expenses", "Direct Incomes", "Indirect Expenses", "Indirect Incomes"].includes(effectiveGroup)) return;
         
-        // If we can't reliably guess the BS side, default to Assets
-        mainGroup = "Assets";
+        // If it's literally the Profit & Loss A/c, it's a Liability (Equity)
+        if (ledger.name.toLowerCase().includes("profit & loss") || ledger.name.toLowerCase().includes("p&l")) {
+            mainGroup = "Liabilities";
+            effectiveGroup = "Owner's Funds";
+        } else {
+            // If we can't reliably guess the BS side, default to Assets
+            mainGroup = "Assets";
+        }
       }
 
       const ledgerInfo = ledgerBalances[ledger.name] || { bal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };

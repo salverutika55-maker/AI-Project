@@ -76,9 +76,13 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   }, [customSubHeads, isMounted]);
 
   const dashboardRef = useRef<HTMLDivElement>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
+    return () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -147,12 +151,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const softwareConfig = SOFTWARE_CONFIGS[(client?.software || 'TALLY') as AccountingSoftware] || SOFTWARE_CONFIGS.TALLY;
 
   const effectiveConnectorStatus = useMemo(() => {
-    if (client.connectorStatus !== "ONLINE" || !client.lastHeartbeat) {
-      return client.connectorStatus;
-    }
-    const timeSinceHeartbeat = Date.now() - new Date(client.lastHeartbeat).getTime();
-    return timeSinceHeartbeat > 40000 ? "OFFLINE" : "ONLINE";
-  }, [client.connectorStatus, client.lastHeartbeat]);
+    return client.connectorStatus;
+  }, [client.connectorStatus]);
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -210,20 +210,26 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const pollTaskStatus = async (taskId: string) => {
     let attempts = 0;
     const maxAttempts = 450; // 15 minutes max (450 * 2s)
+    let isFetching = false;
 
-    const interval = setInterval(async () => {
+    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+
+    pollingIntervalRef.current = setInterval(async () => {
       // Prevent duplicate polling loops caused by React StrictMode or re-renders
       if (!localStorage.getItem(`sync_task_${client.id}`)) {
-         clearInterval(interval);
+         if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
          return;
       }
+
+      if (isFetching) return; // Wait for previous fetch to complete
+      isFetching = true;
 
       try {
         const res = await fetch(`/api/sync/tasks/${taskId}`);
         const data = await res.json();
 
         if (data.status === "COMPLETED") {
-          clearInterval(interval);
+          if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
           localStorage.removeItem(`sync_task_${client.id}`); // Remove immediately to stop other intervals
           setSyncProgress("Aggregating Tally P&L data...");
           try {
@@ -237,9 +243,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           await fetchAllData();
           setIsSyncing(false);
           setSyncProgress("");
-          alert("✅ Sync completed successfully! The financial data has been updated.");
         } else if (data.status === "FAILED") {
-          clearInterval(interval);
+          if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
           localStorage.removeItem(`sync_task_${client.id}`);
           alert(`❌ Sync Failed: ${data.message || "The Tally connector reported an error while generating data."}`);
           setIsSyncing(false);
@@ -261,14 +266,16 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
         
         attempts++;
         if (attempts >= maxAttempts) {
-          clearInterval(interval);
+          if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
           localStorage.removeItem(`sync_task_${client.id}`);
-          alert("⏱️ Sync timed out after 15 minutes. This usually means the Tally company is exceptionally large or the local machine is busy. The data might still appear in a few minutes, but please ensure your Tally Prime is open and the company is active.");
+          alert("⏱️ Sync timed out after 15 minutes. This usually means the Tally company is exceptionally large or the local machine is busy.");
           setIsSyncing(false);
           setSyncProgress("");
         }
       } catch (error: any) {
         console.error("Polling Error:", error);
+      } finally {
+        isFetching = false;
       }
     }, 2000);
   };
