@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinAnalyzer Sync Agent</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0B0B0F;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        .container {
+            background-color: #13131A;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .header h1 {
+            margin: 0 0 8px 0;
+            font-size: 24px;
+            color: #06b6d4; /* cyan-500 */
+        }
+        .header p {
+            margin: 0;
+            color: #94a3b8; /* slate-400 */
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .form-group {
+            margin-bottom: 24px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #cbd5e1; /* slate-300 */
+        }
+        .form-group select, .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        .form-group select:focus, .form-group input:focus {
+            outline: none;
+            border-color: #06b6d4;
+        }
+        .form-group input {
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+            font-weight: bold;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background-color: #06b6d4;
+            color: #0f172a;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #22d3ee;
+        }
+        button:disabled {
+            background-color: #334155;
+            color: #94a3b8;
+            cursor: not-allowed;
+        }
+        #error-msg {
+            color: #ef4444; /* red-500 */
+            font-size: 14px;
+            text-align: center;
+            margin-top: 16px;
+            display: none;
+        }
+        #success-msg {
+            text-align: center;
+            display: none;
+        }
+        #success-msg h2 {
+            color: #10b981; /* emerald-500 */
+            margin-bottom: 8px;
+        }
+        #success-msg p {
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="connect-container">
+    <div class="header">
+        <h1>FinAnalyzer Desktop Sync</h1>
+        <p>Connect your local accounting software to your cloud dashboard securely.</p>
+    </div>
+
+    <form id="connect-form">
+        <div class="form-group">
+            <label for="software">Select Accounting Software</label>
+            <select id="software" required>
+                <option value="tally">Tally Prime (Localhost)</option>
+                <option value="quickbooks">QuickBooks Desktop</option>
+                <option value="xero">Xero Desktop Sync</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="code">6-Digit Connection Code</label>
+            <input type="text" id="code" placeholder="e.g. A7B-9X2" maxlength="7" required autocomplete="off">
+        </div>
+
+        <button type="submit" id="submit-btn">Connect & Start Syncing</button>
+        <div id="error-msg"></div>
+    </form>
+</div>
+
+<div class="container" id="success-msg">
+    <h2>Connected Successfully!</h2>
+    <p>You can now safely close this browser window.</p>
+    <p>The FinAnalyzer Agent is running silently in the background and will sync your data automatically.</p>
+</div>
+
+<script>
+    const form = document.getElementById('connect-form');
+    const codeInput = document.getElementById('code');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorMsg = document.getElementById('error-msg');
+    const connectContainer = document.getElementById('connect-container');
+    const successMsg = document.getElementById('success-msg');
+
+    // Auto-format the code with a dash
+    codeInput.addEventListener('input', (e) => {
+        let val = e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+        if (val.length > 3) {
+            val = val.slice(0, 3) + '-' + val.slice(3);
+        }
+        e.target.value = val;
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Connecting...';
+        errorMsg.style.display = 'none';
+
+        const software = document.getElementById('software').value;
+        const code = codeInput.value;
+
+        try {
+            const res = await fetch('/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ software, code })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.message || 'Failed to connect');
+            }
+
+            // Success!
+            connectContainer.style.display = 'none';
+            successMsg.style.display = 'block';
+
+        } catch (err) {
+            errorMsg.textContent = err.message;
+            errorMsg.style.display = 'block';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Connect & Start Syncing';
+        }
+    });
+</script>
+
+</body>
+</html>

@@ -36543,6 +36543,7 @@ async function startBackgroundSync(config) {
           <COLLECTION NAME="List of Ledgers" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
             <TYPE>Ledger</TYPE>
             <NATIVEMETHOD>Name</NATIVEMETHOD>
+            <NATIVEMETHOD>Parent</NATIVEMETHOD>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -36562,15 +36563,32 @@ async function startBackgroundSync(config) {
         const msgArr = Array.isArray(ledgerNodes) ? ledgerNodes : [ledgerNodes];
         msgArr.forEach(msg => {
           let ledgerName = null;
-          if (msg.$?.NAME) {
-            ledgerName = msg.$.NAME;
-          } else if (msg.NAME) {
-             ledgerName = Array.isArray(msg.NAME) ? msg.NAME[0] : msg.NAME;
+          if (msg.$?.NAME) ledgerName = msg.$.NAME;
+          else if (msg.NAME) ledgerName = Array.isArray(msg.NAME) ? msg.NAME[0] : msg.NAME;
+          
+          let parentGroup = "Unknown";
+          if (msg.PARENT) {
+            let pRaw = Array.isArray(msg.PARENT) ? msg.PARENT[0] : msg.PARENT;
+            if (typeof pRaw === 'object' && pRaw._) {
+              parentGroup = pRaw._;
+            } else if (typeof pRaw === 'string') {
+              parentGroup = pRaw;
+            }
           }
-          if (ledgerName) ledgers.push(String(ledgerName));
+          
+          if (ledgerName) ledgers.push({ name: String(ledgerName), groupName: String(parentGroup) });
         });
       }
-      return [...new Set(ledgers)];
+      // Deduplicate by name
+      const uniqueLedgers = [];
+      const seen = new Set();
+      for (const l of ledgers) {
+          if (!seen.has(l.name.toLowerCase())) {
+              seen.add(l.name.toLowerCase());
+              uniqueLedgers.push(l);
+          }
+      }
+      return uniqueLedgers;
     } catch (e) {
       console.error("[AGENT] Failed to extract Chart of Accounts master list:", e.message);
       return [];
@@ -36878,11 +36896,10 @@ async function startBackgroundSync(config) {
         try {
             // 1. Fetch Explicit Master Ledgers
             const masterLedgers = await extractChartOfAccounts();
-            masterLedgers.forEach(name => {
-                if (name) {
-                    const original = name.trim();
-                    const lower = original.toLowerCase();
-                    if (!allUniqueLedgersMap.has(lower)) allUniqueLedgersMap.set(lower, original);
+            masterLedgers.forEach(ledger => {
+                if (ledger && ledger.name) {
+                    const lower = ledger.name.toLowerCase();
+                    if (!allUniqueLedgersMap.has(lower)) allUniqueLedgersMap.set(lower, ledger);
                 }
             });
             const finalLedgers = Array.from(allUniqueLedgersMap.values());

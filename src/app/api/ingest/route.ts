@@ -185,39 +185,36 @@ export async function POST(req: Request) {
           }
         });
 
-        // Use $transaction to handle ledger updates
-        await prisma.$transaction(async (tx) => {
-          // 1. Update closing balances (Chunked to prevent Vercel 10s Timeout)
-          const ledgerUpsertsData = Array.from(uniqueLedgers.values());
-          const CHUNK_SIZE = 25;
-          for (let i = 0; i < ledgerUpsertsData.length; i += CHUNK_SIZE) {
-            const chunk = ledgerUpsertsData.slice(i, i + CHUNK_SIZE);
-            await Promise.all(chunk.map(async (data) => {
-              const groupName = data.groupName || "Uncategorized";
-              await tx.normalizedLedger.upsert({
-                  where: {
-                    clientId_name: {
-                      clientId: client.id,
-                      name: data.original
-                    }
-                  },
-                  update: {
-                    closingBalance: Math.abs(data.balance),
-                    // Only update group name if the Tally agent actually sent a real group
-                    ...(groupName !== "Unknown" && groupName !== "Uncategorized" ? { groupName } : {})
-                  },
-                  create: {
+        // 1. Update closing balances (Chunked to prevent Vercel 10s Timeout, No transaction to prevent deadlocks)
+        const ledgerUpsertsData = Array.from(uniqueLedgers.values());
+        const CHUNK_SIZE = 10;
+        for (let i = 0; i < ledgerUpsertsData.length; i += CHUNK_SIZE) {
+          const chunk = ledgerUpsertsData.slice(i, i + CHUNK_SIZE);
+          await Promise.all(chunk.map(async (data) => {
+            const groupName = data.groupName || "Uncategorized";
+            await prisma.normalizedLedger.upsert({
+                where: {
+                  clientId_name: {
                     clientId: client.id,
-                    name: data.original,
-                    groupName: groupName,
-                    closingBalance: Math.abs(data.balance),
-                    nature: data.balance > 0 ? "DEBIT" : "CREDIT",
-                    isActive: true
+                    name: data.original
                   }
-              });
-            }));
-          }
-        });
+                },
+                update: {
+                  closingBalance: Math.abs(data.balance),
+                  // Only update group name if the Tally agent actually sent a real group
+                  ...(groupName !== "Unknown" && groupName !== "Uncategorized" ? { groupName } : {})
+                },
+                create: {
+                  clientId: client.id,
+                  name: data.original,
+                  groupName: groupName,
+                  closingBalance: Math.abs(data.balance),
+                  nature: data.balance > 0 ? "DEBIT" : "CREDIT",
+                  isActive: true
+                }
+            });
+          }));
+        }
       }
     }
 

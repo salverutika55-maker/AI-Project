@@ -1,18 +1,24 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-
-async function run() {
-  const mappings = await prisma.unifiedLedgerMapping.findMany();
-  console.log("UnifiedLedgerMapping Count:", mappings.length);
+async function check() {
+  const client = await prisma.client.findFirst({ where: { software: 'TALLY' } });
+  const mappings = await prisma.unifiedLedgerMapping.findMany({ 
+      where: { clientId: client.id, statementType: 'BS' } 
+  });
   
-  if (mappings.length > 0) {
-     console.log("Sample Mappings:");
-     console.log(mappings.slice(0, 5));
-     
-     // Check if they have statementType BS
-     const bs = mappings.filter(m => m.statementType === 'BS');
-     console.log("BS mappings count:", bs.length);
+  const names = mappings.map(m => m.softwareLedgerName);
+  
+  const ledgers = await prisma.normalizedLedger.findMany({ where: { clientId: client.id } });
+  
+  for (const l of ledgers) {
+      if (l.closingBalance !== 0) {
+          const isMapped = names.includes(l.name);
+          console.log(`Non-zero: ${l.name} (${l.closingBalance}) - Mapped to BS? ${isMapped}`);
+          if (isMapped) {
+              const m = mappings.find(ma => ma.softwareLedgerName === l.name);
+              console.log(`  -> Mapped to: ${m.groupName} > ${m.subGroupName}`);
+          }
+      }
   }
 }
-
-run().finally(() => prisma.$disconnect());
+check().finally(() => prisma.$disconnect());

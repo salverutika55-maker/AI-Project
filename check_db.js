@@ -1,12 +1,8 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-
 async function check() {
-  const tasks = await prisma.syncTask.findMany();
-  console.log("Tasks:", JSON.stringify(tasks, null, 2));
-  
-  const records = await prisma.financialRecord.findMany();
-  console.log("Records:", records.length);
+  const client = await prisma.client.findFirst({ where: { software: 'TALLY' } });
+  const ledgers = await prisma.normalizedLedger.findMany({ where: { clientId: client.id } });
+  console.log(ledgers.map(l => `${l.name} - ${l.closingBalance} (${l.nature})`));
 }
-
-check().catch(console.error).finally(() => prisma.$disconnect());
+check().finally(() => prisma.$disconnect());

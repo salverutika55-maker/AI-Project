@@ -6,6 +6,7 @@ const axios = require('axios');
 const xml2js = require('xml2js');
 
 const PORT = 4500;
+// VERCEL_API is the backend endpoint
 const VERCEL_API = 'https://ai-project-salverutika55-makers-projects.vercel.app/api';
 
 // Config path: %APPDATA%/FinAnalyzer/config.json
