@@ -146,6 +146,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
 
   const softwareConfig = SOFTWARE_CONFIGS[(client?.software || 'TALLY') as AccountingSoftware] || SOFTWARE_CONFIGS.TALLY;
 
+  const effectiveConnectorStatus = useMemo(() => {
+    if (client.connectorStatus !== "ONLINE" || !client.lastHeartbeat) {
+      return client.connectorStatus;
+    }
+    const timeSinceHeartbeat = Date.now() - new Date(client.lastHeartbeat).getTime();
+    return timeSinceHeartbeat > 40000 ? "OFFLINE" : "ONLINE";
+  }, [client.connectorStatus, client.lastHeartbeat]);
+
   const handleSync = async () => {
     setIsSyncing(true);
     try {
@@ -569,21 +577,21 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
             {client.software === 'TALLY' && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg group relative">
                 <div className={`w-2 h-2 rounded-full ${
-                  client.connectorStatus === 'SYNCING' ? 'bg-amber-500 animate-pulse' :
-                  client.connectorStatus === 'ONLINE' ? 'bg-emerald-500 animate-pulse' : 
+                  effectiveConnectorStatus === 'SYNCING' ? 'bg-amber-500 animate-pulse' :
+                  effectiveConnectorStatus === 'ONLINE' ? 'bg-emerald-500 animate-pulse' : 
                   'bg-rose-500'
                 }`} />
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {client.connectorStatus === 'SYNCING' ? 'Sync in Progress' :
-                   client.connectorStatus === 'ONLINE' ? 'Connector Active' : 
+                  {effectiveConnectorStatus === 'SYNCING' ? 'Sync in Progress' :
+                   effectiveConnectorStatus === 'ONLINE' ? 'Connector Active' : 
                    'Connector Offline'}
                 </span>
                 
                 {/* Tooltip */}
                 <div className="absolute top-full right-0 mt-2 w-48 bg-[#1a1a24] border border-white/10 p-3 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
                   <p className="text-[10px] text-slate-400 leading-relaxed font-medium">
-                    {client.connectorStatus === 'SYNCING' ? 'Data is currently being uploaded from your local Tally Prime machine.' :
-                     client.connectorStatus === 'ONLINE' ? 'The desktop sync bridge is connected and ready to sync.' : 
+                    {effectiveConnectorStatus === 'SYNCING' ? 'Data is currently being uploaded from your local Tally Prime machine.' :
+                     effectiveConnectorStatus === 'ONLINE' ? 'The desktop sync bridge is connected and ready to sync.' : 
                      'The desktop sync bridge is not detected. Please ensure the .exe connector is running.'}
                   </p>
                 </div>
@@ -595,16 +603,16 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                 onClick={() => {
                   handleSync();
                 }} 
-                disabled={isSyncing || client.connectorStatus === 'SYNCING'} 
+                disabled={isSyncing || effectiveConnectorStatus === 'SYNCING'} 
                 className={`flex items-center gap-2 px-4 py-1.5 ${softwareConfig.bg} border ${softwareConfig.border} rounded-lg text-xs font-black ${softwareConfig.color} hover:opacity-80 transition-all disabled:opacity-50`}
               >
-                {isSyncing || client.connectorStatus === 'SYNCING' ? (
+                {isSyncing || effectiveConnectorStatus === 'SYNCING' ? (
                   <RefreshCw className="w-3 h-3 animate-spin" />
                 ) : (
                   <softwareConfig.icon className="w-3 h-3" />
                 )}
                 
-                {client.connectorStatus === 'SYNCING' || isSyncing
+                {effectiveConnectorStatus === 'SYNCING' || isSyncing
                     ? 'Syncing...' 
                     : `Sync ${softwareConfig.label}`}
               </button>
@@ -613,7 +621,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                   {syncProgress}
                 </span>
               )}
-              {client.software === 'TALLY' && client.connectorStatus === 'OFFLINE' && (
+              {client.software === 'TALLY' && effectiveConnectorStatus === 'OFFLINE' && (
                 <button 
                   onClick={async () => {
                     try {
