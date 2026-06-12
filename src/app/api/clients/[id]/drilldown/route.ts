@@ -78,7 +78,8 @@ export async function GET(
         const isMapped = mappings.some(m => m.softwareLedgerName === l.name);
         if (isMapped) localMappedCount++;
 
-        let baseBalance = l.closingBalance;
+        let baseBalanceClose = l.closingBalance;
+        let baseBalanceOpen = l.openingBalance;
         let mainGroup = "Assets";
         
         const manualMapping = mappings.find(m => m.softwareLedgerName === l.name);
@@ -92,21 +93,27 @@ export async function GET(
         }
         
         if (mainGroup === "Liabilities" && l.nature === "DEBIT") {
-            baseBalance = -Math.abs(baseBalance);
+            baseBalanceClose = -Math.abs(baseBalanceClose);
+            baseBalanceOpen = -Math.abs(baseBalanceOpen);
         } else if (mainGroup === "Assets" && l.nature === "CREDIT") {
-            baseBalance = -Math.abs(baseBalance);
+            baseBalanceClose = -Math.abs(baseBalanceClose);
+            baseBalanceOpen = -Math.abs(baseBalanceOpen);
         }
 
         const amountsByMonth: Record<string, number> = {};
         
         requestedMonths.forEach(month => {
             const monthIdx = allMonths.indexOf(month);
-            let percentage = 1.0;
-            if (monthIdx !== -1) {
-                percentage = 0.5 + (0.045 * monthIdx);
-                if (month === "Mar") percentage = 1.0;
+            let mockedBalance = baseBalanceOpen;
+            if (month === "Opening") {
+                mockedBalance = baseBalanceOpen;
+            } else if (month === "Mar") {
+                mockedBalance = baseBalanceClose;
+            } else if (monthIdx !== -1) {
+                const progress = monthIdx / 12.0;
+                mockedBalance = baseBalanceOpen + ((baseBalanceClose - baseBalanceOpen) * progress);
             }
-            amountsByMonth[month] = baseBalance * percentage;
+            amountsByMonth[month] = mockedBalance;
         });
 
         return {
@@ -134,15 +141,29 @@ export async function GET(
               }
           }, 0);
           
+          const netProfitOpening = pnlLedgers.reduce((sum, l) => {
+              const isIncome = ["Sales Accounts", "Direct Incomes", "Indirect Incomes"].includes(l.groupName);
+              const bal = Math.abs(l.openingBalance);
+              if (isIncome) {
+                 return sum + (l.nature === "CREDIT" ? bal : -bal);
+              } else {
+                 return sum - (l.nature === "DEBIT" ? bal : -bal);
+              }
+          }, 0);
+          
           const cyProfitAmounts: Record<string, number> = {};
           requestedMonths.forEach(month => {
              const monthIdx = allMonths.indexOf(month);
-             let percentage = 1.0;
-             if (monthIdx !== -1) {
-                 percentage = 0.5 + (0.045 * monthIdx);
-                 if (month === "Mar") percentage = 1.0;
+             let mockedBalance = netProfitOpening;
+             if (month === "Opening") {
+                 mockedBalance = netProfitOpening;
+             } else if (month === "Mar") {
+                 mockedBalance = netProfitClosing;
+             } else if (monthIdx !== -1) {
+                 const progress = monthIdx / 12.0;
+                 mockedBalance = netProfitOpening + ((netProfitClosing - netProfitOpening) * progress);
              }
-             cyProfitAmounts[month] = netProfitClosing * percentage;
+             cyProfitAmounts[month] = mockedBalance;
           });
           
           ledgersWithBalances.push({

@@ -33,9 +33,9 @@ export async function GET(
       where: { clientId: id, isActive: true }
     });
 
-    const ledgerBalances: Record<string, { bal: number, nature: string }> = {};
+    const ledgerBalances: Record<string, { openBal: number, closeBal: number, nature: string }> = {};
     ledgers.forEach(l => {
-      ledgerBalances[l.name] = { bal: l.closingBalance, nature: l.nature };
+      ledgerBalances[l.name] = { openBal: l.openingBalance, closeBal: l.closingBalance, nature: l.nature };
     });
 
     // 3. Define standard BS Structure
@@ -108,33 +108,40 @@ export async function GET(
         if (ledger.name.toLowerCase().includes("profit & loss") || ledger.name.toLowerCase().includes("p&l")) {
             mainGroup = "Liabilities";
             effectiveGroup = "Owner's Funds";
+            effectiveSubGroup = "Profit & Loss Account";
         } else {
             // If we can't reliably guess the BS side, default to Assets
             mainGroup = "Assets";
         }
       }
 
-      const ledgerInfo = ledgerBalances[ledger.name] || { bal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
-      let balance = ledgerInfo.bal;
+      const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
+      let openBalance = ledgerInfo.openBal;
+      let closeBalance = ledgerInfo.closeBal;
       
       // If it's a Liability, Credit increases it, Debit decreases it.
       // If it's an Asset, Debit increases it, Credit decreases it.
       if (mainGroup === "Liabilities" && ledgerInfo.nature === "DEBIT") {
-          balance = -Math.abs(balance);
+          openBalance = -Math.abs(openBalance);
+          closeBalance = -Math.abs(closeBalance);
       } else if (mainGroup === "Assets" && ledgerInfo.nature === "CREDIT") {
-          balance = -Math.abs(balance);
+          openBalance = -Math.abs(openBalance);
+          closeBalance = -Math.abs(closeBalance);
       }
       
       const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
-      // Note: Opening represents the Opening Balance.
-      // We will make Opening = 50%
-      // Apr = 54% ... Feb = 96%, Mar = 100%
       
       months.forEach((month, idx) => {
-        let percentage = 0.5 + (0.045 * idx); 
-        if (month === "Mar") percentage = 1.0;
-        
-        const mockedBalance = balance * percentage; 
+        let mockedBalance = openBalance;
+        if (month === "Opening") {
+            mockedBalance = openBalance;
+        } else if (month === "Mar") {
+            mockedBalance = closeBalance;
+        } else {
+            // Interpolate between opening and closing for interim months (1 to 11)
+            const progress = idx / 12.0; 
+            mockedBalance = openBalance + ((closeBalance - openBalance) * progress);
+        } 
 
         dataNodes.push({
           id: `${ledger.id}-${month}`,
@@ -152,7 +159,8 @@ export async function GET(
 
     // 5. Calculate Current Year Profit from PNL
     // Instead of forcing Assets - Liabilities, calculate true Profit from Income & Expense ledgers
-    let trueProfit = 0;
+    let trueProfitOpening = 0;
+    let trueProfitClosing = 0;
     ledgers.forEach(ledger => {
       const manualMapping = bsMappings.find(m => m.softwareLedgerName === ledger.name);
       let effectiveGroup = manualMapping ? manualMapping.groupName : ledger.groupName;
@@ -161,23 +169,31 @@ export async function GET(
       const isIncome = ["Sales Accounts", "Direct Incomes", "Indirect Incomes"].includes(effectiveGroup);
       const isExpense = ["Purchase Accounts", "Direct Expenses", "Indirect Expenses"].includes(effectiveGroup);
 
-      const ledgerInfo = ledgerBalances[ledger.name] || { bal: 0, nature: "CREDIT" };
+      const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: "CREDIT" };
       
       if (isIncome) {
-          trueProfit += (ledgerInfo.nature === "CREDIT" ? ledgerInfo.bal : -ledgerInfo.bal);
+          trueProfitOpening += (ledgerInfo.nature === "CREDIT" ? ledgerInfo.openBal : -ledgerInfo.openBal);
+          trueProfitClosing += (ledgerInfo.nature === "CREDIT" ? ledgerInfo.closeBal : -ledgerInfo.closeBal);
       } else if (isExpense) {
-          trueProfit -= (ledgerInfo.nature === "DEBIT" ? ledgerInfo.bal : -ledgerInfo.bal);
+          trueProfitOpening -= (ledgerInfo.nature === "DEBIT" ? ledgerInfo.openBal : -ledgerInfo.openBal);
+          trueProfitClosing -= (ledgerInfo.nature === "DEBIT" ? ledgerInfo.closeBal : -ledgerInfo.closeBal);
       }
     });
     
-    const finalProfit = trueProfit;
+    const finalProfitOpen = trueProfitOpening;
+    const finalProfitClose = trueProfitClosing;
 
     const monthsForProfit = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
     monthsForProfit.forEach((month, idx) => {
-        let percentage = 0.5 + (0.045 * idx); 
-        if (month === "Mar") percentage = 1.0;
-
-      const scaledProfit = finalProfit * percentage;
+      let scaledProfit = finalProfitOpen;
+      if (month === "Opening") {
+          scaledProfit = finalProfitOpen;
+      } else if (month === "Mar") {
+          scaledProfit = finalProfitClose;
+      } else {
+          const progress = idx / 12.0; 
+          scaledProfit = finalProfitOpen + ((finalProfitClose - finalProfitOpen) * progress);
+      }
 
       dataNodes.push({
         id: `cy-profit-system-${month}`,
