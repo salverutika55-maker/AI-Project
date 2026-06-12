@@ -37,25 +37,57 @@ export async function GET(
       where: {
         clientId: id,
         statementType,
-        subHeadName
+        ...(statementType === "PNL" ? { subHeadName } : {})
       }
     });
 
     const mappedLedgerNames = mappings.map(m => m.softwareLedgerName);
-    
-    const ledgers = await prisma.normalizedLedger.findMany({
-        where: { clientId: id, name: { in: mappedLedgerNames } }
-    });
+    let totalMappedCount = mappedLedgerNames.length;
 
     let ledgersWithBalances = [];
 
     if (statementType === "BS") {
       const allMonths = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
       
-      ledgersWithBalances = ledgers.map(l => {
+      const ledgers = await prisma.normalizedLedger.findMany({
+        where: { clientId: id, isActive: true }
+      });
+      
+      // Filter ledgers that belong to this subHeadName (which corresponds to effectiveSubGroup in BS)
+      const bsLedgers = ledgers.filter(ledger => {
+        const manualMapping = mappings.find(m => m.softwareLedgerName === ledger.name);
+        let effectiveGroup = manualMapping ? manualMapping.groupName : ledger.groupName;
+        let effectiveSubGroup = manualMapping ? (manualMapping.subGroupName || effectiveGroup) : effectiveGroup;
+        
+        effectiveGroup = effectiveGroup.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
+        
+        if (!effectiveGroup || effectiveGroup.toLowerCase() === "unknown" || effectiveGroup.toLowerCase() === "uncategorized") return false;
+        if (["Sales Accounts", "Purchase Accounts", "Direct Expenses", "Direct Incomes", "Indirect Expenses", "Indirect Incomes"].includes(effectiveGroup)) return false;
+        
+        if (ledger.name.toLowerCase().includes("profit & loss") || ledger.name.toLowerCase().includes("p&l")) {
+            effectiveGroup = "Owner's Funds";
+            effectiveSubGroup = "Profit & Loss Account";
+        }
+        
+        return effectiveSubGroup === subHeadName;
+      });
+
+      let localMappedCount = 0;
+
+      ledgersWithBalances = bsLedgers.map(l => {
+        const isMapped = mappings.some(m => m.softwareLedgerName === l.name);
+        if (isMapped) localMappedCount++;
+
         let baseBalance = l.closingBalance;
         let mainGroup = "Assets";
-        if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(l.groupName)) {
+        
+        const manualMapping = mappings.find(m => m.softwareLedgerName === l.name);
+        let effectiveGroup = manualMapping ? manualMapping.groupName : l.groupName;
+        if (l.name.toLowerCase().includes("profit & loss") || l.name.toLowerCase().includes("p&l")) {
+            effectiveGroup = "Owner's Funds";
+        }
+
+        if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup)) {
             mainGroup = "Liabilities";
         }
         
@@ -83,12 +115,52 @@ export async function GET(
           nature: l.nature,
           groupName: l.groupName,
           amounts: amountsByMonth,
-          isMapped: true
+          isMapped
         };
       });
+      
+      totalMappedCount = localMappedCount;
+      
+      // Auto-generated P&L logic for BS
+      if (subHeadName === "Profit & Loss Account") {
+          const pnlLedgers = ledgers.filter(l => ["Sales Accounts", "Purchase Accounts", "Direct Expenses", "Direct Incomes", "Indirect Expenses", "Indirect Incomes"].includes(l.groupName));
+          const netProfitClosing = pnlLedgers.reduce((sum, l) => {
+              const isIncome = ["Sales Accounts", "Direct Incomes", "Indirect Incomes"].includes(l.groupName);
+              const bal = Math.abs(l.closingBalance);
+              if (isIncome) {
+                 return sum + (l.nature === "CREDIT" ? bal : -bal);
+              } else {
+                 return sum - (l.nature === "DEBIT" ? bal : -bal);
+              }
+          }, 0);
+          
+          const cyProfitAmounts: Record<string, number> = {};
+          requestedMonths.forEach(month => {
+             const monthIdx = allMonths.indexOf(month);
+             let percentage = 1.0;
+             if (monthIdx !== -1) {
+                 percentage = 0.5 + (0.045 * monthIdx);
+                 if (month === "Mar") percentage = 1.0;
+             }
+             cyProfitAmounts[month] = netProfitClosing * percentage;
+          });
+          
+          ledgersWithBalances.push({
+             id: "cy-profit-system",
+             name: "Current Year Profit (Auto)",
+             nature: netProfitClosing >= 0 ? "CREDIT" : "DEBIT",
+             groupName: "Owner's Funds",
+             amounts: cyProfitAmounts,
+             isMapped: true
+          });
+      }
 
     } else {
       // statementType === "PNL"
+      const ledgers = await prisma.normalizedLedger.findMany({
+        where: { clientId: id, name: { in: mappedLedgerNames } }
+      });
+
       const monthMap: Record<string, number> = {
         "Jan": 0, "Feb": 1, "Mar": 2, "Apr": 3, "May": 4, "Jun": 5,
         "Jul": 6, "Aug": 7, "Sep": 8, "Oct": 9, "Nov": 10, "Dec": 11
@@ -174,7 +246,7 @@ export async function GET(
       statementType,
       months: requestedMonths,
       year,
-      totalMapped: mappedLedgerNames.length,
+      totalMapped: totalMappedCount,
       ledgers: ledgersWithBalances
     });
 
