@@ -1039,7 +1039,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
 
           {activeTab === "balanceSheet" && (
             <ErrorBoundary title="Balance Sheet Error">
-              <BalanceSheetDashboard clientId={client.id} visibleMonths={bsVisibleMonths} />
+              <BalanceSheetDashboard clientId={client.id} visibleMonths={bsVisibleMonths} selectedYear={selectedYear} />
             </ErrorBoundary>
           )}
 
