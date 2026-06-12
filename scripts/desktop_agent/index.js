@@ -757,6 +757,41 @@ async function init() {
   console.log("Starting Tally Multi-Company Sync Connector (Live Engine)");
   console.log("=======================================================\n");
 
+  if (process.argv.includes('--reset')) {
+    console.log("[AGENT] Reset command received. Disconnecting from cloud...");
+    const currentConfig = loadConfig();
+    if (currentConfig && currentConfig.companies) {
+      for (const [companyName, companyConfig] of Object.entries(currentConfig.companies)) {
+        if (companyConfig.apiKey) {
+          try {
+            await axios.post(`${VERCEL_API}/connector/heartbeat`, {
+              apiKey: companyConfig.apiKey,
+              status: 'OFFLINE'
+            }, { timeout: 10000 });
+            console.log(`[AGENT] Successfully marked "${companyName}" as OFFLINE in the cloud.`);
+          } catch (err) {
+            console.error(`[AGENT] Failed to reach cloud for "${companyName}":`, err.message);
+          }
+        }
+      }
+    }
+    
+    // Delete local config
+    if (fs.existsSync(configPath)) {
+      try {
+        fs.unlinkSync(configPath);
+        console.log(`[AGENT] Local credentials deleted successfully.`);
+      } catch (err) {
+        console.error(`[AGENT] Failed to delete local config:`, err.message);
+      }
+    } else {
+      console.log(`[AGENT] Local credentials already deleted.`);
+    }
+    
+    console.log("\n[AGENT] Reset complete. You can close this window.");
+    return;
+  }
+
   const activeCompany = await getActiveTallyCompanyName();
   tallyActiveCompanyName = activeCompany;
 
