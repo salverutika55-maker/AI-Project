@@ -65,9 +65,55 @@ export async function GET(
         if (["Sales Accounts", "Purchase Accounts", "Direct Expenses", "Direct Incomes", "Indirect Expenses", "Indirect Incomes"].includes(effectiveGroup)) return false;
         
         if (ledger.name.toLowerCase().includes("profit & loss") || ledger.name.toLowerCase().includes("p&l")) {
+            mainGroup = "Liabilities";
             effectiveGroup = "Owner's Funds";
             effectiveSubGroup = "Profit & Loss Account";
+        } else {
+            mainGroup = ledger.nature === "CREDIT" ? "Liabilities" : "Assets";
         }
+        
+        let finalGroup = mainGroup === "Assets" ? "Current Assets" : "Current Liabilities";
+        let finalSubGroup = mainGroup === "Assets" ? "Other Current Assets" : "Other Current Liabilities";
+        
+        const gMatch = effectiveGroup.toLowerCase();
+        
+        if (mainGroup === "Liabilities") {
+            if (["owner's funds", "capital account", "reserves & surplus", "retained earnings"].some(x => gMatch.includes(x))) {
+                finalGroup = "Owner's Funds";
+                finalSubGroup = gMatch.includes("capital") ? "Share Capital" : (gMatch.includes("profit") ? "Profit & Loss Account" : "Reserves & Surplus");
+            } else if (["non-current", "long term", "secured loans", "unsecured loans", "loans (liability)"].some(x => gMatch.includes(x))) {
+                finalGroup = "Non-Current Liabilities";
+                finalSubGroup = "Unsecured Loans";
+            } else {
+                finalGroup = "Current Liabilities";
+                if (["duties & taxes", "tax"].some(x => gMatch.includes(x))) finalSubGroup = "Duties & Taxes";
+                else if (["suspense"].some(x => gMatch.includes(x))) finalSubGroup = "Suspense A/c";
+                else if (["sundry creditors", "trade payable", "sundry creditor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Payable";
+                else if (["provisions", "provision"].some(x => gMatch.includes(x))) finalSubGroup = "Provisions";
+                else if (["short term borrowing", "bank od"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Borrowing";
+                else finalSubGroup = "Other Current Liabilities";
+            }
+        } else {
+            if (["branch", "division"].some(x => gMatch.includes(x))) {
+                finalGroup = "Branch Account";
+                finalSubGroup = "Branch Account";
+            } else if (["non-current", "fixed assets", "investments", "investment"].some(x => gMatch.includes(x))) {
+                finalGroup = "Non-Current Assets";
+                finalSubGroup = gMatch.includes("investment") ? "Investments" : "Fixed Assets";
+            } else {
+                finalGroup = "Current Assets";
+                if (["closing stock", "inventory", "stock"].some(x => gMatch.includes(x))) finalSubGroup = "Closing Stock";
+                else if (["sundry debtors", "trade receivable", "sundry debtor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Receivable";
+                else if (["cash"].some(x => gMatch.includes(x))) finalSubGroup = "Cash-In-Hand";
+                else if (["bank"].some(x => gMatch.includes(x))) finalSubGroup = "Bank Accounts";
+                else if (["deposit"].some(x => gMatch.includes(x))) finalSubGroup = "Deposits (Assets)";
+                else if (["loan", "advance"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Loan & Advance";
+                else finalSubGroup = "Other Current Assets";
+            }
+        }
+        
+        effectiveGroup = finalGroup;
+        effectiveSubGroup = finalSubGroup;
         
         return effectiveSubGroup === subHeadName;
       });
@@ -84,18 +130,61 @@ export async function GET(
         
         const manualMapping = mappings.find(m => m.softwareLedgerName === l.name);
         let effectiveGroup = manualMapping ? manualMapping.groupName : l.groupName;
+        let effectiveSubGroup = manualMapping ? (manualMapping.subGroupName || effectiveGroup) : effectiveGroup;
+        
+        effectiveGroup = effectiveGroup.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
+        if (!effectiveGroup) effectiveGroup = "Uncategorized";
+        
         if (l.name.toLowerCase().includes("profit & loss") || l.name.toLowerCase().includes("p&l")) {
-            effectiveGroup = "Owner's Funds";
-        }
-
-        mainGroup = "Assets";
-        if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup)) {
             mainGroup = "Liabilities";
-        } else if (["Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors", "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"].includes(effectiveGroup)) {
-            mainGroup = "Assets";
+            effectiveGroup = "Owner's Funds";
+            effectiveSubGroup = "Profit & Loss Account";
         } else {
             mainGroup = l.nature === "CREDIT" ? "Liabilities" : "Assets";
         }
+
+        let finalGroup = mainGroup === "Assets" ? "Current Assets" : "Current Liabilities";
+        let finalSubGroup = mainGroup === "Assets" ? "Other Current Assets" : "Other Current Liabilities";
+        
+        const gMatch = effectiveGroup.toLowerCase();
+        
+        if (mainGroup === "Liabilities") {
+            if (["owner's funds", "capital account", "reserves & surplus", "retained earnings"].some(x => gMatch.includes(x))) {
+                finalGroup = "Owner's Funds";
+                finalSubGroup = gMatch.includes("capital") ? "Share Capital" : (gMatch.includes("profit") ? "Profit & Loss Account" : "Reserves & Surplus");
+            } else if (["non-current", "long term", "secured loans", "unsecured loans", "loans (liability)"].some(x => gMatch.includes(x))) {
+                finalGroup = "Non-Current Liabilities";
+                finalSubGroup = "Unsecured Loans";
+            } else {
+                finalGroup = "Current Liabilities";
+                if (["duties & taxes", "tax"].some(x => gMatch.includes(x))) finalSubGroup = "Duties & Taxes";
+                else if (["suspense"].some(x => gMatch.includes(x))) finalSubGroup = "Suspense A/c";
+                else if (["sundry creditors", "trade payable", "sundry creditor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Payable";
+                else if (["provisions", "provision"].some(x => gMatch.includes(x))) finalSubGroup = "Provisions";
+                else if (["short term borrowing", "bank od"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Borrowing";
+                else finalSubGroup = "Other Current Liabilities";
+            }
+        } else {
+            if (["branch", "division"].some(x => gMatch.includes(x))) {
+                finalGroup = "Branch Account";
+                finalSubGroup = "Branch Account";
+            } else if (["non-current", "fixed assets", "investments", "investment"].some(x => gMatch.includes(x))) {
+                finalGroup = "Non-Current Assets";
+                finalSubGroup = gMatch.includes("investment") ? "Investments" : "Fixed Assets";
+            } else {
+                finalGroup = "Current Assets";
+                if (["closing stock", "inventory", "stock"].some(x => gMatch.includes(x))) finalSubGroup = "Closing Stock";
+                else if (["sundry debtors", "trade receivable", "sundry debtor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Receivable";
+                else if (["cash"].some(x => gMatch.includes(x))) finalSubGroup = "Cash-In-Hand";
+                else if (["bank"].some(x => gMatch.includes(x))) finalSubGroup = "Bank Accounts";
+                else if (["deposit"].some(x => gMatch.includes(x))) finalSubGroup = "Deposits (Assets)";
+                else if (["loan", "advance"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Loan & Advance";
+                else finalSubGroup = "Other Current Assets";
+            }
+        }
+        
+        effectiveGroup = finalGroup;
+        effectiveSubGroup = finalSubGroup;
 
         baseBalanceOpen = l.openingBalance;
         baseBalanceClose = l.closingBalance;

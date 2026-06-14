@@ -116,6 +116,52 @@ export async function GET(
         }
       }
 
+      // STRICT MAPPING TO PREDEFINED TEMPLATE
+      // This ensures we NEVER inject dynamic Tally-specific groups ("Uncategorized", "Sundry Debtors") into the UI.
+      let finalGroup = mainGroup === "Assets" ? "Current Assets" : "Current Liabilities";
+      let finalSubGroup = mainGroup === "Assets" ? "Other Current Assets" : "Other Current Liabilities";
+      
+      const gMatch = effectiveGroup.toLowerCase();
+      
+      if (mainGroup === "Liabilities") {
+          if (["owner's funds", "capital account", "reserves & surplus", "retained earnings"].some(x => gMatch.includes(x))) {
+              finalGroup = "Owner's Funds";
+              finalSubGroup = gMatch.includes("capital") ? "Share Capital" : (gMatch.includes("profit") ? "Profit & Loss Account" : "Reserves & Surplus");
+          } else if (["non-current", "long term", "secured loans", "unsecured loans", "loans (liability)"].some(x => gMatch.includes(x))) {
+              finalGroup = "Non-Current Liabilities";
+              finalSubGroup = "Unsecured Loans";
+          } else {
+              finalGroup = "Current Liabilities";
+              if (["duties & taxes", "tax"].some(x => gMatch.includes(x))) finalSubGroup = "Duties & Taxes";
+              else if (["suspense"].some(x => gMatch.includes(x))) finalSubGroup = "Suspense A/c";
+              else if (["sundry creditors", "trade payable", "sundry creditor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Payable";
+              else if (["provisions", "provision"].some(x => gMatch.includes(x))) finalSubGroup = "Provisions";
+              else if (["short term borrowing", "bank od"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Borrowing";
+              else finalSubGroup = "Other Current Liabilities";
+          }
+      } else {
+          if (["branch", "division"].some(x => gMatch.includes(x))) {
+              finalGroup = "Branch Account";
+              finalSubGroup = "Branch Account";
+          } else if (["non-current", "fixed assets", "investments", "investment"].some(x => gMatch.includes(x))) {
+              finalGroup = "Non-Current Assets";
+              finalSubGroup = gMatch.includes("investment") ? "Investments" : "Fixed Assets";
+          } else {
+              finalGroup = "Current Assets";
+              if (["closing stock", "inventory", "stock"].some(x => gMatch.includes(x))) finalSubGroup = "Closing Stock";
+              else if (["sundry debtors", "trade receivable", "sundry debtor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Receivable";
+              else if (["cash"].some(x => gMatch.includes(x))) finalSubGroup = "Cash-In-Hand";
+              else if (["bank"].some(x => gMatch.includes(x))) finalSubGroup = "Bank Accounts";
+              else if (["deposit"].some(x => gMatch.includes(x))) finalSubGroup = "Deposits (Assets)";
+              else if (["loan", "advance"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Loan & Advance";
+              else finalSubGroup = "Other Current Assets";
+          }
+      }
+      
+      // Override effective variables to strictly adhere to standard format
+      effectiveGroup = finalGroup;
+      effectiveSubGroup = finalSubGroup;
+
       const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
       
       // STEP 3 & 4: Strict Debit/Credit Sign Handling
@@ -184,10 +230,7 @@ export async function GET(
 
     const monthsForProfit = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
     monthsForProfit.forEach((month, idx) => {
-      let percentage = 0.5 + (0.045 * idx);
-      if (month === "Mar") percentage = 1.0;
-      
-      let scaledProfit = finalProfitClose * percentage;
+      let exactProfit = month === "Opening" ? finalProfitOpen : finalProfitClose;
 
       dataNodes.push({
         id: `cy-profit-system-${month}`,
@@ -197,8 +240,8 @@ export async function GET(
         subGroupName: "Profit & Loss Account",
         subHeadName: "Current Year Profit",
         ledgerName: "P&L Account (Auto)",
-        amount: scaledProfit,
-        nature: scaledProfit >= 0 ? "CREDIT" : "DEBIT"
+        amount: exactProfit,
+        nature: exactProfit >= 0 ? "CREDIT" : "DEBIT"
       });
     });
 
@@ -206,16 +249,6 @@ export async function GET(
     const finalAssets = dataNodes.filter(n => n.mainGroup === "Assets" && n.period === "Mar").reduce((sum, n) => sum + (n.amount || 0), 0);
     const finalLiabs = dataNodes.filter(n => n.mainGroup === "Liabilities" && n.period === "Mar").reduce((sum, n) => sum + (n.amount || 0), 0);
     const diff = finalAssets - finalLiabs;
-
-    // 7. Dynamically populate the structure with any unmapped groups so they render in the UI
-    dataNodes.forEach(node => {
-        const { mainGroup, groupName, subGroupName } = node;
-        if (!mainGroup || !groupName || !subGroupName) return;
-        
-        if (!structure[mainGroup]) structure[mainGroup] = {};
-        if (!structure[mainGroup][groupName]) structure[mainGroup][groupName] = {};
-        if (!structure[mainGroup][groupName][subGroupName]) structure[mainGroup][groupName][subGroupName] = {};
-    });
 
     return NextResponse.json({
       structure,
