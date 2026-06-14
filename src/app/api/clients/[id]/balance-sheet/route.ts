@@ -115,6 +115,8 @@ export async function GET(
         }
       }
 
+      const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
+      
       // STEP 3 & 4: Strict Debit/Credit Sign Handling
       // Assets Normally: Debit = Positive, Credit = Negative
       // Liabilities & Equity Normally: Credit = Positive, Debit = Negative
