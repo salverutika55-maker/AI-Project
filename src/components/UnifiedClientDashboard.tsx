@@ -334,9 +334,10 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     return totals;
   };
 
+  // For Balance Sheet, we typically only want to see the snapshot at the selected period
   const bsVisibleMonths = useMemo(() => {
-    return ["Opening", ...visibleMonths];
-  }, [visibleMonths]);
+    return [selectedMonth];
+  }, [selectedMonth]);
 
   // CALCULATION ENGINE (Copied from SectorDashboard)
   const calculateMetrics = (sourceGrid: Record<string, Record<string, number>>) => {
