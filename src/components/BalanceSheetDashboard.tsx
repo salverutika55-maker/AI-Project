@@ -182,7 +182,7 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
                 <th className="sticky left-0 z-30 bg-[#181821] p-6 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[300px]">Particulars</th>
                 {visibleMonths.map(month => (
                   <th key={month} className="p-4 text-right text-[10px] font-black text-cyan-500 uppercase tracking-widest min-w-[150px] border-l border-white/10 bg-cyan-500/5">
-                    {month === "Opening" ? `Mar ${selectedYear}` : `${month} ${selectedYear}`}
+                    {month === "Opening" ? `OPENING BAL (Mar ${selectedYear})` : `${month} ${month === "Jan" || month === "Feb" || month === "Mar" ? selectedYear + 1 : selectedYear}`}
                   </th>
                 ))}
               </tr>
