@@ -90,9 +90,9 @@ export async function GET(
       // Clean non-printable characters from effectiveGroup
       effectiveGroup = effectiveGroup.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
       
-      // If the group is still unknown/uncategorized, skip it from BS calculations
-      if (!effectiveGroup || effectiveGroup.toLowerCase() === "unknown" || effectiveGroup.toLowerCase() === "uncategorized") {
-          return;
+      if (!effectiveGroup) {
+          effectiveGroup = "Uncategorized";
+          effectiveSubGroup = "Uncategorized";
       }
 
       let mainGroup = "";
