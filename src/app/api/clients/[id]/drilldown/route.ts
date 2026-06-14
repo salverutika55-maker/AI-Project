@@ -88,18 +88,19 @@ export async function GET(
             effectiveGroup = "Owner's Funds";
         }
 
-        if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup)) {
-            mainGroup = "Liabilities";
+        mainGroup = ["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup) ? "Liabilities" : "Assets";
+
+        baseBalanceOpen = l.openingBalance;
+        baseBalanceClose = l.closingBalance;
+        
+        if (mainGroup === "Assets") {
+            baseBalanceOpen = l.nature === "DEBIT" ? Math.abs(baseBalanceOpen) : -Math.abs(baseBalanceOpen);
+            baseBalanceClose = l.nature === "DEBIT" ? Math.abs(baseBalanceClose) : -Math.abs(baseBalanceClose);
+        } else if (mainGroup === "Liabilities" || mainGroup === "Equity" || mainGroup === "Owner's Funds") {
+            baseBalanceOpen = l.nature === "CREDIT" ? Math.abs(baseBalanceOpen) : -Math.abs(baseBalanceOpen);
+            baseBalanceClose = l.nature === "CREDIT" ? Math.abs(baseBalanceClose) : -Math.abs(baseBalanceClose);
         }
         
-        if (mainGroup === "Liabilities" && l.nature === "DEBIT") {
-            baseBalanceClose = -Math.abs(baseBalanceClose);
-            baseBalanceOpen = -Math.abs(baseBalanceOpen);
-        } else if (mainGroup === "Assets" && l.nature === "CREDIT") {
-            baseBalanceClose = -Math.abs(baseBalanceClose);
-            baseBalanceOpen = -Math.abs(baseBalanceOpen);
-        }
-
         const amountsByMonth: Record<string, number> = {};
         
         requestedMonths.forEach(month => {
