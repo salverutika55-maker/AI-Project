@@ -131,17 +131,14 @@ export async function GET(
       
       const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
       
+      let balance = closeBalance; // Using the closeBalance for the mock base
+      
       months.forEach((month, idx) => {
-        let mockedBalance = openBalance;
-        if (month === "Opening") {
-            mockedBalance = openBalance;
-        } else if (month === "Mar") {
-            mockedBalance = closeBalance;
-        } else {
-            // Interpolate between opening and closing for interim months (1 to 11)
-            const progress = idx / 12.0; 
-            mockedBalance = openBalance + ((closeBalance - openBalance) * progress);
-        } 
+        let percentage = 0.5 + (0.045 * idx); 
+        if (month === "Mar") percentage = 1.0;
+        
+        let mockedBalance = balance * percentage; 
+
 
         dataNodes.push({
           id: `${ledger.id}-${month}`,
@@ -185,15 +182,10 @@ export async function GET(
 
     const monthsForProfit = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
     monthsForProfit.forEach((month, idx) => {
-      let scaledProfit = finalProfitOpen;
-      if (month === "Opening") {
-          scaledProfit = finalProfitOpen;
-      } else if (month === "Mar") {
-          scaledProfit = finalProfitClose;
-      } else {
-          const progress = idx / 12.0; 
-          scaledProfit = finalProfitOpen + ((finalProfitClose - finalProfitOpen) * progress);
-      }
+      let percentage = 0.5 + (0.045 * idx);
+      if (month === "Mar") percentage = 1.0;
+      
+      let scaledProfit = finalProfitClose * percentage;
 
       dataNodes.push({
         id: `cy-profit-system-${month}`,

@@ -104,16 +104,10 @@ export async function GET(
         
         requestedMonths.forEach(month => {
             const monthIdx = allMonths.indexOf(month);
-            let mockedBalance = baseBalanceOpen;
-            if (month === "Opening") {
-                mockedBalance = baseBalanceOpen;
-            } else if (month === "Mar") {
-                mockedBalance = baseBalanceClose;
-            } else if (monthIdx !== -1) {
-                const progress = monthIdx / 12.0;
-                mockedBalance = baseBalanceOpen + ((baseBalanceClose - baseBalanceOpen) * progress);
-            }
-            amountsByMonth[month] = mockedBalance;
+            let percentage = 0.5 + (0.045 * monthIdx);
+            if (month === "Mar") percentage = 1.0;
+            
+            amountsByMonth[month] = baseBalanceClose * percentage;
         });
 
         return {
@@ -154,16 +148,10 @@ export async function GET(
           const cyProfitAmounts: Record<string, number> = {};
           requestedMonths.forEach(month => {
              const monthIdx = allMonths.indexOf(month);
-             let mockedBalance = netProfitOpening;
-             if (month === "Opening") {
-                 mockedBalance = netProfitOpening;
-             } else if (month === "Mar") {
-                 mockedBalance = netProfitClosing;
-             } else if (monthIdx !== -1) {
-                 const progress = monthIdx / 12.0;
-                 mockedBalance = netProfitOpening + ((netProfitClosing - netProfitOpening) * progress);
-             }
-             cyProfitAmounts[month] = mockedBalance;
+             let percentage = 0.5 + (0.045 * monthIdx);
+             if (month === "Mar") percentage = 1.0;
+             
+             cyProfitAmounts[month] = netProfitClosing * percentage;
           });
           
           ledgersWithBalances.push({
