@@ -207,6 +207,16 @@ export async function GET(
     const finalLiabs = dataNodes.filter(n => n.mainGroup === "Liabilities" && n.period === "Mar").reduce((sum, n) => sum + (n.amount || 0), 0);
     const diff = finalAssets - finalLiabs;
 
+    // 7. Dynamically populate the structure with any unmapped groups so they render in the UI
+    dataNodes.forEach(node => {
+        const { mainGroup, groupName, subGroupName } = node;
+        if (!mainGroup || !groupName || !subGroupName) return;
+        
+        if (!structure[mainGroup]) structure[mainGroup] = {};
+        if (!structure[mainGroup][groupName]) structure[mainGroup][groupName] = {};
+        if (!structure[mainGroup][groupName][subGroupName]) structure[mainGroup][groupName][subGroupName] = {};
+    });
+
     return NextResponse.json({
       structure,
       dataNodes,
