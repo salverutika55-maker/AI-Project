@@ -88,7 +88,14 @@ export async function GET(
             effectiveGroup = "Owner's Funds";
         }
 
-        mainGroup = ["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup) ? "Liabilities" : "Assets";
+        let mainGroup = "Assets";
+        if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup)) {
+            mainGroup = "Liabilities";
+        } else if (["Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors", "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"].includes(effectiveGroup)) {
+            mainGroup = "Assets";
+        } else {
+            mainGroup = l.nature === "CREDIT" ? "Liabilities" : "Assets";
+        }
 
         baseBalanceOpen = l.openingBalance;
         baseBalanceClose = l.closingBalance;
@@ -104,11 +111,7 @@ export async function GET(
         const amountsByMonth: Record<string, number> = {};
         
         requestedMonths.forEach(month => {
-            const monthIdx = allMonths.indexOf(month);
-            let percentage = 0.5 + (0.045 * monthIdx);
-            if (month === "Mar") percentage = 1.0;
-            
-            amountsByMonth[month] = baseBalanceClose * percentage;
+            amountsByMonth[month] = month === "Opening" ? baseBalanceOpen : baseBalanceClose;
         });
 
         return {

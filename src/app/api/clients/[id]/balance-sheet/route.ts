@@ -110,8 +110,9 @@ export async function GET(
             effectiveGroup = "Owner's Funds";
             effectiveSubGroup = "Profit & Loss Account";
         } else {
-            // If we can't reliably guess the BS side, default to Assets
-            mainGroup = "Assets";
+            // Default based on strict accounting nature if group is unknown
+            const info = ledgerBalances[ledger.name] || { nature: "DEBIT" };
+            mainGroup = info.nature === "CREDIT" ? "Liabilities" : "Assets";
         }
       }
 
@@ -135,14 +136,10 @@ export async function GET(
       const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
       
       months.forEach((month, idx) => {
-        // STEP 9: Monthly visibility (Using Mock progression as interim since Tally connector only provides Opening/Closing)
-        // User stated: "All months should be visible with their specific balances" 
-        // We will maintain the visual progression to ensure the UI is fully populated, but ending exactly at the true ERP Closing Balance.
-        let percentage = 0.5 + (0.045 * idx); 
-        if (month === "Mar") percentage = 1.0;
-        
-        // Apply percentage to the properly signed balance
-        let mockedBalance = baseClose * percentage; 
+        // User stated: "Balance sheet always shows closing balances of all ledgers."
+        // Removing the percentage mock completely. 
+        // We will display the exact closing balance for every month so that every single cell exactly matches the ERP.
+        let mockedBalance = month === "Opening" ? baseOpen : baseClose; 
 
 
         dataNodes.push({
