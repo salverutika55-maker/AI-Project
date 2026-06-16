@@ -10,6 +10,7 @@ interface BalanceSheetDashboardProps {
 
 export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr", "May"], selectedYear = 2024 }: BalanceSheetDashboardProps) {
   const [data, setData] = useState<any>(null);
+  const [diagnostics, setDiagnostics] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [drilldownState, setDrilldownState] = useState<{ isOpen: boolean, statementType: "PNL" | "BS", subHeadName: string, months: string[], year: number, totalAmounts: Record<string, number> } | null>(null);
 
@@ -23,6 +24,12 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
       const res = await fetch(`/api/clients/${clientId}/balance-sheet?year=${selectedYear}&t=${Date.now()}`);
       const bsData = await res.json();
       setData(bsData);
+
+      const diagRes = await fetch(`/api/clients/${clientId}/balance-sheet/diagnostic?year=${selectedYear}&t=${Date.now()}`);
+      if (diagRes.ok) {
+        const diagData = await diagRes.json();
+        setDiagnostics(diagData);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -269,6 +276,52 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
           </div>
         </div>
       </div>
+
+      {/* Balance Sheet Diagnostic Audit */}
+      {diagnostics && (
+        <div className="bg-[#13131A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+          <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#181821]">
+            <div className="flex items-center gap-3">
+              <Activity className="w-5 h-5 text-fuchsia-400" />
+              <h3 className="text-lg font-black text-white">Balance Sheet Audit (Strict Mapping)</h3>
+            </div>
+            <p className="text-xs font-bold text-slate-400">Comparing Subhead Totals vs Strict Ledger Mappings</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-[#181821] border-b border-white/10">
+                  <th className="p-4 text-left text-xs font-black text-slate-400 uppercase tracking-widest">Subhead</th>
+                  <th className="p-4 text-center text-xs font-black text-slate-400 uppercase tracking-widest border-l border-white/5">Mapped Ledgers</th>
+                  <th className="p-4 text-right text-xs font-black text-slate-400 uppercase tracking-widest border-l border-white/5">Ledger Total</th>
+                  <th className="p-4 text-right text-xs font-black text-slate-400 uppercase tracking-widest border-l border-white/5">Displayed Total</th>
+                  <th className="p-4 text-right text-xs font-black text-slate-400 uppercase tracking-widest border-l border-white/5">Difference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {diagnostics.map((d, i) => {
+                  const hasError = d.mappedLedgersCount === 0 && d.displayedTotal !== 0;
+                  const hasDiff = d.difference > 0;
+                  const isWarning = hasError || hasDiff;
+                  return (
+                    <tr key={i} className={`border-b border-white/5 hover:bg-white/[0.02] ${isWarning ? 'bg-red-500/10' : ''}`}>
+                      <td className="p-4 text-sm font-bold text-white">{d.subHeadName}</td>
+                      <td className={`p-4 text-center text-sm font-bold border-l border-white/5 ${d.mappedLedgersCount === 0 ? 'text-red-400' : 'text-slate-300'}`}>
+                        {d.mappedLedgersCount}
+                      </td>
+                      <td className="p-4 text-right text-sm font-mono font-bold text-slate-300 border-l border-white/5">{formatCurrency(d.ledgerTotal)}</td>
+                      <td className="p-4 text-right text-sm font-mono font-bold text-slate-300 border-l border-white/5">{formatCurrency(d.displayedTotal)}</td>
+                      <td className={`p-4 text-right text-sm font-mono font-black border-l border-white/5 ${isWarning ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {formatCurrency(d.difference)} {isWarning && '❌'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

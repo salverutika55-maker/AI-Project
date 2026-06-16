@@ -129,120 +129,51 @@ export async function GET(
     // 4. Map ledgers into structure
     const dataNodes: any[] = [];
 
-    // Combine manual mappings with native Tally groupings for any unmapped ledgers
     ledgers.forEach(ledger => {
-      let effectiveGroup = ledger.groupName;
-      let effectiveSubGroup = ledger.groupName;
-      
-      // Check unified mapping
+      // Find the FIRST mapping to prevent duplicates
       const customMapping = bsMappings.find(m => m.softwareLedgerName.toLowerCase() === ledger.name.toLowerCase());
-      if (customMapping) {
-        effectiveGroup = customMapping.groupName;
-        effectiveSubGroup = customMapping.subGroupName || customMapping.groupName;
-      } else {
-        effectiveGroup = effectiveGroup.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
-        if (!effectiveGroup || effectiveGroup === "Unknown" || effectiveGroup === "Uncategorized") {
-          // Heuristic guessing based on ledger name
-          const n = ledger.name.toLowerCase();
-          if (n.includes("bank") || n.includes("hdfc") || n.includes("icici") || n.includes("sbi")) {
-            effectiveGroup = "Bank Accounts";
-          } else if (n.includes("cash")) {
-            effectiveGroup = "Cash-in-hand";
-          } else if (n.includes("capital") || n.includes("equity")) {
-            effectiveGroup = "Capital Account";
-          } else if (n.includes("gst") || n.includes("tax") || n.includes("tds") || n.includes("duty") || n.includes("cgst") || n.includes("sgst") || n.includes("igst")) {
-            effectiveGroup = "Duties & Taxes";
-          } else if (n.includes("loan") || n.includes("borrowing")) {
-            effectiveGroup = ledger.nature === "CREDIT" ? "Secured Loans" : "Loans & Advances (Asset)";
-          } else if (n.includes("stock") || n.includes("inventory")) {
-            effectiveGroup = "Closing Stock";
-          } else if (n.includes("depreciation") || n.includes("asset") || n.includes("furniture") || n.includes("computer") || n.includes("machinery") || n.includes("vehicle") || n.includes("building")) {
-            effectiveGroup = "Fixed Assets";
-          } else if (n.includes("investment") || n.includes("deposit")) {
-            effectiveGroup = "Investments";
-          } else if (n.includes("payable") || n.includes("creditor") || n.includes("vendor")) {
-            effectiveGroup = "Sundry Creditors";
-          } else if (n.includes("receivable") || n.includes("debtor") || n.includes("customer")) {
-            effectiveGroup = "Sundry Debtors";
-          } else if (n.includes("profit") || n.includes("p&l")) {
-            effectiveGroup = "Reserves & Surplus";
-          } else {
-            // Default based on nature
-            effectiveGroup = ledger.nature === "CREDIT" ? "Current Liabilities" : "Current Assets";
-          }
-          effectiveSubGroup = effectiveGroup;
-        }
+      
+      const isPnL = ledger.name.toLowerCase().includes("profit & loss") || ledger.name.toLowerCase().includes("p&l");
+
+      // STRICT MAPPING RULE: If unmapped (and not the P&L ledger), strictly exclude from Balance Sheet
+      if (!customMapping && !isPnL) {
+          return;
       }
 
       let mainGroup = "";
-      if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup)) {
-        mainGroup = "Liabilities";
-      } else if (["Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors", "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"].includes(effectiveGroup)) {
-        mainGroup = "Assets";
-      } else {
-        // Fallback for PNL groups (skip them for BS)
-        if (["Sales Accounts", "Purchase Accounts", "Direct Expenses", "Direct Incomes", "Indirect Expenses", "Indirect Incomes"].includes(effectiveGroup)) return;
-        
-        // If it's literally the Profit & Loss A/c, it's a Liability (Equity)
-        if (ledger.name.toLowerCase().includes("profit & loss") || ledger.name.toLowerCase().includes("p&l")) {
+      let effectiveGroup = "";
+      let effectiveSubGroup = "";
+      
+      if (customMapping) {
+          effectiveGroup = customMapping.groupName;
+          effectiveSubGroup = customMapping.subGroupName || customMapping.groupName;
+          
+          if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup)) {
             mainGroup = "Liabilities";
-            effectiveGroup = "Owner's Funds";
-            effectiveSubGroup = "Profit & Loss Account";
-        } else {
-            // Default based on strict accounting nature if group is unknown
-            const info = ledgerBalances[ledger.name] || { nature: "DEBIT" };
-            mainGroup = info.nature === "CREDIT" ? "Liabilities" : "Assets";
-        }
+          } else if (["Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors", "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"].includes(effectiveGroup)) {
+            mainGroup = "Assets";
+          } else {
+             const info = ledgerBalances[ledger.name] || { nature: "DEBIT" };
+             mainGroup = info.nature === "CREDIT" ? "Liabilities" : "Assets";
+          }
+      } else if (isPnL) {
+          mainGroup = "Liabilities";
+          effectiveGroup = "Owner's Funds";
+          effectiveSubGroup = "Profit & Loss Account";
       }
 
-      // STRICT MAPPING TO PREDEFINED TEMPLATE
-      // This ensures we NEVER inject dynamic Tally-specific groups ("Uncategorized", "Sundry Debtors") into the UI.
+      // Final classification based on strict internal templates
       let finalGroup = mainGroup === "Assets" ? "Current Assets" : "Current Liabilities";
       let finalSubGroup = mainGroup === "Assets" ? "Other Current Assets" : "Other Current Liabilities";
       
       if (customMapping) {
           finalGroup = customMapping.groupName;
           finalSubGroup = customMapping.subGroupName || customMapping.groupName;
-      } else {
-          const gMatch = effectiveGroup.toLowerCase();
-          
-          if (mainGroup === "Liabilities") {
-              if (["owner's funds", "capital account", "reserves & surplus", "retained earnings"].some(x => gMatch.includes(x))) {
-                  finalGroup = "Owner's Funds";
-                  finalSubGroup = gMatch.includes("capital") ? "Share Capital" : (gMatch.includes("profit") ? "Profit & Loss Account" : "Reserves & Surplus");
-              } else if (["non-current", "long term", "secured loans", "unsecured loans", "loans (liability)"].some(x => gMatch.includes(x))) {
-                  finalGroup = "Non-Current Liabilities";
-                  finalSubGroup = "Unsecured Loans";
-              } else {
-                  finalGroup = "Current Liabilities";
-                  if (["duties & taxes", "tax"].some(x => gMatch.includes(x))) finalSubGroup = "Duties & Taxes";
-                  else if (["suspense"].some(x => gMatch.includes(x))) finalSubGroup = "Suspense A/c";
-                  else if (["sundry creditors", "trade payable", "sundry creditor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Payable";
-                  else if (["provisions", "provision"].some(x => gMatch.includes(x))) finalSubGroup = "Provisions";
-                  else if (["short term borrowing", "bank od"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Borrowing";
-                  else finalSubGroup = "Other Current Liabilities";
-              }
-          } else {
-              if (["branch", "division"].some(x => gMatch.includes(x))) {
-                  finalGroup = "Branch Account";
-                  finalSubGroup = "Branch Account";
-              } else if (["non-current", "fixed assets", "investments", "investment"].some(x => gMatch.includes(x))) {
-                  finalGroup = "Non-Current Assets";
-                  finalSubGroup = gMatch.includes("investment") ? "Investments" : "Fixed Assets";
-              } else {
-                  finalGroup = "Current Assets";
-                  if (["closing stock", "inventory", "stock"].some(x => gMatch.includes(x))) finalSubGroup = "Closing Stock";
-                  else if (["sundry debtors", "trade receivable", "sundry debtor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Receivable";
-                  else if (["cash"].some(x => gMatch.includes(x))) finalSubGroup = "Cash-In-Hand";
-                  else if (["bank"].some(x => gMatch.includes(x))) finalSubGroup = "Bank Accounts";
-                  else if (["deposit"].some(x => gMatch.includes(x))) finalSubGroup = "Deposits (Assets)";
-                  else if (["loan", "advance"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Loan & Advance";
-                  else finalSubGroup = "Other Current Assets";
-              }
-          }
+      } else if (isPnL) {
+          finalGroup = "Owner's Funds";
+          finalSubGroup = "Profit & Loss Account";
       }
       
-      // Override effective variables to strictly adhere to standard format
       effectiveGroup = finalGroup;
       effectiveSubGroup = finalSubGroup;
 
