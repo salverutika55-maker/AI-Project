@@ -11,7 +11,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  
+  const { searchParams } = new URL(req.url);
+  const selectedYear = parseInt(searchParams.get("year") || new Date().getFullYear().toString());
+
   const session = await getServerSession(authOptions);
   if (!session || !session.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -49,18 +51,41 @@ export async function GET(
       }
     });
 
-    // Aggregate movements per ledger per month
+    // Calculate All-Time movements (for backward calculation of Time 0)
+    const totalMovements: Record<string, { debit: number, credit: number }> = {};
+    const preFYMovements: Record<string, { debit: number, credit: number }> = {};
     const monthlyMovements: Record<string, Record<string, { debit: number, credit: number }>> = {};
+    
+    const targetFYStart = new Date(`${selectedYear}-04-01T00:00:00.000Z`);
+    const targetFYEnd = new Date(`${selectedYear + 1}-03-31T23:59:59.999Z`);
+
     voucherLines.forEach(vl => {
-        const monthIndex = vl.voucher.date.getMonth(); // 0 = Jan
-        const monthsNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const mName = monthsNames[monthIndex];
+        const d = new Date(vl.voucher.date);
         
-        if (!monthlyMovements[vl.ledgerId]) monthlyMovements[vl.ledgerId] = {};
-        if (!monthlyMovements[vl.ledgerId][mName]) monthlyMovements[vl.ledgerId][mName] = { debit: 0, credit: 0 };
+        // All-Time
+        if (!totalMovements[vl.ledgerId]) totalMovements[vl.ledgerId] = { debit: 0, credit: 0 };
+        if (vl.entryType === "DEBIT") totalMovements[vl.ledgerId].debit += vl.amount;
+        else totalMovements[vl.ledgerId].credit += vl.amount;
         
-        if (vl.entryType === "DEBIT") monthlyMovements[vl.ledgerId][mName].debit += vl.amount;
-        else monthlyMovements[vl.ledgerId][mName].credit += vl.amount;
+        // Pre-FY
+        if (d < targetFYStart) {
+            if (!preFYMovements[vl.ledgerId]) preFYMovements[vl.ledgerId] = { debit: 0, credit: 0 };
+            if (vl.entryType === "DEBIT") preFYMovements[vl.ledgerId].debit += vl.amount;
+            else preFYMovements[vl.ledgerId].credit += vl.amount;
+        }
+        
+        // Current FY Monthly
+        if (d >= targetFYStart && d <= targetFYEnd) {
+            const monthIndex = d.getMonth(); // 0 = Jan
+            const monthsNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const mName = monthsNames[monthIndex];
+            
+            if (!monthlyMovements[vl.ledgerId]) monthlyMovements[vl.ledgerId] = {};
+            if (!monthlyMovements[vl.ledgerId][mName]) monthlyMovements[vl.ledgerId][mName] = { debit: 0, credit: 0 };
+            
+            if (vl.entryType === "DEBIT") monthlyMovements[vl.ledgerId][mName].debit += vl.amount;
+            else monthlyMovements[vl.ledgerId][mName].credit += vl.amount;
+        }
     });
 
     // 3. Define standard BS Structure
@@ -222,17 +247,34 @@ export async function GET(
       effectiveSubGroup = finalSubGroup;
 
       const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
+      const allTimeMvmt = totalMovements[ledger.id] || { debit: 0, credit: 0 };
+      const preMvmt = preFYMovements[ledger.id] || { debit: 0, credit: 0 };
+      
+      // Calculate Time 0 absolute base balance (Backward calculation from Tally's snapshot closingBalance)
+      let time0Balance = 0;
+      if (mainGroup === "Assets") {
+          // Asset Closing = Time0 + Dr - Cr => Time0 = Closing - Dr + Cr
+          time0Balance = ledgerInfo.closeBal - allTimeMvmt.debit + allTimeMvmt.credit;
+      } else {
+          // Liab/Equity Closing = Time0 + Cr - Dr => Time0 = Closing - Cr + Dr
+          time0Balance = ledgerInfo.closeBal - allTimeMvmt.credit + allTimeMvmt.debit;
+      }
+      
+      // Calculate true opening for the selected FY (March 31 of Previous Year)
+      let fyOpening = time0Balance;
+      if (mainGroup === "Assets") {
+          fyOpening = fyOpening + preMvmt.debit - preMvmt.credit;
+      } else {
+          fyOpening = fyOpening + preMvmt.credit - preMvmt.debit;
+      }
+
       const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
       
       let closingBalance = 0;
       
       months.forEach((month) => {
         if (month === "Opening") {
-            if (mainGroup === "Assets") {
-                closingBalance = ledgerInfo.nature === "DEBIT" ? Math.abs(ledgerInfo.openBal) : -Math.abs(ledgerInfo.openBal);
-            } else {
-                closingBalance = ledgerInfo.nature === "CREDIT" ? Math.abs(ledgerInfo.openBal) : -Math.abs(ledgerInfo.openBal);
-            }
+            closingBalance = fyOpening;
         } else {
             const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
             if (mainGroup === "Assets") {
@@ -260,8 +302,8 @@ export async function GET(
 
     // 5. Calculate Current Year Profit from PNL dynamically
     const profitMovements: Record<string, number> = {};
-    const monthsForProfit = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
-    monthsForProfit.forEach(m => profitMovements[m] = 0);
+    const fullMonths = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+    fullMonths.forEach(m => profitMovements[m] = 0);
 
     ledgers.forEach(ledger => {
       const manualMapping = bsMappings.find(m => m.softwareLedgerName.toLowerCase() === ledger.name.toLowerCase());
@@ -272,16 +314,16 @@ export async function GET(
       const isExpense = ["Purchase Accounts", "Direct Expenses", "Indirect Expenses"].includes(effectiveGroup);
 
       if (isIncome || isExpense) {
-          const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: "CREDIT" };
-          let runBal = ledgerInfo.nature === "DEBIT" ? Math.abs(ledgerInfo.openBal) : -Math.abs(ledgerInfo.openBal);
+          // P&L ledgers always start the year with 0 balance
+          let runBal = 0; 
           
-          monthsForProfit.forEach(month => {
+          fullMonths.forEach(month => {
               if (month !== "Opening") {
                   const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
                   runBal += (mvmt.debit - mvmt.credit);
               }
-              // Income normal is Credit, Expense normal is Debit
-              // So Profit = Income (Credit = -runBal) - Expense (Debit = runBal)
+              // Income normal is Credit (-), Expense normal is Debit (+)
+              // Profit = Income - Expense
               if (isIncome) {
                   profitMovements[month] += (-runBal);
               } else if (isExpense) {
@@ -291,7 +333,7 @@ export async function GET(
       }
     });
 
-    monthsForProfit.forEach(month => {
+    fullMonths.forEach(month => {
       const exactProfit = profitMovements[month] || 0;
       dataNodes.push({
         id: `cy-profit-system-${month}`,
@@ -306,9 +348,9 @@ export async function GET(
       });
     });
 
-    // 6. Calculate Difference to ensure BS tallies
-    const finalAssets = dataNodes.filter(n => n.mainGroup === "Assets" && n.period === "Feb").reduce((sum, n) => sum + (n.amount || 0), 0);
-    const finalLiabs = dataNodes.filter(n => n.mainGroup === "Liabilities" && n.period === "Feb").reduce((sum, n) => sum + (n.amount || 0), 0);
+    // 6. Calculate Difference to ensure BS tallies (just for sanity check)
+    const finalAssets = dataNodes.filter(n => n.mainGroup === "Assets" && n.period === "Mar").reduce((sum, n) => sum + (n.amount || 0), 0);
+    const finalLiabs = dataNodes.filter(n => n.mainGroup === "Liabilities" && n.period === "Mar").reduce((sum, n) => sum + (n.amount || 0), 0);
     const diff = finalAssets - finalLiabs;
 
     return NextResponse.json({
