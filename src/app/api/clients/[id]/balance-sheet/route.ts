@@ -175,40 +175,45 @@ export async function GET(
       let finalGroup = mainGroup === "Assets" ? "Current Assets" : "Current Liabilities";
       let finalSubGroup = mainGroup === "Assets" ? "Other Current Assets" : "Other Current Liabilities";
       
-      const gMatch = effectiveGroup.toLowerCase();
-      
-      if (mainGroup === "Liabilities") {
-          if (["owner's funds", "capital account", "reserves & surplus", "retained earnings"].some(x => gMatch.includes(x))) {
-              finalGroup = "Owner's Funds";
-              finalSubGroup = gMatch.includes("capital") ? "Share Capital" : (gMatch.includes("profit") ? "Profit & Loss Account" : "Reserves & Surplus");
-          } else if (["non-current", "long term", "secured loans", "unsecured loans", "loans (liability)"].some(x => gMatch.includes(x))) {
-              finalGroup = "Non-Current Liabilities";
-              finalSubGroup = "Unsecured Loans";
-          } else {
-              finalGroup = "Current Liabilities";
-              if (["duties & taxes", "tax"].some(x => gMatch.includes(x))) finalSubGroup = "Duties & Taxes";
-              else if (["suspense"].some(x => gMatch.includes(x))) finalSubGroup = "Suspense A/c";
-              else if (["sundry creditors", "trade payable", "sundry creditor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Payable";
-              else if (["provisions", "provision"].some(x => gMatch.includes(x))) finalSubGroup = "Provisions";
-              else if (["short term borrowing", "bank od"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Borrowing";
-              else finalSubGroup = "Other Current Liabilities";
-          }
+      if (customMapping) {
+          finalGroup = customMapping.groupName;
+          finalSubGroup = customMapping.subGroupName || customMapping.groupName;
       } else {
-          if (["branch", "division"].some(x => gMatch.includes(x))) {
-              finalGroup = "Branch Account";
-              finalSubGroup = "Branch Account";
-          } else if (["non-current", "fixed assets", "investments", "investment"].some(x => gMatch.includes(x))) {
-              finalGroup = "Non-Current Assets";
-              finalSubGroup = gMatch.includes("investment") ? "Investments" : "Fixed Assets";
+          const gMatch = effectiveGroup.toLowerCase();
+          
+          if (mainGroup === "Liabilities") {
+              if (["owner's funds", "capital account", "reserves & surplus", "retained earnings"].some(x => gMatch.includes(x))) {
+                  finalGroup = "Owner's Funds";
+                  finalSubGroup = gMatch.includes("capital") ? "Share Capital" : (gMatch.includes("profit") ? "Profit & Loss Account" : "Reserves & Surplus");
+              } else if (["non-current", "long term", "secured loans", "unsecured loans", "loans (liability)"].some(x => gMatch.includes(x))) {
+                  finalGroup = "Non-Current Liabilities";
+                  finalSubGroup = "Unsecured Loans";
+              } else {
+                  finalGroup = "Current Liabilities";
+                  if (["duties & taxes", "tax"].some(x => gMatch.includes(x))) finalSubGroup = "Duties & Taxes";
+                  else if (["suspense"].some(x => gMatch.includes(x))) finalSubGroup = "Suspense A/c";
+                  else if (["sundry creditors", "trade payable", "sundry creditor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Payable";
+                  else if (["provisions", "provision"].some(x => gMatch.includes(x))) finalSubGroup = "Provisions";
+                  else if (["short term borrowing", "bank od"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Borrowing";
+                  else finalSubGroup = "Other Current Liabilities";
+              }
           } else {
-              finalGroup = "Current Assets";
-              if (["closing stock", "inventory", "stock"].some(x => gMatch.includes(x))) finalSubGroup = "Closing Stock";
-              else if (["sundry debtors", "trade receivable", "sundry debtor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Receivable";
-              else if (["cash"].some(x => gMatch.includes(x))) finalSubGroup = "Cash-In-Hand";
-              else if (["bank"].some(x => gMatch.includes(x))) finalSubGroup = "Bank Accounts";
-              else if (["deposit"].some(x => gMatch.includes(x))) finalSubGroup = "Deposits (Assets)";
-              else if (["loan", "advance"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Loan & Advance";
-              else finalSubGroup = "Other Current Assets";
+              if (["branch", "division"].some(x => gMatch.includes(x))) {
+                  finalGroup = "Branch Account";
+                  finalSubGroup = "Branch Account";
+              } else if (["non-current", "fixed assets", "investments", "investment"].some(x => gMatch.includes(x))) {
+                  finalGroup = "Non-Current Assets";
+                  finalSubGroup = gMatch.includes("investment") ? "Investments" : "Fixed Assets";
+              } else {
+                  finalGroup = "Current Assets";
+                  if (["closing stock", "inventory", "stock"].some(x => gMatch.includes(x))) finalSubGroup = "Closing Stock";
+                  else if (["sundry debtors", "trade receivable", "sundry debtor"].some(x => gMatch.includes(x))) finalSubGroup = "Trade Receivable";
+                  else if (["cash"].some(x => gMatch.includes(x))) finalSubGroup = "Cash-In-Hand";
+                  else if (["bank"].some(x => gMatch.includes(x))) finalSubGroup = "Bank Accounts";
+                  else if (["deposit"].some(x => gMatch.includes(x))) finalSubGroup = "Deposits (Assets)";
+                  else if (["loan", "advance"].some(x => gMatch.includes(x))) finalSubGroup = "Short Term Loan & Advance";
+                  else finalSubGroup = "Other Current Assets";
+              }
           }
       }
       
@@ -218,19 +223,26 @@ export async function GET(
 
       const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
       const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
-      // Initialize running balance using CA logic
-      let runningBalance = ledgerInfo.nature === "DEBIT" ? Math.abs(ledgerInfo.openBal) : -Math.abs(ledgerInfo.openBal);
       
-      months.forEach((month, idx) => {
-        if (month !== "Opening") {
+      let closingBalance = 0;
+      
+      months.forEach((month) => {
+        if (month === "Opening") {
+            if (mainGroup === "Assets") {
+                closingBalance = ledgerInfo.nature === "DEBIT" ? Math.abs(ledgerInfo.openBal) : -Math.abs(ledgerInfo.openBal);
+            } else {
+                closingBalance = ledgerInfo.nature === "CREDIT" ? Math.abs(ledgerInfo.openBal) : -Math.abs(ledgerInfo.openBal);
+            }
+        } else {
             const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
-            runningBalance += (mvmt.debit - mvmt.credit);
+            if (mainGroup === "Assets") {
+                // Asset Formula: Opening Balance + Debit - Credit
+                closingBalance = closingBalance + mvmt.debit - mvmt.credit;
+            } else {
+                // Liability and Equity Formula: Opening Balance + Credit - Debit
+                closingBalance = closingBalance + mvmt.credit - mvmt.debit;
+            }
         }
-
-        // Apply strict signs per user instruction:
-        // Asset: Opening Balance + Debit - Credit (which is exactly runningBalance)
-        // Liability: Opening Balance + Credit - Debit (which is -runningBalance)
-        let displayBalance = mainGroup === "Assets" ? runningBalance : -runningBalance;
         
         dataNodes.push({
           id: `${ledger.id}-${month}`,
@@ -240,7 +252,7 @@ export async function GET(
           subGroupName: effectiveSubGroup,
           subHeadName: customMapping?.subHeadName,
           ledgerName: ledger.name,
-          amount: displayBalance,
+          amount: closingBalance,
           nature: ledgerInfo.nature
         });
       });

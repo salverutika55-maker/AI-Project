@@ -163,17 +163,23 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
   return (
     <div className="space-y-8">
       {/* Validation Banner */}
-      {!isBalanced && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 flex items-center gap-4 animate-in slide-in-from-top-4">
-          <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-red-500 uppercase tracking-widest">Balance Sheet Out of Balance</h3>
-            <p className="text-xs font-bold text-red-400/80 mt-1">Difference: {formatCurrency(diff)} (as of {latestMonth}). Check unmapped ledgers or P&L reconciliation.</p>
-          </div>
+      <div className={`border rounded-2xl p-4 flex items-center gap-4 ${isBalanced ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'} animate-in slide-in-from-top-4`}>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isBalanced ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+          {isBalanced ? <Activity className="w-5 h-5 text-emerald-500" /> : <AlertTriangle className="w-5 h-5 text-red-500" />}
         </div>
-      )}
+        <div className="flex-1">
+          <h3 className={`text-sm font-black uppercase tracking-widest ${isBalanced ? 'text-emerald-500' : 'text-red-500'}`}>
+            {isBalanced ? 'Balance Sheet Tallied' : 'Balance Sheet Out of Balance'}
+          </h3>
+          <p className={`text-xs font-bold mt-1 ${isBalanced ? 'text-emerald-400/80' : 'text-red-400/80'}`}>
+            Equation: Assets = Liabilities + Equity (Owner's Funds)
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Difference</p>
+          <p className={`text-lg font-black font-mono ${isBalanced ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(diff)}</p>
+        </div>
+      </div>
 
       {/* Main BS UI - Flat Tabular format matching P&L */}
       <div className="bg-[#13131A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
