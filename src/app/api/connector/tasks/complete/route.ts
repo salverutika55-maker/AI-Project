@@ -79,7 +79,7 @@ export async function POST(req: Request) {
             for (const ledger of ledgersArray) {
               if (!ledger.name) continue;
               
-              const groupName = ledger.parentGroup || "Uncategorized";
+              const groupName = ledger.parentGroup || ledger.parent || ledger.groupName || ledger.group || "Uncategorized";
               // Determine nature roughly based on group
               const nature = groupName.toLowerCase().includes("creditor") || 
                              groupName.toLowerCase().includes("liabilit") || 
@@ -97,10 +97,13 @@ export async function POST(req: Request) {
                 where: { clientId, name: ledger.name }
               });
 
+              const closingBalance = ledger.closingBalance || ledger.closing_balance || 0;
+              const openingBalance = ledger.openingBalance || ledger.opening_balance || 0;
+
               if (existingLedger) {
                 await prisma.normalizedLedger.update({
                   where: { id: existingLedger.id },
-                  data: { groupName, nature, isActive: true }
+                  data: { groupName, nature, isActive: true, closingBalance: closingBalance, openingBalance: openingBalance }
                 });
               } else {
                 await prisma.normalizedLedger.create({
@@ -109,7 +112,9 @@ export async function POST(req: Request) {
                     name: ledger.name,
                     groupName,
                     nature,
-                    isActive: true
+                    isActive: true,
+                    closingBalance: closingBalance,
+                    openingBalance: openingBalance
                   }
                 });
               }

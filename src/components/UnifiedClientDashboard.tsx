@@ -334,9 +334,13 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     return totals;
   };
 
-  // For Balance Sheet, we typically only want to see the snapshot at the selected period
+  // For Balance Sheet, we want to see the snapshot from the start of the year up to the selected period
   const bsVisibleMonths = useMemo(() => {
-    return [selectedMonth];
+    // The Balance Sheet always starts with "Opening" representing the Mar closing of the previous year
+    const bsMonthsOrder = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
+    const idx = bsMonthsOrder.indexOf(selectedMonth);
+    if (idx === -1) return ["Opening", selectedMonth];
+    return bsMonthsOrder.slice(0, idx + 1);
   }, [selectedMonth]);
 
   // CALCULATION ENGINE (Copied from SectorDashboard)

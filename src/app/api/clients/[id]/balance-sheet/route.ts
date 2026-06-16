@@ -38,6 +38,31 @@ export async function GET(
       ledgerBalances[l.name] = { openBal: l.openingBalance, closeBal: l.closingBalance, nature: l.nature };
     });
 
+    // 2.5 Fetch Voucher Lines for rolling balances
+    const voucherLines = await prisma.normalizedVoucherLine.findMany({
+      where: { voucher: { clientId: id } },
+      select: {
+        ledgerId: true,
+        amount: true,
+        entryType: true,
+        voucher: { select: { date: true } }
+      }
+    });
+
+    // Aggregate movements per ledger per month
+    const monthlyMovements: Record<string, Record<string, { debit: number, credit: number }>> = {};
+    voucherLines.forEach(vl => {
+        const monthIndex = vl.voucher.date.getMonth(); // 0 = Jan
+        const monthsNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const mName = monthsNames[monthIndex];
+        
+        if (!monthlyMovements[vl.ledgerId]) monthlyMovements[vl.ledgerId] = {};
+        if (!monthlyMovements[vl.ledgerId][mName]) monthlyMovements[vl.ledgerId][mName] = { debit: 0, credit: 0 };
+        
+        if (vl.entryType === "DEBIT") monthlyMovements[vl.ledgerId][mName].debit += vl.amount;
+        else monthlyMovements[vl.ledgerId][mName].credit += vl.amount;
+    });
+
     // 3. Define standard BS Structure
     const structure: any = {
       "Liabilities": {
@@ -81,18 +106,47 @@ export async function GET(
 
     // Combine manual mappings with native Tally groupings for any unmapped ledgers
     ledgers.forEach(ledger => {
-      const manualMapping = bsMappings.find(m => m.softwareLedgerName === ledger.name);
+      let effectiveGroup = ledger.groupName;
+      let effectiveSubGroup = ledger.groupName;
       
-      // Use manual mapping if it exists, otherwise fall back to native Tally group
-      let effectiveGroup = manualMapping ? manualMapping.groupName : ledger.groupName;
-      let effectiveSubGroup = manualMapping ? (manualMapping.subGroupName || effectiveGroup) : effectiveGroup;
-      
-      // Clean non-printable characters from effectiveGroup
-      effectiveGroup = effectiveGroup.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
-      
-      if (!effectiveGroup) {
-          effectiveGroup = "Uncategorized";
-          effectiveSubGroup = "Uncategorized";
+      // Check unified mapping
+      const customMapping = bsMappings.find(m => m.softwareLedgerName.toLowerCase() === ledger.name.toLowerCase());
+      if (customMapping) {
+        effectiveGroup = customMapping.groupName;
+        effectiveSubGroup = customMapping.subGroupName || customMapping.groupName;
+      } else {
+        effectiveGroup = effectiveGroup.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
+        if (!effectiveGroup || effectiveGroup === "Unknown" || effectiveGroup === "Uncategorized") {
+          // Heuristic guessing based on ledger name
+          const n = ledger.name.toLowerCase();
+          if (n.includes("bank") || n.includes("hdfc") || n.includes("icici") || n.includes("sbi")) {
+            effectiveGroup = "Bank Accounts";
+          } else if (n.includes("cash")) {
+            effectiveGroup = "Cash-in-hand";
+          } else if (n.includes("capital") || n.includes("equity")) {
+            effectiveGroup = "Capital Account";
+          } else if (n.includes("gst") || n.includes("tax") || n.includes("tds") || n.includes("duty") || n.includes("cgst") || n.includes("sgst") || n.includes("igst")) {
+            effectiveGroup = "Duties & Taxes";
+          } else if (n.includes("loan") || n.includes("borrowing")) {
+            effectiveGroup = ledger.nature === "CREDIT" ? "Secured Loans" : "Loans & Advances (Asset)";
+          } else if (n.includes("stock") || n.includes("inventory")) {
+            effectiveGroup = "Closing Stock";
+          } else if (n.includes("depreciation") || n.includes("asset") || n.includes("furniture") || n.includes("computer") || n.includes("machinery") || n.includes("vehicle") || n.includes("building")) {
+            effectiveGroup = "Fixed Assets";
+          } else if (n.includes("investment") || n.includes("deposit")) {
+            effectiveGroup = "Investments";
+          } else if (n.includes("payable") || n.includes("creditor") || n.includes("vendor")) {
+            effectiveGroup = "Sundry Creditors";
+          } else if (n.includes("receivable") || n.includes("debtor") || n.includes("customer")) {
+            effectiveGroup = "Sundry Debtors";
+          } else if (n.includes("profit") || n.includes("p&l")) {
+            effectiveGroup = "Reserves & Surplus";
+          } else {
+            // Default based on nature
+            effectiveGroup = ledger.nature === "CREDIT" ? "Current Liabilities" : "Current Assets";
+          }
+          effectiveSubGroup = effectiveGroup;
+        }
       }
 
       let mainGroup = "";
@@ -164,74 +218,71 @@ export async function GET(
 
       const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
       
-      // STEP 3 & 4: Strict Debit/Credit Sign Handling
-      // Assets Normally: Debit = Positive, Credit = Negative
-      // Liabilities & Equity Normally: Credit = Positive, Debit = Negative
+      const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
       
-      let baseOpen = ledgerInfo.openBal;
-      let baseClose = ledgerInfo.closeBal;
-      
-      if (mainGroup === "Assets") {
-          baseOpen = ledgerInfo.nature === "DEBIT" ? Math.abs(baseOpen) : -Math.abs(baseOpen);
-          baseClose = ledgerInfo.nature === "DEBIT" ? Math.abs(baseClose) : -Math.abs(baseClose);
-      } else if (mainGroup === "Liabilities" || mainGroup === "Equity") {
-          baseOpen = ledgerInfo.nature === "CREDIT" ? Math.abs(baseOpen) : -Math.abs(baseOpen);
-          baseClose = ledgerInfo.nature === "CREDIT" ? Math.abs(baseClose) : -Math.abs(baseClose);
-      }
-      
-      const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+      // Initialize running balance using CA logic
+      let runningBalance = ledgerInfo.nature === "DEBIT" ? Math.abs(ledgerInfo.openBal) : -Math.abs(ledgerInfo.openBal);
       
       months.forEach((month, idx) => {
-        // User stated: "Balance sheet always shows closing balances of all ledgers."
-        // Removing the percentage mock completely. 
-        // We will display the exact closing balance for every month so that every single cell exactly matches the ERP.
-        let mockedBalance = month === "Opening" ? baseOpen : baseClose; 
+        if (month !== "Opening") {
+            const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
+            runningBalance += (mvmt.debit - mvmt.credit);
+        }
 
-
+        // Apply strict signs per user instruction:
+        // Asset: Opening Balance + Debit - Credit (which is exactly runningBalance)
+        // Liability: Opening Balance + Credit - Debit (which is -runningBalance)
+        let displayBalance = mainGroup === "Assets" ? runningBalance : -runningBalance;
+        
         dataNodes.push({
           id: `${ledger.id}-${month}`,
           period: month,
           mainGroup,
           groupName: effectiveGroup,
           subGroupName: effectiveSubGroup,
-          subHeadName: manualMapping?.subHeadName,
+          subHeadName: customMapping?.subHeadName,
           ledgerName: ledger.name,
-          amount: mockedBalance,
+          amount: displayBalance,
           nature: ledgerInfo.nature
         });
       });
     });
 
-    // 5. Calculate Current Year Profit from PNL
-    // Instead of forcing Assets - Liabilities, calculate true Profit from Income & Expense ledgers
-    let trueProfitOpening = 0;
-    let trueProfitClosing = 0;
+    // 5. Calculate Current Year Profit from PNL dynamically
+    const profitMovements: Record<string, number> = {};
+    const monthsForProfit = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
+    monthsForProfit.forEach(m => profitMovements[m] = 0);
+
     ledgers.forEach(ledger => {
-      const manualMapping = bsMappings.find(m => m.softwareLedgerName === ledger.name);
+      const manualMapping = bsMappings.find(m => m.softwareLedgerName.toLowerCase() === ledger.name.toLowerCase());
       let effectiveGroup = manualMapping ? manualMapping.groupName : ledger.groupName;
       effectiveGroup = effectiveGroup.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
 
       const isIncome = ["Sales Accounts", "Direct Incomes", "Indirect Incomes"].includes(effectiveGroup);
       const isExpense = ["Purchase Accounts", "Direct Expenses", "Indirect Expenses"].includes(effectiveGroup);
 
-      const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: "CREDIT" };
-      
-      if (isIncome) {
-          trueProfitOpening += (ledgerInfo.nature === "CREDIT" ? ledgerInfo.openBal : -ledgerInfo.openBal);
-          trueProfitClosing += (ledgerInfo.nature === "CREDIT" ? ledgerInfo.closeBal : -ledgerInfo.closeBal);
-      } else if (isExpense) {
-          trueProfitOpening -= (ledgerInfo.nature === "DEBIT" ? ledgerInfo.openBal : -ledgerInfo.openBal);
-          trueProfitClosing -= (ledgerInfo.nature === "DEBIT" ? ledgerInfo.closeBal : -ledgerInfo.closeBal);
+      if (isIncome || isExpense) {
+          const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: "CREDIT" };
+          let runBal = ledgerInfo.nature === "DEBIT" ? Math.abs(ledgerInfo.openBal) : -Math.abs(ledgerInfo.openBal);
+          
+          monthsForProfit.forEach(month => {
+              if (month !== "Opening") {
+                  const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
+                  runBal += (mvmt.debit - mvmt.credit);
+              }
+              // Income normal is Credit, Expense normal is Debit
+              // So Profit = Income (Credit = -runBal) - Expense (Debit = runBal)
+              if (isIncome) {
+                  profitMovements[month] += (-runBal);
+              } else if (isExpense) {
+                  profitMovements[month] -= (runBal);
+              }
+          });
       }
     });
-    
-    const finalProfitOpen = trueProfitOpening;
-    const finalProfitClose = trueProfitClosing;
 
-    const monthsForProfit = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
-    monthsForProfit.forEach((month, idx) => {
-      let exactProfit = month === "Opening" ? finalProfitOpen : finalProfitClose;
-
+    monthsForProfit.forEach(month => {
+      const exactProfit = profitMovements[month] || 0;
       dataNodes.push({
         id: `cy-profit-system-${month}`,
         period: month,
@@ -246,8 +297,8 @@ export async function GET(
     });
 
     // 6. Calculate Difference to ensure BS tallies
-    const finalAssets = dataNodes.filter(n => n.mainGroup === "Assets" && n.period === "Mar").reduce((sum, n) => sum + (n.amount || 0), 0);
-    const finalLiabs = dataNodes.filter(n => n.mainGroup === "Liabilities" && n.period === "Mar").reduce((sum, n) => sum + (n.amount || 0), 0);
+    const finalAssets = dataNodes.filter(n => n.mainGroup === "Assets" && n.period === "Feb").reduce((sum, n) => sum + (n.amount || 0), 0);
+    const finalLiabs = dataNodes.filter(n => n.mainGroup === "Liabilities" && n.period === "Feb").reduce((sum, n) => sum + (n.amount || 0), 0);
     const diff = finalAssets - finalLiabs;
 
     return NextResponse.json({

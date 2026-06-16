@@ -78,12 +78,21 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
     
     if (!structure) return rows;
 
+    // Helper to format the period string (e.g. "Opening" -> "Mar 2026", "Jan" -> "Jan 2027")
+    const formatPeriod = (m: string) => {
+      if (m === "Opening") return `Mar ${selectedYear}`;
+      const nextYearMonths = ["Jan", "Feb", "Mar"];
+      const y = nextYearMonths.includes(m) ? selectedYear + 1 : selectedYear;
+      return `${m} ${y}`;
+    };
+
     // Main Header (Liabilities / Assets)
     rows.push(
       <tr key={main} className="bg-white/[0.05] border-b border-white/10">
         <td className="sticky left-0 z-30 p-4 text-sm font-black text-cyan-400 uppercase tracking-widest">{main}</td>
         {visibleMonths.map(month => (
-          <td key={month} className="p-4 text-right text-sm font-mono font-black text-cyan-400 border-l border-white/10 bg-cyan-500/5">
+          <td key={month} className="p-4 text-right text-sm font-black text-cyan-400 border-l border-white/10 bg-cyan-500/5">
+            <div className="mb-1 opacity-60 text-xs">{formatPeriod(month)}</div>
             {formatCurrency(getMainTotal(main, month))}
           </td>
         ))}
