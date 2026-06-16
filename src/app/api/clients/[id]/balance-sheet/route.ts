@@ -177,44 +177,45 @@ export async function GET(
       effectiveGroup = finalGroup;
       effectiveSubGroup = finalSubGroup;
 
-      const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
+      const ledgerInfo = ledgerBalances[ledger.name] || { openBal: ledger.openingBalance, closeBal: ledger.closingBalance, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
       const allTimeMvmt = totalMovements[ledger.id] || { debit: 0, credit: 0 };
-      const preMvmt = preFYMovements[ledger.id] || { debit: 0, credit: 0 };
+      const fyMvmt = { debit: 0, credit: 0 };
+      const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+      months.forEach(m => {
+          if (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][m]) {
+              fyMvmt.debit += monthlyMovements[ledger.id][m].debit;
+              fyMvmt.credit += monthlyMovements[ledger.id][m].credit;
+          }
+      });
       
-      // Calculate Time 0 absolute base balance (Backward calculation from Tally's snapshot closingBalance)
-      let time0Balance = 0;
-      if (mainGroup === "Assets") {
-          // Asset Closing = Time0 + Dr - Cr => Time0 = Closing - Dr + Cr
-          time0Balance = ledgerInfo.closeBal - allTimeMvmt.debit + allTimeMvmt.credit;
-      } else {
-          // Liab/Equity Closing = Time0 + Cr - Dr => Time0 = Closing - Cr + Dr
-          time0Balance = ledgerInfo.closeBal - allTimeMvmt.credit + allTimeMvmt.debit;
-      }
-      
-      // Calculate true opening for the selected FY (March 31 of Previous Year)
-      let fyOpening = time0Balance;
-      if (mainGroup === "Assets") {
-          fyOpening = fyOpening + preMvmt.debit - preMvmt.credit;
-      } else {
-          fyOpening = fyOpening + preMvmt.credit - preMvmt.debit;
+      let fyOpening = ledger.openingBalance;
+      if (fyOpening === 0) {
+          if (mainGroup === "Assets") {
+              fyOpening = ledgerInfo.closeBal - fyMvmt.debit + fyMvmt.credit;
+          } else {
+              fyOpening = ledgerInfo.closeBal - fyMvmt.credit + fyMvmt.debit;
+          }
       }
 
-      const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+      const allMonths = ["Opening", ...months];
+      let runningBalance = fyOpening;
       
-      let closingBalance = 0;
-      
-      months.forEach((month) => {
+      allMonths.forEach((month) => {
+        let exactBalance = 0;
+        
         if (month === "Opening") {
-            closingBalance = fyOpening;
+            exactBalance = fyOpening;
+        } else if (month === "Mar") {
+            exactBalance = ledgerInfo.closeBal; // Anchor strictly to ERP closing for the final month
+            runningBalance = exactBalance;
         } else {
             const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
             if (mainGroup === "Assets") {
-                // Asset Formula: Opening Balance + Debit - Credit
-                closingBalance = closingBalance + mvmt.debit - mvmt.credit;
+                runningBalance = runningBalance + mvmt.debit - mvmt.credit;
             } else {
-                // Liability and Equity Formula: Opening Balance + Credit - Debit
-                closingBalance = closingBalance + mvmt.credit - mvmt.debit;
+                runningBalance = runningBalance + mvmt.credit - mvmt.debit;
             }
+            exactBalance = runningBalance;
         }
         
         dataNodes.push({
@@ -225,7 +226,7 @@ export async function GET(
           subGroupName: effectiveSubGroup,
           subHeadName: customMapping?.subHeadName,
           ledgerName: ledger.name,
-          amount: closingBalance,
+          amount: exactBalance,
           nature: ledgerInfo.nature
         });
       });

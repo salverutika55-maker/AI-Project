@@ -125,20 +125,23 @@ export async function GET(
         if (finalSubGroup !== subHeadName) return;
 
         const allTimeMvmt = totalMovements[l.id] || { debit: 0, credit: 0 };
-        const preMvmt = preFYMovements[l.id] || { debit: 0, credit: 0 };
         
-        let time0Balance = 0;
-        if (mainGroup === "Assets") {
-            time0Balance = l.closingBalance - allTimeMvmt.debit + allTimeMvmt.credit;
-        } else {
-            time0Balance = l.closingBalance - allTimeMvmt.credit + allTimeMvmt.debit;
-        }
-        
-        let fyOpening = time0Balance;
-        if (mainGroup === "Assets") {
-            fyOpening = fyOpening + preMvmt.debit - preMvmt.credit;
-        } else {
-            fyOpening = fyOpening + preMvmt.credit - preMvmt.debit;
+        const fyMvmt = { debit: 0, credit: 0 };
+        const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+        months.forEach(m => {
+            if (monthlyMovements[l.id] && monthlyMovements[l.id][m]) {
+                fyMvmt.debit += monthlyMovements[l.id][m].debit;
+                fyMvmt.credit += monthlyMovements[l.id][m].credit;
+            }
+        });
+
+        let fyOpening = l.openingBalance;
+        if (fyOpening === 0) {
+            if (mainGroup === "Assets") {
+                fyOpening = l.closingBalance - fyMvmt.debit + fyMvmt.credit;
+            } else {
+                fyOpening = l.closingBalance - fyMvmt.credit + fyMvmt.debit;
+            }
         }
 
         let runningBalance = fyOpening;
@@ -146,8 +149,12 @@ export async function GET(
         const fullYearMonths = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
         
         fullYearMonths.forEach(m => {
+            let exactBalance = 0;
             if (m === "Opening") {
-                runningBalance = fyOpening;
+                exactBalance = fyOpening;
+            } else if (m === "Mar") {
+                exactBalance = l.closingBalance;
+                runningBalance = exactBalance;
             } else {
                 const mvmt = (monthlyMovements[l.id] && monthlyMovements[l.id][m]) || { debit: 0, credit: 0 };
                 if (mainGroup === "Assets") {
@@ -155,9 +162,10 @@ export async function GET(
                 } else {
                     runningBalance = runningBalance + mvmt.credit - mvmt.debit;
                 }
+                exactBalance = runningBalance;
             }
             if (requestedMonths.includes(m)) {
-                amountsByMonth[m] = runningBalance;
+                amountsByMonth[m] = exactBalance;
             }
         });
 
