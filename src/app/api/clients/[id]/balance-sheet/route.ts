@@ -217,9 +217,7 @@ export async function GET(
       effectiveSubGroup = finalSubGroup;
 
       const ledgerInfo = ledgerBalances[ledger.name] || { openBal: 0, closeBal: 0, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
-      
-      const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb"];
-      
+      const months = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
       // Initialize running balance using CA logic
       let runningBalance = ledgerInfo.nature === "DEBIT" ? Math.abs(ledgerInfo.openBal) : -Math.abs(ledgerInfo.openBal);
       
