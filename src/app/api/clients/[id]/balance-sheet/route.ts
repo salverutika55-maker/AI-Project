@@ -168,7 +168,7 @@ export async function GET(
       
       if (customMapping) {
           finalGroup = customMapping.groupName;
-          finalSubGroup = customMapping.subGroupName || customMapping.groupName;
+          finalSubGroup = customMapping.subHeadName || customMapping.subGroupName || customMapping.groupName;
       } else if (isPnL) {
           finalGroup = "Owner's Funds";
           finalSubGroup = "Profit & Loss Account";
@@ -188,7 +188,8 @@ export async function GET(
           }
       });
       
-      let fyOpening = ledger.openingBalance;
+      const preFY = preFYMovements[ledger.id] || { debit: 0, credit: 0 };
+      let fyOpening = ledger.openingBalance + preFY.debit - preFY.credit;
 
       const allMonths = ["Opening", ...months];
       let runningBalance = fyOpening;

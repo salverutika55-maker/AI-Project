@@ -36,7 +36,7 @@ export async function GET(
 
     const movements = await prisma.normalizedVoucherLine.findMany({
       where: { 
-        clientId: id,
+        voucher: { clientId: id },
       },
       select: {
         ledgerId: true,
@@ -65,7 +65,7 @@ export async function GET(
         }
     });
 
-    const auditReport = [];
+    const auditReport: any[] = [];
 
     ledgers.forEach(ledger => {
       const customMapping = bsMappings.find(m => m.softwareLedgerName.toLowerCase() === ledger.name.toLowerCase());
