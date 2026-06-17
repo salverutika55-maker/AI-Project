@@ -104,27 +104,38 @@ export default function LedgerDrilldownDrawer({
 
           {/* Month Selector */}
           <div className="flex gap-2 mb-4">
-            {months.map(m => (
-              <button 
-                key={m}
-                onClick={() => setSelectedMonth(m)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedMonth === m ? 'bg-cyan-500 text-black' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
-              >
-                {m}
-              </button>
-            ))}
+            {months.map(m => {
+              const displayLabel = m === "Opening" ? "Mar" : m;
+              return (
+                <button 
+                  key={m}
+                  onClick={() => setSelectedMonth(m)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedMonth === m ? 'bg-cyan-500 text-black' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
+                >
+                  {displayLabel}
+                </button>
+              );
+            })}
           </div>
 
           {/* Totals Summary */}
-          <div className="bg-white/5 border border-white/5 rounded-xl overflow-hidden flex flex-col p-4">
-             <div className="flex justify-between items-center">
-                 <div className="text-sm text-slate-400 font-bold">Total (Statement): <span className="text-white font-black">{formatCurrency(totalAmounts[selectedMonth] || 0)}</span></div>
-                 <div className="text-sm text-slate-400 font-bold">Ledgers Sum: 
-                    <span className="text-emerald-400 font-black ml-2">
-                       {formatCurrency(ledgers.reduce((sum, l) => sum + (l.amounts[selectedMonth]?.closing || 0), 0))}
-                    </span>
-                 </div>
-             </div>
+          <div className="bg-white/5 border border-white/5 rounded-xl overflow-hidden flex flex-col p-4 space-y-2">
+              <div className="flex items-center gap-3">
+                  <div className="w-32 text-xs text-slate-400 font-bold uppercase tracking-widest">Total Statement:</div>
+                  <div className="text-sm text-white font-black">{formatCurrency(totalAmounts[selectedMonth] || 0)}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                  <div className="w-32 text-xs text-slate-400 font-bold uppercase tracking-widest">Ledgers Sum:</div>
+                  <div className="text-sm text-cyan-400 font-black">
+                      {formatCurrency(ledgers.reduce((sum, l) => sum + (l.amounts[selectedMonth]?.closing || 0), 0))}
+                  </div>
+              </div>
+              <div className="flex items-center gap-3 border-t border-white/10 pt-2 mt-2">
+                  <div className="w-32 text-xs text-slate-400 font-bold uppercase tracking-widest">Variance:</div>
+                  <div className={`text-sm font-black ${Math.abs((totalAmounts[selectedMonth] || 0) - ledgers.reduce((sum, l) => sum + (l.amounts[selectedMonth]?.closing || 0), 0)) > 1 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {formatCurrency(Math.abs((totalAmounts[selectedMonth] || 0) - ledgers.reduce((sum, l) => sum + (l.amounts[selectedMonth]?.closing || 0), 0)))}
+                  </div>
+              </div>
           </div>
         </div>
 
