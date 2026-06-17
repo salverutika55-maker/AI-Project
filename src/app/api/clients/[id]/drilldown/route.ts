@@ -136,13 +136,6 @@ export async function GET(
         });
 
         let fyOpening = l.openingBalance;
-        if (fyOpening === 0) {
-            if (mainGroup === "Assets") {
-                fyOpening = l.closingBalance - fyMvmt.debit + fyMvmt.credit;
-            } else {
-                fyOpening = l.closingBalance - fyMvmt.credit + fyMvmt.debit;
-            }
-        }
 
         let runningBalance = fyOpening;
         const amountsByMonth: Record<string, { opening: number, debit: number, credit: number, closing: number }> = {};
@@ -156,12 +149,6 @@ export async function GET(
 
             if (m === "Opening") {
                 exactBalance = fyOpening;
-            } else if (m === "Mar") {
-                const mvmt = (monthlyMovements[l.id] && monthlyMovements[l.id][m]) || { debit: 0, credit: 0 };
-                mDebit = mvmt.debit;
-                mCredit = mvmt.credit;
-                exactBalance = l.closingBalance;
-                runningBalance = exactBalance;
             } else {
                 const mvmt = (monthlyMovements[l.id] && monthlyMovements[l.id][m]) || { debit: 0, credit: 0 };
                 mDebit = mvmt.debit;

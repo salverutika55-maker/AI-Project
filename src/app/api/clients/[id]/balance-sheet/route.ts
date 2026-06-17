@@ -189,10 +189,6 @@ export async function GET(
       });
       
       let fyOpening = ledger.openingBalance;
-      if (fyOpening === 0) {
-          // Universal Fallback Formula: Opening = Closing - Debit + Credit
-          fyOpening = ledgerInfo.closeBal - fyMvmt.debit + fyMvmt.credit;
-      }
 
       const allMonths = ["Opening", ...months];
       let runningBalance = fyOpening;
@@ -202,14 +198,25 @@ export async function GET(
         
         if (month === "Opening") {
             exactBalance = fyOpening;
-        } else if (month === "Mar") {
-            exactBalance = ledgerInfo.closeBal; // Anchor strictly to ERP closing for the final month
-            runningBalance = exactBalance;
         } else {
             const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
-            // Universal Formula
-            runningBalance = runningBalance + mvmt.debit - mvmt.credit;
+            const startBal = runningBalance;
+            // STRICT UNIVERSAL FORMULA
+            runningBalance = startBal + mvmt.debit - mvmt.credit;
             exactBalance = runningBalance;
+            
+            // Console audit log for the calculation
+            if (month === months[months.length - 1]) { // Log the latest month
+                console.log(JSON.stringify({
+                  ledger: ledger.name,
+                  opening: startBal,
+                  debit: mvmt.debit,
+                  credit: mvmt.credit,
+                  formula_used: "opening + debit - credit",
+                  calculated_closing: exactBalance,
+                  displayed_balance: exactBalance
+                }, null, 2));
+            }
         }
         
         dataNodes.push({

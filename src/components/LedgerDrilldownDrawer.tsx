@@ -153,7 +153,7 @@ export default function LedgerDrilldownDrawer({
 
         {/* Search */}
         <div className="p-4 border-b border-white/5 bg-[#0F0F16]">
-          <div className="relative">
+          <div className="relative mb-2">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input 
               type="text"
@@ -162,6 +162,10 @@ export default function LedgerDrilldownDrawer({
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-[#1A1A24] border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
             />
+          </div>
+          <div className="flex items-center gap-2 px-1">
+             <AlertCircle className="w-3.5 h-3.5 text-cyan-500" />
+             <span className="text-xs font-mono font-bold text-cyan-500">ENGINE MODE: TRACE BALANCE (Strict Formula: Opening + Debit - Credit)</span>
           </div>
         </div>
 
