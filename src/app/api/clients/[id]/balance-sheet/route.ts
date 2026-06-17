@@ -92,18 +92,19 @@ export async function GET(
     const structure: any = {
       "Liabilities": {
         "Owner's Funds": {
-          "Share Capital": {},
+          "Capital Account": {},
           "Reserves & Surplus": {},
           "Profit & Loss Account": {}
         },
         "Non-Current Liabilities": {
+          "Secured Loans": {},
           "Unsecured Loans": {}
         },
         "Current Liabilities": {
           "Short Term Borrowing": {},
           "Duties & Taxes": {},
           "Suspense A/c": {},
-          "Trade Payable": {},
+          "Trade Payables": {},
           "Provisions": {},
           "Other Current Liabilities": {}
         }
@@ -115,11 +116,11 @@ export async function GET(
         },
         "Current Assets": {
           "Closing Stock": {},
-          "Trade Receivable": {},
-          "Cash-In-Hand": {},
+          "Trade Receivables": {},
+          "Cash-in-hand": {},
           "Bank Accounts": {},
-          "Deposits (Assets)": {},
-          "Short Term Loan & Advance": {},
+          "Deposits (Asset)": {},
+          "Loans & Advances (Asset)": {},
           "Other Current Assets": {}
         },
         "Branch Account": {}
@@ -176,6 +177,10 @@ export async function GET(
       
       effectiveGroup = finalGroup;
       effectiveSubGroup = finalSubGroup;
+
+      if (!structure[mainGroup]) structure[mainGroup] = {};
+      if (!structure[mainGroup][effectiveGroup]) structure[mainGroup][effectiveGroup] = {};
+      if (!structure[mainGroup][effectiveGroup][effectiveSubGroup]) structure[mainGroup][effectiveGroup][effectiveSubGroup] = {};
 
       const ledgerInfo = ledgerBalances[ledger.name] || { openBal: ledger.openingBalance, closeBal: ledger.closingBalance, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
       const allTimeMvmt = totalMovements[ledger.id] || { debit: 0, credit: 0 };
