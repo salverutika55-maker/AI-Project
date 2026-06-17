@@ -98,23 +98,56 @@ export default function LedgerDrilldownDrawer({
           </div>
 
           {/* Totals Summary */}
-          <div className="bg-white/5 border border-white/5 rounded-xl overflow-hidden flex flex-col p-4 space-y-2">
-              <div className="flex items-center gap-3">
-                  <div className="w-32 text-xs text-slate-400 font-bold uppercase tracking-widest">Total Statement:</div>
-                  <div className="text-sm text-white font-black">{formatCurrency(totalAmounts[latestMonth] || 0)}</div>
-              </div>
-              <div className="flex items-center gap-3">
-                  <div className="w-32 text-xs text-slate-400 font-bold uppercase tracking-widest">Ledgers Sum:</div>
-                  <div className="text-sm text-cyan-400 font-black">
-                      {formatCurrency(ledgers.reduce((sum, l) => sum + (l.amounts[latestMonth]?.closing || 0), 0))}
-                  </div>
-              </div>
-              <div className="flex items-center gap-3 border-t border-white/10 pt-2 mt-2">
-                  <div className="w-32 text-xs text-slate-400 font-bold uppercase tracking-widest">Variance:</div>
-                  <div className={`text-sm font-black ${Math.abs((totalAmounts[latestMonth] || 0) - ledgers.reduce((sum, l) => sum + (l.amounts[latestMonth]?.closing || 0), 0)) > 1 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                      {formatCurrency(Math.abs((totalAmounts[latestMonth] || 0) - ledgers.reduce((sum, l) => sum + (l.amounts[latestMonth]?.closing || 0), 0)))}
-                  </div>
-              </div>
+          <div className="bg-white/5 border border-white/5 rounded-xl overflow-hidden p-4 overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr>
+                  <th className="w-40 p-2 text-xs text-slate-500 font-bold uppercase tracking-widest">Summary</th>
+                  {months.map(m => {
+                    const displayLabel = m === "Opening" ? "Mar" : m;
+                    return (
+                      <th key={m} className="p-2 text-right text-xs text-slate-500 font-bold uppercase tracking-widest">
+                        {displayLabel}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {/* Total Statement Row */}
+                <tr className="border-b border-white/5">
+                  <td className="p-2 text-xs text-slate-400 font-bold uppercase tracking-widest">Total Statement:</td>
+                  {months.map(m => (
+                    <td key={m} className="p-2 text-right text-sm text-white font-black">
+                      {formatCurrency(totalAmounts[m] || 0)}
+                    </td>
+                  ))}
+                </tr>
+                {/* Ledgers Sum Row */}
+                <tr className="border-b border-white/5">
+                  <td className="p-2 text-xs text-slate-400 font-bold uppercase tracking-widest">Ledgers Sum:</td>
+                  {months.map(m => (
+                    <td key={m} className="p-2 text-right text-sm text-cyan-400 font-black">
+                      {formatCurrency(ledgers.reduce((sum, l) => sum + (l.amounts[m]?.closing || 0), 0))}
+                    </td>
+                  ))}
+                </tr>
+                {/* Variance Row */}
+                <tr>
+                  <td className="p-2 text-xs text-slate-400 font-bold uppercase tracking-widest">Variance:</td>
+                  {months.map(m => {
+                    const stmtTotal = totalAmounts[m] || 0;
+                    const ledSum = ledgers.reduce((sum, l) => sum + (l.amounts[m]?.closing || 0), 0);
+                    const variance = Math.abs(stmtTotal - ledSum);
+                    return (
+                      <td key={m} className={`p-2 text-right text-sm font-black ${variance > 1 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        {formatCurrency(variance)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
