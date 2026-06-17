@@ -145,27 +145,37 @@ export async function GET(
         }
 
         let runningBalance = fyOpening;
-        const amountsByMonth: Record<string, number> = {};
+        const amountsByMonth: Record<string, { opening: number, debit: number, credit: number, closing: number }> = {};
         const fullYearMonths = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
         
         fullYearMonths.forEach(m => {
             let exactBalance = 0;
+            let monthOpening = runningBalance;
+            let mDebit = 0;
+            let mCredit = 0;
+
             if (m === "Opening") {
                 exactBalance = fyOpening;
             } else if (m === "Mar") {
+                const mvmt = (monthlyMovements[l.id] && monthlyMovements[l.id][m]) || { debit: 0, credit: 0 };
+                mDebit = mvmt.debit;
+                mCredit = mvmt.credit;
                 exactBalance = l.closingBalance;
                 runningBalance = exactBalance;
             } else {
                 const mvmt = (monthlyMovements[l.id] && monthlyMovements[l.id][m]) || { debit: 0, credit: 0 };
-                if (mainGroup === "Assets") {
-                    runningBalance = runningBalance + mvmt.debit - mvmt.credit;
-                } else {
-                    runningBalance = runningBalance + mvmt.credit - mvmt.debit;
-                }
+                mDebit = mvmt.debit;
+                mCredit = mvmt.credit;
+                runningBalance = runningBalance + mvmt.debit - mvmt.credit;
                 exactBalance = runningBalance;
             }
             if (requestedMonths.includes(m)) {
-                amountsByMonth[m] = exactBalance;
+                amountsByMonth[m] = {
+                    opening: monthOpening,
+                    debit: mDebit,
+                    credit: mCredit,
+                    closing: exactBalance
+                };
             }
         });
 

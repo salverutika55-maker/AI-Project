@@ -6,7 +6,7 @@ interface Ledger {
   name: string;
   nature: string;
   groupName: string;
-  amounts: Record<string, number>;
+  amounts: Record<string, { opening: number, debit: number, credit: number, closing: number }>;
   isMapped: boolean;
 }
 
@@ -34,6 +34,13 @@ export default function LedgerDrilldownDrawer({
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState<string>(months[months.length - 1] || "");
+
+  useEffect(() => {
+    if (months.length > 0 && !selectedMonth) {
+      setSelectedMonth(months[months.length - 1]);
+    }
+  }, [months]);
 
   useEffect(() => {
     if (isOpen && subHeadName && months.length > 0) {
@@ -71,7 +78,7 @@ export default function LedgerDrilldownDrawer({
       />
       
       {/* Drawer */}
-      <div className={`fixed inset-y-0 right-0 w-full max-w-2xl bg-[#0F0F16] border-l border-white/10 z-[110] shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out translate-x-0`}>
+      <div className={`fixed inset-y-0 right-0 w-full max-w-4xl bg-[#0F0F16] border-l border-white/10 z-[110] shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out translate-x-0`}>
         
         {/* Header */}
         <div className="p-6 border-b border-white/5 bg-[#13131A]">
@@ -82,7 +89,7 @@ export default function LedgerDrilldownDrawer({
                   {statementType === 'PNL' ? 'Profit & Loss' : 'Balance Sheet'}
                 </span>
                 <span className="px-2 py-0.5 rounded-md text-[9px] font-black tracking-widest uppercase bg-white/5 text-slate-400">
-                  {months.join(', ')} {year}
+                  {year}
                 </span>
               </div>
               <h2 className="text-xl font-black text-white">{subHeadName}</h2>
@@ -95,46 +102,29 @@ export default function LedgerDrilldownDrawer({
             </button>
           </div>
 
+          {/* Month Selector */}
+          <div className="flex gap-2 mb-4">
+            {months.map(m => (
+              <button 
+                key={m}
+                onClick={() => setSelectedMonth(m)}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedMonth === m ? 'bg-cyan-500 text-black' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
           {/* Totals Summary */}
-          <div className="bg-white/5 border border-white/5 rounded-xl overflow-hidden flex flex-col">
-            <table className="w-full text-left border-collapse">
-               <thead>
-                 <tr className="bg-white/5">
-                   <th className="p-3 text-xs text-slate-400 font-bold border-b border-white/5">Totals</th>
-                   {months.map(m => (
-                     <th key={m} className="p-3 text-xs text-slate-400 font-bold text-right border-b border-white/5">{m}</th>
-                   ))}
-                 </tr>
-               </thead>
-               <tbody>
-                 <tr>
-                   <td className="p-3 text-sm text-slate-300 font-bold border-b border-white/5">Statement Total</td>
-                   {months.map(m => (
-                     <td key={m} className="p-3 text-sm font-black text-white text-right border-b border-white/5">{formatCurrency(totalAmounts[m] || 0)}</td>
-                   ))}
-                 </tr>
-                 <tr>
-                   <td className="p-3 text-sm text-slate-300 font-bold">Ledgers Sum</td>
-                   {months.map(m => {
-                     const calculatedTotal = ledgers.reduce((sum, l) => sum + (l.amounts[m] || 0), 0);
-                     const diff = Math.abs((totalAmounts[m] || 0) - calculatedTotal);
-                     return (
-                       <td key={m} className="p-3 text-sm font-black text-emerald-400 text-right">
-                         <div className="flex flex-col items-end">
-                           <span>{formatCurrency(calculatedTotal)}</span>
-                           {diff > 1 && (
-                             <span className="text-[10px] text-rose-400 flex items-center gap-1 mt-1">
-                               <AlertCircle className="w-3 h-3" />
-                               Var: {formatCurrency(diff)}
-                             </span>
-                           )}
-                         </div>
-                       </td>
-                     );
-                   })}
-                 </tr>
-               </tbody>
-            </table>
+          <div className="bg-white/5 border border-white/5 rounded-xl overflow-hidden flex flex-col p-4">
+             <div className="flex justify-between items-center">
+                 <div className="text-sm text-slate-400 font-bold">Total (Statement): <span className="text-white font-black">{formatCurrency(totalAmounts[selectedMonth] || 0)}</span></div>
+                 <div className="text-sm text-slate-400 font-bold">Ledgers Sum: 
+                    <span className="text-emerald-400 font-black ml-2">
+                       {formatCurrency(ledgers.reduce((sum, l) => sum + (l.amounts[selectedMonth]?.closing || 0), 0))}
+                    </span>
+                 </div>
+             </div>
           </div>
         </div>
 
@@ -168,33 +158,41 @@ export default function LedgerDrilldownDrawer({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="sticky top-0 bg-[#0F0F16] z-10">
-                  <th className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest border-b border-white/5">Ledger Details</th>
-                  {months.map(m => (
-                    <th key={m} className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest text-right border-b border-white/5">{m}</th>
-                  ))}
+                  <th className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest border-b border-white/5">Ledger</th>
+                  <th className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest text-right border-b border-white/5">Opening</th>
+                  <th className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest text-right border-b border-white/5">Debit</th>
+                  <th className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest text-right border-b border-white/5">Credit</th>
+                  <th className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest text-right border-b border-white/5">Closing</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredLedgers.map(ledger => (
-                  <tr key={ledger.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
-                    <td className="p-3">
-                      <div className="flex flex-col">
-                        <h4 className="text-sm font-bold text-white mb-1">{ledger.name}</h4>
-                        <div className="flex items-center gap-2">
-                           <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{ledger.groupName}</span>
-                           <span className="text-[10px] text-slate-600 font-bold uppercase px-1.5 py-0.5 bg-white/5 rounded">
-                             {ledger.nature}
-                           </span>
+                {filteredLedgers.map(ledger => {
+                  const data = ledger.amounts[selectedMonth] || { opening: 0, debit: 0, credit: 0, closing: 0 };
+                  return (
+                    <tr key={ledger.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
+                      <td className="p-3">
+                        <div className="flex flex-col">
+                          <h4 className="text-sm font-bold text-white mb-1">{ledger.name}</h4>
+                          <div className="flex items-center gap-2">
+                             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{ledger.groupName}</span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    {months.map(m => (
-                      <td key={m} className="p-3 text-right">
-                        <span className="text-sm font-mono font-black text-slate-300 group-hover:text-white transition-colors">{formatCurrency(ledger.amounts[m] || 0)}</span>
                       </td>
-                    ))}
-                  </tr>
-                ))}
+                      <td className="p-3 text-right">
+                        <span className="text-sm font-mono text-slate-400">{formatCurrency(data.opening)}</span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <span className="text-sm font-mono text-slate-400">{formatCurrency(data.debit)}</span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <span className="text-sm font-mono text-slate-400">{formatCurrency(data.credit)}</span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <span className="text-sm font-mono font-black text-white">{formatCurrency(data.closing)}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

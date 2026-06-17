@@ -90,19 +90,12 @@ export async function GET(
       // Calculate Fallback Opening if ERP Opening is 0
       let calculatedOpening = ledger.openingBalance;
       if (calculatedOpening === 0) {
-          if (mainGroup === "Assets") {
-              calculatedOpening = ledger.closingBalance - fyMvmt.debit + fyMvmt.credit;
-          } else {
-              calculatedOpening = ledger.closingBalance - fyMvmt.credit + fyMvmt.debit;
-          }
+          // Universal Formula Fallback
+          calculatedOpening = ledger.closingBalance - fyMvmt.debit + fyMvmt.credit;
       }
 
-      let expectedClosing = 0;
-      if (mainGroup === "Assets") {
-          expectedClosing = calculatedOpening + fyMvmt.debit - fyMvmt.credit;
-      } else {
-          expectedClosing = calculatedOpening + fyMvmt.credit - fyMvmt.debit;
-      }
+      // Universal Closing Formula
+      let expectedClosing = calculatedOpening + fyMvmt.debit - fyMvmt.credit;
 
       auditReport.push({
           ledgerId: ledger.id,

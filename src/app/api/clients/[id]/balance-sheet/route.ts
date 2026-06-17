@@ -190,11 +190,8 @@ export async function GET(
       
       let fyOpening = ledger.openingBalance;
       if (fyOpening === 0) {
-          if (mainGroup === "Assets") {
-              fyOpening = ledgerInfo.closeBal - fyMvmt.debit + fyMvmt.credit;
-          } else {
-              fyOpening = ledgerInfo.closeBal - fyMvmt.credit + fyMvmt.debit;
-          }
+          // Universal Fallback Formula: Opening = Closing - Debit + Credit
+          fyOpening = ledgerInfo.closeBal - fyMvmt.debit + fyMvmt.credit;
       }
 
       const allMonths = ["Opening", ...months];
@@ -210,11 +207,8 @@ export async function GET(
             runningBalance = exactBalance;
         } else {
             const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
-            if (mainGroup === "Assets") {
-                runningBalance = runningBalance + mvmt.debit - mvmt.credit;
-            } else {
-                runningBalance = runningBalance + mvmt.credit - mvmt.debit;
-            }
+            // Universal Formula
+            runningBalance = runningBalance + mvmt.debit - mvmt.credit;
             exactBalance = runningBalance;
         }
         
