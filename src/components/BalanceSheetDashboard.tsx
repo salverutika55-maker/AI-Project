@@ -11,6 +11,7 @@ interface BalanceSheetDashboardProps {
 export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr", "May"], selectedYear = 2024 }: BalanceSheetDashboardProps) {
   const [data, setData] = useState<any>(null);
   const [diagnostics, setDiagnostics] = useState<any[] | null>(null);
+  const [reconciliation, setReconciliation] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [drilldownState, setDrilldownState] = useState<{ isOpen: boolean, statementType: "PNL" | "BS", subHeadName: string, months: string[], year: number, totalAmounts: Record<string, number> } | null>(null);
 
@@ -29,6 +30,12 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
       if (diagRes.ok) {
         const diagData = await diagRes.json();
         setDiagnostics(diagData);
+      }
+
+      const reconcileRes = await fetch(`/api/clients/${clientId}/balance-sheet/reconcile?year=${selectedYear}&t=${Date.now()}`);
+      if (reconcileRes.ok) {
+        const reconcileData = await reconcileRes.json();
+        setReconciliation(reconcileData);
       }
     } catch (e) {
       console.error(e);
@@ -188,6 +195,33 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
         </div>
       </div>
 
+      {reconciliation && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="rounded-3xl border border-white/10 bg-[#11131b] p-6">
+            <p className="text-xs uppercase tracking-widest text-slate-500">Mapped Ledgers</p>
+            <p className="mt-4 text-3xl font-black text-cyan-400">{reconciliation.totalMappedLedgers ?? 0}</p>
+            <p className="mt-2 text-sm text-slate-400">Mapped ledgers expected in BS output</p>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-[#11131b] p-6">
+            <p className="text-xs uppercase tracking-widest text-slate-500">Included Ledgers</p>
+            <p className="mt-4 text-3xl font-black text-emerald-400">{reconciliation.actualIncludedLedgerCount ?? reconciliation.totalIncludedLedgers ?? 0}</p>
+            <p className="mt-2 text-sm text-slate-400">Mapped ledgers actually present in BS output</p>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-[#11131b] p-6">
+            <p className="text-xs uppercase tracking-widest text-slate-500">Missing Ledgers</p>
+            <p className="mt-4 text-3xl font-black text-rose-400">{reconciliation.actualMissingLedgerCount ?? reconciliation.totalMissingLedgers ?? 0}</p>
+            <p className="mt-2 text-sm text-slate-400">Mapped ledgers missing from BS output</p>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-[#11131b] p-6">
+            <p className="text-xs uppercase tracking-widest text-slate-500">Reconciliation Status</p>
+            <p className={`mt-4 text-3xl font-black ${reconciliation.reconciled ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {reconciliation.reconciled ? 'OK' : 'Review'}
+            </p>
+            <p className="mt-2 text-sm text-slate-400">Mapped totals cross-checked vs BS data</p>
+          </div>
+        </div>
+      )}
+
       {/* Main BS UI - Flat Tabular format matching P&L */}
       <div className="bg-[#13131A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
         <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#181821]">
@@ -317,6 +351,39 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {reconciliation?.actualMissingLedgerDetails?.length > 0 && (
+        <div className="bg-[#13131A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+          <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#181821]">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <div>
+                <h3 className="text-lg font-black text-white">Missing Mapped Ledgers</h3>
+                <p className="text-xs font-bold text-slate-400">Mapped ledgers expected in BS output but not found</p>
+              </div>
+            </div>
+            <p className="text-xs font-bold uppercase tracking-widest text-amber-400">{reconciliation.actualMissingLedgerCount ?? reconciliation.totalMissingLedgers} missing</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-[#181821] border-b border-white/10">
+                  <th className="p-4 text-left text-xs font-black text-slate-400 uppercase tracking-widest">Ledger Name</th>
+                  <th className="p-4 text-left text-xs font-black text-slate-400 uppercase tracking-widest border-l border-white/5">Ledger ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reconciliation.actualMissingLedgerDetails.map((ledger: any) => (
+                  <tr key={ledger.id} className="border-b border-white/5 hover:bg-white/[0.02]">
+                    <td className="p-4 text-sm font-semibold text-white">{ledger.name}</td>
+                    <td className="p-4 text-sm text-slate-400 border-l border-white/5">{ledger.id}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

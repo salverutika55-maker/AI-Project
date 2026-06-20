@@ -213,6 +213,7 @@ export async function GET(
 
         dataNodes.push({
           id: `${ledger.id}-${month}`,
+          ledgerId: ledger.id,
           period: month,
           mainGroup,
           groupName: effectiveGroup,
@@ -262,6 +263,7 @@ export async function GET(
       const exactProfit = profitMovements[month] || 0;
       dataNodes.push({
         id: `cy-profit-system-${month}`,
+        ledgerId: `cy-profit-system-${month}`,
         period: month,
         mainGroup: "Liabilities",
         groupName: "Owner's Funds",
