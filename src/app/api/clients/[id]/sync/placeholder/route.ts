@@ -1,11 +1,34 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { authorizeClientAction } from "@/lib/rbac";
+import { Role } from "@prisma/client";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    await authorizeClientAction(user.id, id, Role.STAFF);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Forbidden" },
+      { status: 403 }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") || "Tally";
 

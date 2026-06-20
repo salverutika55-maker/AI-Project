@@ -87,13 +87,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
     // Fetch Clients belonging to those organizations
     const clients = await prisma.client.findMany({
-      where: { organizationId: { in: orgIds } },
+      where: isGlobalAdmin ? undefined : { organizationId: { in: orgIds } },
       orderBy: { createdAt: "desc" },
     });
 
 
     // Only select a client if it's explicitly in the URL
-    const activeClientId = params.client || null;
+    const requestedClientId = params.client || null;
+    const activeClientId = requestedClientId && clients.some(client => client.id === requestedClientId)
+      ? requestedClientId
+      : null;
 
     let records: any[] = [];
     if (activeClientId) {

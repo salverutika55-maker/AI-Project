@@ -2,11 +2,19 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { sign } from "jsonwebtoken";
 import { randomBytes } from "crypto";
+import { getConnectorJwtSecret } from "@/lib/connector-auth";
+import { checkRateLimit } from "@/lib/logger";
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret_for_dev_only";
 
 export async function POST(req: Request) {
   try {
+    const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    const ip = forwardedFor || req.headers.get("x-real-ip") || "unknown";
+    const rateLimit = await checkRateLimit(`pairing:${ip}`, 10, 5 * 60 * 1000);
+    if (!rateLimit.success) {
+      return NextResponse.json({ error: "Too many pairing attempts" }, { status: 429 });
+    }
+
     const { code, deviceName, deviceId } = await req.json();
 
     if (!code || !deviceName || !deviceId) {
@@ -59,7 +67,7 @@ export async function POST(req: Request) {
     // Generate short-lived JWT for immediate use
     const accessToken = sign(
       { deviceId: device.deviceId, clientId: device.clientId },
-      JWT_SECRET,
+      getConnectorJwtSecret(),
       { expiresIn: "1h" }
     );
 

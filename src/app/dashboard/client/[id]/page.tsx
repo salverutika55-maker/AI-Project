@@ -27,7 +27,15 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
     redirect("/dashboard");
   }
 
-  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    include: {
+      memberships: {
+        where: { status: "APPROVED" },
+        select: { organizationId: true }
+      }
+    }
+  });
   if (!user) redirect("/login");
 
   const userRole = await getUserRoleInOrg(user.id, client.organizationId);
@@ -62,8 +70,13 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
       );
     }
 
-    // Fetch all clients (for the dropdown)
+    const approvedOrgIds = user.memberships.map(membership => membership.organizationId);
+
+    // Only expose clients from organizations this user can access.
     const allClients = await prisma.client.findMany({
+      where: user.role === "ADMIN"
+        ? undefined
+        : { organizationId: { in: approvedOrgIds } },
       orderBy: { name: "asc" }
     });
 
@@ -94,4 +107,3 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
     );
   }
 }
-

@@ -2,8 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { sign } from "jsonwebtoken";
 import { randomBytes } from "crypto";
+import { getConnectorJwtSecret } from "@/lib/connector-auth";
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret_for_dev_only";
 
 export async function POST(req: Request) {
   try {
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     // Generate a new short-lived session JWT
     const accessToken = sign(
       { deviceId: device.deviceId, clientId: device.clientId },
-      JWT_SECRET,
+      getConnectorJwtSecret(),
       { expiresIn: "1h" }
     );
 

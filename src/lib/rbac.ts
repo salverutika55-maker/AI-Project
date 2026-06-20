@@ -17,15 +17,25 @@ const ROLE_HIERARCHY: Role[] = [
 ];
 
 export async function getUserRoleInOrg(userId: string, organizationId: string): Promise<Role | null> {
-  const membership = await prisma.organizationMembership.findUnique({
-    where: {
-      userId_organizationId: {
-        userId,
-        organizationId
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+      memberships: {
+        where: {
+          organizationId,
+          status: "APPROVED"
+        },
+        select: { role: true },
+        take: 1
       }
     }
   });
-  return membership ? membership.role : null;
+
+  if (!user) return null;
+  if (user.role === "ADMIN") return Role.SUPER_ADMIN;
+
+  return user.memberships[0]?.role ?? null;
 }
 
 export function hasMinimumRole(userRole: Role, requiredRole: Role): boolean {
@@ -58,7 +68,7 @@ export async function authorizeClientAction(userId: string, clientId: string, re
   const role = await getUserRoleInOrg(userId, client.organizationId);
 
   if (!role) {
-    throw new Error("Access Denied: You are not a member of this organization");
+    throw new Error("Access Denied: An approved organization membership is required");
   }
 
   // 3. Check hierarchy

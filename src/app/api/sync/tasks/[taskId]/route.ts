@@ -1,11 +1,20 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { authorizeClientAction } from "@/lib/rbac";
+import { Role } from "@prisma/client";
 
 export async function GET(
-  req: Request,
-  { params }: any
+  _req: Request,
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { taskId } = await params;
 
     const task = await prisma.syncTask.findUnique({
@@ -22,6 +31,20 @@ export async function GET(
 
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    try {
+      await authorizeClientAction(user.id, task.clientId, Role.READ_ONLY);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Forbidden" },
+        { status: 403 }
+      );
     }
 
     // --- AUTO-TIMEOUT LOGIC ---
