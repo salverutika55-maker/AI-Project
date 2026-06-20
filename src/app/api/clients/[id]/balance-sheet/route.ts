@@ -36,9 +36,11 @@ export async function GET(
     });
 
     const ledgerBalances: Record<string, { openBal: number, closeBal: number, nature: string }> = {};
+    const mappedLedgerNames = new Set<string>();
     ledgers.forEach(l => {
       ledgerBalances[l.name] = { openBal: l.openingBalance, closeBal: l.closingBalance, nature: l.nature };
     });
+    bsMappings.forEach(m => mappedLedgerNames.add(m.softwareLedgerName.toLowerCase()));
 
     // 2.5 Fetch Voucher Lines for rolling balances
     const voucherLines = await prisma.normalizedVoucherLine.findMany({
@@ -129,102 +131,86 @@ export async function GET(
 
     // 4. Map ledgers into structure
     const dataNodes: any[] = [];
+    const assetGroupNames = new Set([
+      "Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors",
+      "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"
+    ]);
+    const liabilityGroupNames = new Set([
+      "Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account",
+      "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans",
+      "Unsecured Loans", "Primary", "Reserves & Surplus"
+    ]);
 
     ledgers.forEach(ledger => {
-      // Find the FIRST mapping to prevent duplicates
       const customMapping = bsMappings.find(m => m.softwareLedgerName.toLowerCase() === ledger.name.toLowerCase());
-      
       const isPnL = ledger.name.toLowerCase().includes("profit & loss") || ledger.name.toLowerCase().includes("p&l");
 
-      // STRICT MAPPING RULE: If unmapped (and not the P&L ledger), strictly exclude from Balance Sheet
       if (!customMapping && !isPnL) {
-          return;
+        return;
       }
 
-      let mainGroup = "";
-      let effectiveGroup = "";
-      let effectiveSubGroup = "";
-      
-      if (customMapping) {
-          effectiveGroup = customMapping.groupName;
-          effectiveSubGroup = customMapping.subGroupName || customMapping.groupName;
-          
-          if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(effectiveGroup)) {
-            mainGroup = "Liabilities";
-          } else if (["Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors", "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"].includes(effectiveGroup)) {
-            mainGroup = "Assets";
-          } else {
-             const info = ledgerBalances[ledger.name] || { nature: "DEBIT" };
-             mainGroup = info.nature === "CREDIT" ? "Liabilities" : "Assets";
-          }
-      } else if (isPnL) {
-          mainGroup = "Liabilities";
-          effectiveGroup = "Owner's Funds";
-          effectiveSubGroup = "Profit & Loss Account";
-      }
+      const resolvedGroup = customMapping?.groupName || "";
+      const resolvedSubGroup = customMapping?.subGroupName || customMapping?.groupName || "";
+      const resolvedSubHead = customMapping?.subHeadName || resolvedSubGroup || resolvedGroup;
 
-      // Final classification based on strict internal templates
-      let finalGroup = mainGroup === "Assets" ? "Current Assets" : "Current Liabilities";
-      let finalSubGroup = mainGroup === "Assets" ? "Other Current Assets" : "Other Current Liabilities";
-      
-      if (customMapping) {
-          finalGroup = customMapping.groupName;
-          finalSubGroup = customMapping.subHeadName || customMapping.subGroupName || customMapping.groupName;
-      } else if (isPnL) {
-          finalGroup = "Owner's Funds";
-          finalSubGroup = "Profit & Loss Account";
-      }
-      
-      effectiveGroup = finalGroup;
-      effectiveSubGroup = finalSubGroup;
+      const mainGroup = customMapping
+        ? (liabilityGroupNames.has(resolvedGroup) ? "Liabilities" : assetGroupNames.has(resolvedGroup) ? "Assets" : (ledgerBalances[ledger.name]?.nature === "CREDIT" ? "Liabilities" : "Assets"))
+        : "Liabilities";
+
+      const effectiveGroup = customMapping ? customMapping.groupName : "Owner's Funds";
+      const effectiveSubGroup = isPnL ? "Profit & Loss Account" : resolvedSubHead;
 
       if (!structure[mainGroup]) structure[mainGroup] = {};
       if (!structure[mainGroup][effectiveGroup]) structure[mainGroup][effectiveGroup] = {};
       if (!structure[mainGroup][effectiveGroup][effectiveSubGroup]) structure[mainGroup][effectiveGroup][effectiveSubGroup] = {};
 
       const ledgerInfo = ledgerBalances[ledger.name] || { openBal: ledger.openingBalance, closeBal: ledger.closingBalance, nature: mainGroup === "Assets" ? "DEBIT" : "CREDIT" };
-      const allTimeMvmt = totalMovements[ledger.id] || { debit: 0, credit: 0 };
       const fyMvmt = { debit: 0, credit: 0 };
       const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
       months.forEach(m => {
-          if (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][m]) {
-              fyMvmt.debit += monthlyMovements[ledger.id][m].debit;
-              fyMvmt.credit += monthlyMovements[ledger.id][m].credit;
-          }
+        if (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][m]) {
+          fyMvmt.debit += monthlyMovements[ledger.id][m].debit;
+          fyMvmt.credit += monthlyMovements[ledger.id][m].credit;
+        }
       });
-      
+
       const preFY = preFYMovements[ledger.id] || { debit: 0, credit: 0 };
-      let fyOpening = ledger.openingBalance + preFY.debit - preFY.credit;
+      let fyOpening = ledger.openingBalance;
+      if (fyOpening === 0) {
+        if (ledger.closingBalance !== 0) {
+          fyOpening = ledger.closingBalance - fyMvmt.debit + fyMvmt.credit;
+        } else {
+          fyOpening = preFY.debit - preFY.credit;
+        }
+      }
 
       const allMonths = ["Opening", ...months];
       let runningBalance = fyOpening;
-      
+
       allMonths.forEach((month) => {
         let exactBalance = 0;
-        
+
         if (month === "Opening") {
-            exactBalance = fyOpening;
+          exactBalance = fyOpening;
         } else {
-            const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
-            const startBal = runningBalance;
-            // STRICT UNIVERSAL FORMULA
-            runningBalance = startBal + mvmt.debit - mvmt.credit;
-            exactBalance = runningBalance;
-            
-            // Console audit log for the calculation
-            if (month === months[months.length - 1]) { // Log the latest month
-                console.log(JSON.stringify({
-                  ledger: ledger.name,
-                  opening: startBal,
-                  debit: mvmt.debit,
-                  credit: mvmt.credit,
-                  formula_used: "opening + debit - credit",
-                  calculated_closing: exactBalance,
-                  displayed_balance: exactBalance
-                }, null, 2));
-            }
+          const mvmt = (monthlyMovements[ledger.id] && monthlyMovements[ledger.id][month]) || { debit: 0, credit: 0 };
+          const startBal = runningBalance;
+          runningBalance = startBal + mvmt.debit - mvmt.credit;
+          exactBalance = runningBalance;
+
+          if (month === months[months.length - 1]) {
+            console.log(JSON.stringify({
+              ledger: ledger.name,
+              opening: startBal,
+              debit: mvmt.debit,
+              credit: mvmt.credit,
+              formula_used: "opening + debit - credit",
+              calculated_closing: exactBalance,
+              displayed_balance: exactBalance
+            }, null, 2));
+          }
         }
-        
+
         dataNodes.push({
           id: `${ledger.id}-${month}`,
           period: month,
@@ -292,12 +278,27 @@ export async function GET(
     const finalLiabs = dataNodes.filter(n => n.mainGroup === "Liabilities" && n.period === "Mar").reduce((sum, n) => sum + (n.amount || 0), 0);
     const diff = finalAssets - finalLiabs;
 
+    const unmappedLedgers = ledgers.filter(l => !mappedLedgerNames.has(l.name.toLowerCase()) && !l.name.toLowerCase().includes("profit & loss") && !l.name.toLowerCase().includes("p&l")).map(l => ({
+      id: l.id,
+      name: l.name,
+      groupName: l.groupName,
+      openingBalance: l.openingBalance,
+      closingBalance: l.closingBalance,
+      nature: l.nature
+    }));
+
     return NextResponse.json({
       structure,
       dataNodes,
       validation: {
         isBalanced: Math.abs(diff) < 1,
         difference: Math.abs(diff)
+      },
+      audit: {
+        totalMappings: bsMappings.length,
+        totalActiveLedgers: ledgers.length,
+        unmappedActiveLedgers: unmappedLedgers.length,
+        unmappedLedgers
       }
     });
 

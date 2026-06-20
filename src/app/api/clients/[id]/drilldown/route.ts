@@ -92,37 +92,37 @@ export async function GET(
       let localMappedCount = 0;
 
       ledgers.forEach(l => {
-        const manualMapping = mappings.find(m => m.softwareLedgerName === l.name);
-        if (manualMapping) localMappedCount++;
+const manualMapping = mappings.find(m => m.softwareLedgerName.toLowerCase() === l.name.toLowerCase());
+      if (manualMapping) localMappedCount++;
 
-        const isPnL = l.name.toLowerCase().includes("profit & loss") || l.name.toLowerCase().includes("p&l");
+      const isPnL = l.name.toLowerCase().includes("profit & loss") || l.name.toLowerCase().includes("p&l");
 
-        if (!manualMapping && !isPnL) {
-            return;
+      if (!manualMapping && !isPnL) {
+        return;
+      }
+
+      let mainGroup = "";
+      let finalGroup = "";
+      let finalSubGroup = "";
+
+      if (manualMapping) {
+        finalGroup = manualMapping.groupName;
+        finalSubGroup = manualMapping.subHeadName || manualMapping.subGroupName || manualMapping.groupName;
+
+        if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(finalGroup)) {
+          mainGroup = "Liabilities";
+        } else if (["Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors", "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"].includes(finalGroup)) {
+          mainGroup = "Assets";
+        } else {
+          mainGroup = l.nature === "CREDIT" ? "Liabilities" : "Assets";
         }
+      } else if (isPnL) {
+        mainGroup = "Liabilities";
+        finalGroup = "Owner's Funds";
+        finalSubGroup = "Profit & Loss Account";
+      }
 
-        let mainGroup = "";
-        let finalGroup = "";
-        let finalSubGroup = "";
-
-        if (manualMapping) {
-            finalGroup = manualMapping.groupName;
-            finalSubGroup = manualMapping.subGroupName || manualMapping.groupName;
-
-            if (["Owner's Funds", "Non-Current Liabilities", "Current Liabilities", "Capital Account", "Suspense A/c", "Sundry Creditors", "Duties & Taxes", "Loans (Liability)", "Secured Loans", "Unsecured Loans", "Primary", "Reserves & Surplus"].includes(finalGroup)) {
-                mainGroup = "Liabilities";
-            } else if (["Non-Current Assets", "Current Assets", "Fixed Assets", "Investments", "Sundry Debtors", "Cash-in-hand", "Bank Accounts", "Closing Stock", "Deposits (Asset)", "Loans & Advances (Asset)"].includes(finalGroup)) {
-                mainGroup = "Assets";
-            } else {
-                mainGroup = l.nature === "CREDIT" ? "Liabilities" : "Assets";
-            }
-        } else if (isPnL) {
-            mainGroup = "Liabilities";
-            finalGroup = "Owner's Funds";
-            finalSubGroup = "Profit & Loss Account";
-        }
-
-        if (finalSubGroup !== subHeadName) return;
+      if (finalSubGroup.toLowerCase() !== subHeadName.toLowerCase()) return;
 
         const allTimeMvmt = totalMovements[l.id] || { debit: 0, credit: 0 };
         

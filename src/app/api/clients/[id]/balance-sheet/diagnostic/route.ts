@@ -51,6 +51,41 @@ export async function GET(
       where: { clientId: id, statementType: "BS" }
     });
 
+    const voucherLines = await prisma.normalizedVoucherLine.findMany({
+      where: { voucher: { clientId: id } },
+      select: {
+        ledgerId: true,
+        amount: true,
+        entryType: true,
+        voucher: { select: { date: true } }
+      }
+    });
+
+    const preFYMovements: Record<string, { debit: number, credit: number }> = {};
+    const monthlyMovements: Record<string, Record<string, { debit: number, credit: number }>> = {};
+    const targetFYStart = new Date(`${year}-04-01T00:00:00.000Z`);
+    const targetFYEnd = new Date(`${year + 1}-03-31T23:59:59.999Z`);
+    const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+
+    voucherLines.forEach(vl => {
+      const d = new Date(vl.voucher.date);
+      if (d < targetFYStart) {
+        if (!preFYMovements[vl.ledgerId]) preFYMovements[vl.ledgerId] = { debit: 0, credit: 0 };
+        if (vl.entryType === "DEBIT") preFYMovements[vl.ledgerId].debit += vl.amount;
+        else preFYMovements[vl.ledgerId].credit += vl.amount;
+      }
+
+      if (d >= targetFYStart && d <= targetFYEnd) {
+        const monthIndex = d.getMonth();
+        const monthsNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const mName = monthsNames[monthIndex];
+        if (!monthlyMovements[vl.ledgerId]) monthlyMovements[vl.ledgerId] = {};
+        if (!monthlyMovements[vl.ledgerId][mName]) monthlyMovements[vl.ledgerId][mName] = { debit: 0, credit: 0 };
+        if (vl.entryType === "DEBIT") monthlyMovements[vl.ledgerId][mName].debit += vl.amount;
+        else monthlyMovements[vl.ledgerId][mName].credit += vl.amount;
+      }
+    });
+
     const diagnostics: Record<string, {
         subHeadName: string,
         mappedLedgersCount: number,
@@ -60,57 +95,77 @@ export async function GET(
         difference: number
     }> = {};
 
-    // 1. Calculate Displayed Totals per Subhead
+    const getSubHeadKey = (node: any) => node.subGroupName || node.subHeadName || node.groupName || "Unknown";
+
     dataNodes.forEach((node: any) => {
-        if (node.period === latestMonth) {
-            const subHead = node.subGroupName || "Unknown";
-            if (!diagnostics[subHead]) {
-                diagnostics[subHead] = {
-                    subHeadName: subHead,
-                    mappedLedgersCount: 0,
-                    ledgerNames: [],
-                    ledgerTotal: 0,
-                    displayedTotal: 0,
-                    difference: 0
-                };
-            }
-            diagnostics[subHead].displayedTotal += node.amount;
-            diagnostics[subHead].ledgerTotal += node.amount; // Since engine is strictly mapped, Ledger Total = Displayed Total
+      if (node.period === latestMonth) {
+        const subHead = getSubHeadKey(node);
+        if (!diagnostics[subHead]) {
+          diagnostics[subHead] = {
+            subHeadName: subHead,
+            mappedLedgersCount: 0,
+            ledgerNames: [],
+            ledgerTotal: 0,
+            displayedTotal: 0,
+            difference: 0
+          };
         }
+        diagnostics[subHead].displayedTotal += node.amount;
+      }
     });
 
-    // 2. Count Mapped Ledgers per Subhead
     ledgers.forEach(l => {
-        const manualMapping = mappings.find(m => m.softwareLedgerName.toLowerCase() === l.name.toLowerCase());
-        const isPnL = l.name.toLowerCase().includes("profit & loss") || l.name.toLowerCase().includes("p&l");
-        
-        if (manualMapping) {
-            const subHead = manualMapping.subGroupName || manualMapping.groupName;
-            if (diagnostics[subHead]) {
-                diagnostics[subHead].mappedLedgersCount += 1;
-                diagnostics[subHead].ledgerNames.push(l.name);
-            } else {
-               // Subhead exists in mappings but no balance displayed? This means ledger balance is exactly 0.
-                diagnostics[subHead] = {
-                    subHeadName: subHead,
-                    mappedLedgersCount: 1,
-                    ledgerNames: [l.name],
-                    ledgerTotal: 0,
-                    displayedTotal: 0,
-                    difference: 0
-                };
-            }
-        } else if (isPnL) {
-            if (diagnostics["Profit & Loss Account"]) {
-                diagnostics["Profit & Loss Account"].mappedLedgersCount += 1;
-                diagnostics["Profit & Loss Account"].ledgerNames.push(l.name);
-            }
+      const manualMapping = mappings.find(m => m.softwareLedgerName.toLowerCase() === l.name.toLowerCase());
+      if (!manualMapping) return;
+
+      const subHead = manualMapping.subHeadName || manualMapping.subGroupName || manualMapping.groupName;
+      if (!diagnostics[subHead]) {
+        diagnostics[subHead] = {
+          subHeadName: subHead,
+          mappedLedgersCount: 0,
+          ledgerNames: [],
+          ledgerTotal: 0,
+          displayedTotal: 0,
+          difference: 0
+        };
+      }
+
+      diagnostics[subHead].mappedLedgersCount += 1;
+      diagnostics[subHead].ledgerNames.push(l.name);
+
+      const preFY = preFYMovements[l.id] || { debit: 0, credit: 0 };
+      const fyMvmt = { debit: 0, credit: 0 };
+      months.forEach(m => {
+        if (monthlyMovements[l.id] && monthlyMovements[l.id][m]) {
+          fyMvmt.debit += monthlyMovements[l.id][m].debit;
+          fyMvmt.credit += monthlyMovements[l.id][m].credit;
         }
+      });
+
+      let fyOpening = l.openingBalance;
+      if (fyOpening === 0) {
+        if (l.closingBalance !== 0) {
+          fyOpening = l.closingBalance - fyMvmt.debit + fyMvmt.credit;
+        } else {
+          fyOpening = preFY.debit - preFY.credit;
+        }
+      }
+
+      let runningBalance = fyOpening;
+      const allMonths = ["Opening", ...months];
+      allMonths.forEach(month => {
+        if (month !== "Opening") {
+          const mvmt = (monthlyMovements[l.id] && monthlyMovements[l.id][month]) || { debit: 0, credit: 0 };
+          runningBalance += mvmt.debit - mvmt.credit;
+        }
+      });
+
+      diagnostics[subHead].ledgerTotal += runningBalance;
     });
-    
+
     const results = Object.values(diagnostics).map(d => {
-        d.difference = Math.abs(d.displayedTotal - d.ledgerTotal);
-        return d;
+      d.difference = Math.abs(d.displayedTotal - d.ledgerTotal);
+      return d;
     });
 
     return NextResponse.json(results);
