@@ -25,6 +25,7 @@ model User {
   lastLogin        DateTime?
   memberships      OrganizationMembership[]
   auditLogs        AuditLog[]
+  loginActivities  UserLoginActivity[]
   tbUploads        TrialBalanceUpload[]
   resolvedAlerts   ComplianceAlert[]
   resolvedScrutinyAlerts ScrutinyAlert[]
@@ -213,6 +214,20 @@ model AuditLog {
   ipAddress String?
   userAgent String?
   createdAt DateTime @default(now())
+}
+
+model UserLoginActivity {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email       String
+  userRole    String?
+  loginTime   DateTime @default(now())
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([loginTime])
 }
 
 model RateLimit {

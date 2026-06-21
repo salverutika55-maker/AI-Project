@@ -1,7 +1,7 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
-import { logSecurityEvent } from "@/lib/logger";
+import { extractRequestMeta, logSecurityEvent } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
@@ -37,13 +37,39 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid password");
         }
         
-        // Update last login and log the successful sign-in
+        // Update last login, store a login activity event, and log the successful sign-in
         await prisma.user.update({
           where: { id: user.id },
           data: { lastLogin: new Date() }
         });
 
+        const requestMeta = extractRequestMeta(req);
+        const loginActivity = await prisma.userLoginActivity.create({
+          data: {
+            userId: user.id,
+            email: user.email,
+            userRole: user.role,
+            loginTime: new Date(),
+            ipAddress: requestMeta.ipAddress,
+            userAgent: requestMeta.userAgent,
+          },
+        });
+
         await logSecurityEvent(user.id, "LOGIN_SUCCESS", undefined, `User ${user.email} logged in successfully`, req);
+
+        try {
+          const { loginActivityEmitter } = await import("@/lib/loginStream");
+          loginActivityEmitter.emit("login", {
+            id: loginActivity.id,
+            email: loginActivity.email,
+            userRole: loginActivity.userRole,
+            loginTime: loginActivity.loginTime.toISOString(),
+            ipAddress: loginActivity.ipAddress,
+            userAgent: loginActivity.userAgent,
+          });
+        } catch (emitError) {
+          console.error("Failed to emit login activity event:", emitError);
+        }
 
         return {
           id: user.id,

@@ -2,8 +2,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { LineChart, ShieldCheck, UserCheck, Clock, ShieldAlert } from "lucide-react";
+import { ShieldCheck, UserCheck, Clock, ShieldAlert } from "lucide-react";
 import Link from "next/link";
+import AdminLoginActivity from "@/components/AdminLoginActivity";
 
 export default async function AdminDashboard() {
   const session = await getServerSession(authOptions);
@@ -89,56 +90,7 @@ export default async function AdminDashboard() {
           </div>
         </div>
 
-        <div className="bg-[#13131A] border border-white/10 rounded-2xl overflow-hidden shadow-2xl mb-12">
-          <div className="p-6 border-b border-white/10 bg-white/5">
-            <h2 className="text-lg font-bold text-white">Recent Logins</h2>
-            <p className="text-sm text-slate-400">Track all users currently interacting with the platform.</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-white/5 text-sm font-medium text-slate-400 bg-black/20">
-                  <th className="p-4 pl-6">Email Address</th>
-                  <th className="p-4">Role</th>
-                  <th className="p-4">Account Created</th>
-                  <th className="p-4 pr-6">Last Login</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5 text-sm">
-                {users.map((user) => (
-                  <tr key={user.id} className="hover:bg-white/5 transition-colors">
-                    <td className="p-4 pl-6 font-medium text-white">{user.email}</td>
-                    <td className="p-4">
-                      <span className={`px-2.5 py-1 text-xs rounded-lg font-medium border ${user.role === 'ADMIN' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-300 border-white/10'}`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="p-4 text-slate-400 whitespace-nowrap">
-                      {new Date(user.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })}
-                    </td>
-                    <td className="p-4 pr-6 text-slate-400 whitespace-nowrap">
-                      {user.lastLogin ? (
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-                          {new Date(user.lastLogin).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })}
-                        </span>
-                      ) : (
-                        <span className="text-slate-500">Never logged in</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {users.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="p-8 text-center text-slate-500">
-                      No users found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <AdminLoginActivity />
 
         {/* Security Audit Log Section */}
         <div className="bg-[#13131A] border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
