@@ -31,11 +31,6 @@ export default async function AdminDashboard() {
   const auditLogs = await prisma.auditLog.findMany({
     take: 100,
     orderBy: { createdAt: 'desc' },
-    include: {
-      user: {
-        select: { email: true }
-      }
-    },
     select: {
       id: true,
       action: true,
