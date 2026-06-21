@@ -5,11 +5,16 @@ export async function logSecurityEvent(
   action: string,
   entityId?: string,
   details?: string,
-  req?: Request
+  req?: { headers?: any }
 ) {
   try {
-    const ipAddress = req?.headers.get("x-forwarded-for") || "unknown";
-    const userAgent = req?.headers.get("user-agent") || "unknown";
+    const headers = req?.headers ?? {};
+    const ipAddress = typeof headers.get === "function"
+      ? headers.get("x-forwarded-for")
+      : headers["x-forwarded-for"] || headers["X-Forwarded-For"] || headers["x-forwarded-for"?.toLowerCase()] || "unknown";
+    const userAgent = typeof headers.get === "function"
+      ? headers.get("user-agent")
+      : headers["user-agent"] || headers["User-Agent"] || "unknown";
 
     await prisma.auditLog.create({
       data: {
