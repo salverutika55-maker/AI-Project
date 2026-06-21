@@ -19,9 +19,9 @@ export async function logSecurityEvent(
   details?: string,
   req?: { headers?: any }
 ) {
-  try {
-    const { ipAddress, userAgent } = extractRequestMeta(req);
+  const { ipAddress, userAgent } = extractRequestMeta(req);
 
+  try {
     await prisma.auditLog.create({
       data: {
         userId,
@@ -32,31 +32,46 @@ export async function logSecurityEvent(
         userAgent,
       },
     });
-
-    // If there are repeated login failures, generate a security alert
-    if (action === "LOGIN_FAILED") {
-      try {
-        // Use rate limiter to track failed attempts per IP for a 15 minute window
-        const key = `FAIL_LOGIN:${ipAddress}`;
-        const rate = await checkRateLimit(key, 5, 15 * 60 * 1000);
-        if (!rate.success) {
-          await prisma.securityAlert.create({
-            data: {
-              userId,
-              action: "BRUTE_FORCE_LOGIN",
-              severity: "HIGH",
-              ipAddress,
-              userAgent,
-              details: details ?? `Exceeded failed login attempts from ${ipAddress}`,
-            },
-          });
-        }
-      } catch (alertErr) {
-        console.error("Failed to create security alert:", alertErr);
-      }
-    }
   } catch (error) {
-    console.error("Failed to log security event:", error);
+    // If audit logging fails, create a SecurityAlert entry and surface the error
+    console.error("Failed to write AuditLog record:", error);
+    try {
+      await prisma.securityAlert.create({
+        data: {
+          userId,
+          action: "AUDIT_LOG_WRITE_FAILURE",
+          severity: "CRITICAL",
+          ipAddress,
+          userAgent,
+          details: `Failed to write audit log for action=${action}: ${String(error)}`,
+        },
+      });
+    } catch (innerErr) {
+      // Last-resort: log to console so it appears in deployment logs
+      console.error("Failed to write SecurityAlert after audit write failure:", innerErr);
+    }
+  }
+
+  // If there are repeated login failures, generate a security alert (separate path)
+  if (action === "LOGIN_FAILED") {
+    try {
+      const key = `FAIL_LOGIN:${ipAddress}`;
+      const rate = await checkRateLimit(key, 5, 15 * 60 * 1000);
+      if (!rate.success) {
+        await prisma.securityAlert.create({
+          data: {
+            userId,
+            action: "BRUTE_FORCE_LOGIN",
+            severity: "HIGH",
+            ipAddress,
+            userAgent,
+            details: details ?? `Exceeded failed login attempts from ${ipAddress}`,
+          },
+        });
+      }
+    } catch (alertErr) {
+      console.error("Failed to create security alert:", alertErr);
+    }
   }
 }
 

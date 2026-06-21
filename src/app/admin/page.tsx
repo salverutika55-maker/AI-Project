@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ShieldCheck, UserCheck, Clock, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import AdminLoginActivity from "@/components/AdminLoginActivity";
+import AdminAlerts from "@/components/AdminAlerts";
 
 export default async function AdminDashboard() {
   const session = await getServerSession(authOptions);
@@ -91,6 +92,8 @@ export default async function AdminDashboard() {
         </div>
 
         <AdminLoginActivity />
+
+        <AdminAlerts />
 
         {/* Security Audit Log Section */}
         <div className="bg-[#13131A] border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
