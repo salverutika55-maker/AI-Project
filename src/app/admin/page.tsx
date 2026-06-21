@@ -35,6 +35,18 @@ export default async function AdminDashboard() {
       user: {
         select: { email: true }
       }
+    },
+    select: {
+      id: true,
+      action: true,
+      entityId: true,
+      details: true,
+      ipAddress: true,
+      userAgent: true,
+      createdAt: true,
+      user: {
+        select: { email: true }
+      }
     }
   });
 
@@ -106,14 +118,14 @@ export default async function AdminDashboard() {
                         {user.role}
                       </span>
                     </td>
-                    <td className="p-4 text-slate-400">
-                      {new Date(user.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                    <td className="p-4 text-slate-400 whitespace-nowrap">
+                      {new Date(user.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })}
                     </td>
-                    <td className="p-4 pr-6 text-slate-400">
+                    <td className="p-4 pr-6 text-slate-400 whitespace-nowrap">
                       {user.lastLogin ? (
                         <span className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-                          {new Date(user.lastLogin).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                          {new Date(user.lastLogin).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })}
                         </span>
                       ) : (
                         <span className="text-slate-500">Never logged in</span>
@@ -149,8 +161,8 @@ export default async function AdminDashboard() {
                   <th className="p-4 pl-6">Timestamp (IST)</th>
                   <th className="p-4">User</th>
                   <th className="p-4">Action</th>
-                  <th className="p-4">Entity ID</th>
-                  <th className="p-4 pr-6">Details</th>
+                  <th className="p-4">IP Address</th>
+                  <th className="p-4 pr-6">Changes / Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-sm">
@@ -171,10 +183,15 @@ export default async function AdminDashboard() {
                       </span>
                     </td>
                     <td className="p-4 text-slate-400 text-xs font-mono">
-                      {log.entityId || '-'}
+                      {log.ipAddress || '-'}
                     </td>
                     <td className="p-4 pr-6 text-slate-400">
                       {log.details || '-'}
+                      {log.userAgent && (
+                        <div className="mt-2 text-[11px] text-slate-500 break-all">
+                          {log.userAgent}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

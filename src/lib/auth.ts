@@ -1,6 +1,7 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
+import { logSecurityEvent } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
@@ -11,8 +12,9 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req: any) {
         if (!credentials?.email || !credentials?.password) {
+          await logSecurityEvent(null, "LOGIN_FAILED", undefined, `Missing credentials for login attempt`, req);
           throw new Error("Missing credentials");
         }
         
@@ -21,6 +23,7 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user) {
+          await logSecurityEvent(null, "LOGIN_FAILED", undefined, `Failed login attempt for ${credentials.email}`, req);
           throw new Error("No user found with this email");
         }
 
@@ -30,14 +33,17 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isPasswordValid) {
+          await logSecurityEvent(user.id, "LOGIN_FAILED", undefined, `Invalid password attempt for ${credentials.email}`, req);
           throw new Error("Invalid password");
         }
         
-        // Update last login
+        // Update last login and log the successful sign-in
         await prisma.user.update({
           where: { id: user.id },
           data: { lastLogin: new Date() }
         });
+
+        await logSecurityEvent(user.id, "LOGIN_SUCCESS", undefined, `User ${user.email} logged in successfully`, req);
 
         return {
           id: user.id,
