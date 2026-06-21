@@ -1,5 +1,17 @@
 import { prisma } from "./prisma";
 
+export function extractRequestMeta(req?: { headers?: any }) {
+  const headersObj = req?.headers ?? {};
+  const ipAddress = typeof headersObj.get === "function"
+    ? headersObj.get("x-forwarded-for") ?? "unknown"
+    : headersObj["x-forwarded-for"] ?? headersObj["X-Forwarded-For"] ?? "unknown";
+  const userAgent = typeof headersObj.get === "function"
+    ? headersObj.get("user-agent") ?? "unknown"
+    : headersObj["user-agent"] ?? headersObj["User-Agent"] ?? "unknown";
+
+  return { ipAddress, userAgent };
+}
+
 export async function logSecurityEvent(
   userId: string | null,
   action: string,
@@ -8,13 +20,7 @@ export async function logSecurityEvent(
   req?: { headers?: any }
 ) {
   try {
-    const headersObj = req?.headers ?? {};
-    const ipAddress = typeof headersObj.get === "function"
-      ? headersObj.get("x-forwarded-for") ?? "unknown"
-      : headersObj["x-forwarded-for"] ?? headersObj["X-Forwarded-For"] ?? "unknown";
-    const userAgent = typeof headersObj.get === "function"
-      ? headersObj.get("user-agent") ?? "unknown"
-      : headersObj["user-agent"] ?? headersObj["User-Agent"] ?? "unknown";
+    const { ipAddress, userAgent } = extractRequestMeta(req);
 
     await prisma.auditLog.create({
       data: {
