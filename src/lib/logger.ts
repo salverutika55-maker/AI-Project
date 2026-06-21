@@ -11,7 +11,7 @@ export async function logSecurityEvent(
     const headers = req?.headers ?? {};
     const ipAddress = typeof headers.get === "function"
       ? headers.get("x-forwarded-for")
-      : headers["x-forwarded-for"] || headers["X-Forwarded-For"] || headers["x-forwarded-for"?.toLowerCase()] || "unknown";
+      : headers["x-forwarded-for"] || headers["X-Forwarded-For"] || headers["X-Forwarded-For".toLowerCase()] || "unknown";
     const userAgent = typeof headers.get === "function"
       ? headers.get("user-agent")
       : headers["user-agent"] || headers["User-Agent"] || "unknown";
