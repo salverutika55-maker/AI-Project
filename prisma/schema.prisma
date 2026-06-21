@@ -26,6 +26,7 @@ model User {
   memberships      OrganizationMembership[]
   auditLogs        AuditLog[]
   loginActivities  UserLoginActivity[]
+  securityAlerts   SecurityAlert[]
   tbUploads        TrialBalanceUpload[]
   resolvedAlerts   ComplianceAlert[]
   resolvedScrutinyAlerts ScrutinyAlert[]
@@ -214,6 +215,21 @@ model AuditLog {
   ipAddress String?
   userAgent String?
   createdAt DateTime @default(now())
+}
+
+model SecurityAlert {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String   // e.g., BRUTE_FORCE_LOGIN, SUSPICIOUS_LOGIN
+  severity   String   @default("HIGH")
+  ipAddress  String?
+  userAgent  String?
+  details    String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([ipAddress])
 }
 
 model UserLoginActivity {

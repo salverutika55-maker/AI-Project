@@ -32,6 +32,29 @@ export async function logSecurityEvent(
         userAgent,
       },
     });
+
+    // If there are repeated login failures, generate a security alert
+    if (action === "LOGIN_FAILED") {
+      try {
+        // Use rate limiter to track failed attempts per IP for a 15 minute window
+        const key = `FAIL_LOGIN:${ipAddress}`;
+        const rate = await checkRateLimit(key, 5, 15 * 60 * 1000);
+        if (!rate.success) {
+          await prisma.securityAlert.create({
+            data: {
+              userId,
+              action: "BRUTE_FORCE_LOGIN",
+              severity: "HIGH",
+              ipAddress,
+              userAgent,
+              details: details ?? `Exceeded failed login attempts from ${ipAddress}`,
+            },
+          });
+        }
+      } catch (alertErr) {
+        console.error("Failed to create security alert:", alertErr);
+      }
+    }
   } catch (error) {
     console.error("Failed to log security event:", error);
   }
