@@ -14,8 +14,7 @@ export function dedupeClientsByName<
   for (const client of clients) {
     const codeKey = (client.clientCode || "").trim().toUpperCase();
     const normalized = client.normalizedName ? normalizeClientName(client.normalizedName) : normalizeClientName(client.name);
-    const orgKey = client.organizationId || "global";
-    const scopedKey = codeKey ? `code::${orgKey}::${codeKey}` : `legacy::${orgKey}::${normalized}`;
+    const scopedKey = codeKey ? `code::${codeKey}` : `legacy::${normalized}`;
 
     if (seen.has(scopedKey)) continue;
     seen.add(scopedKey);
