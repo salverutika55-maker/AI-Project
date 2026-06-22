@@ -138,8 +138,8 @@ export default function AdminLoginActivity() {
       <div className="p-6 border-b border-white/10 bg-white/5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white">Recent Logins</h2>
-            <p className="text-sm text-slate-400">Live login activity and user connection status.</p>
+            <h2 className="text-lg font-bold text-white">Live Activity</h2>
+            <p className="text-sm text-slate-400">Currently online users, recent logins, and active session indicators.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
             <span className="inline-flex items-center gap-2 rounded-full bg-slate-900/70 px-3 py-1 border border-white/10">

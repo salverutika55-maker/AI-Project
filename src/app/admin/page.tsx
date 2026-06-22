@@ -60,9 +60,14 @@ export default async function AdminDashboard() {
               <p className="text-sm text-slate-400">Restricted Access • Logged in as {session.user?.email}</p>
             </div>
           </div>
-          <Link href="/" className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm transition-colors text-slate-300">
-            Back to App
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/admin/login-register" className="px-4 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-lg text-sm transition-colors text-cyan-300">
+              User Login Register
+            </Link>
+            <Link href="/" className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm transition-colors text-slate-300">
+              Back to App
+            </Link>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -92,6 +97,16 @@ export default async function AdminDashboard() {
         </div>
 
         <AdminLoginActivity />
+
+        <div className="bg-[#13131A] border border-white/10 rounded-2xl p-6 mb-12">
+          <h2 className="text-lg font-bold text-white">Historical Activity</h2>
+          <p className="text-sm text-slate-400 mt-1">View lifetime login history, filters, user-wise analytics, and CSV export.</p>
+          <div className="mt-4">
+            <Link href="/admin/login-register" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20">
+              Open Login Register
+            </Link>
+          </div>
+        </div>
 
         <AdminAlerts />
 

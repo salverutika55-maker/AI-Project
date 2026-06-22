@@ -19,28 +19,32 @@ export async function GET(req: Request) {
     take: 20,
   });
 
-  const activeUsersNow = await prisma.userLoginActivity.count({
+  const activeUsersNow = await prisma.userLoginActivity.findMany({
     where: {
       loginTime: {
         gte: loginWindowStart,
       },
     },
+    distinct: ["userId"],
+    select: { userId: true },
   });
 
-  const usersLoggedInToday = await prisma.userLoginActivity.count({
+  const usersLoggedInToday = await prisma.userLoginActivity.findMany({
     where: {
       loginTime: {
         gte: usersLoggedInTodayWindow,
       },
     },
+    distinct: ["userId"],
+    select: { userId: true },
   });
 
   const lastLoginEvent = recentLogins.length > 0 ? recentLogins[0].loginTime.toISOString() : null;
 
   return NextResponse.json({
     totalUsers,
-    activeUsersNow,
-    usersLoggedInToday,
+    activeUsersNow: activeUsersNow.length,
+    usersLoggedInToday: usersLoggedInToday.length,
     recentLogins,
     lastLoginEvent,
     lastDatabaseUpdate: new Date().toISOString(),
