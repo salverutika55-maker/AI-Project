@@ -126,10 +126,12 @@ export async function PUT(req: Request) {
     const orgIds = user.memberships.map(m => m.organizationId);
 
     const client = await prisma.client.findFirst({
-      where: {
-        id: clientId,
-        organizationId: { in: orgIds }
-      }
+      where: user.role === "ADMIN"
+        ? { id: clientId }
+        : {
+            id: clientId,
+            organizationId: { in: orgIds }
+          }
     });
 
     if (!client) {
@@ -185,10 +187,12 @@ export async function DELETE(req: Request) {
     const orgIds = user.memberships.map(m => m.organizationId);
 
     const client = await prisma.client.findFirst({
-      where: {
-        id: clientId,
-        organizationId: { in: orgIds }
-      }
+      where: user.role === "ADMIN"
+        ? { id: clientId }
+        : {
+            id: clientId,
+            organizationId: { in: orgIds }
+          }
     });
 
     if (!client) {
