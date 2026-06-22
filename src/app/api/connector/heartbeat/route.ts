@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { verify } from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret_for_dev_only";
+import { getConnectorJwtSecret } from "@/lib/connector-auth";
 
 export async function POST(req: Request) {
   try {
@@ -17,7 +16,9 @@ export async function POST(req: Request) {
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
       try {
-        const decoded = verify(token, JWT_SECRET) as { clientId: string, deviceId: string };
+        const decoded = verify(token, getConnectorJwtSecret(), {
+          algorithms: ["HS256"]
+        }) as { clientId: string, deviceId: string };
         clientId = decoded.clientId;
         deviceId = decoded.deviceId;
       } catch (e) {

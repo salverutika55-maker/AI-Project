@@ -1,8 +1,7 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { verify } from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret_for_dev_only";
+import { getConnectorJwtSecret } from '@/lib/connector-auth';
 
 export async function POST(request: Request): Promise<NextResponse> {
   const body = (await request.json()) as HandleUploadBody;
@@ -21,7 +20,9 @@ export async function POST(request: Request): Promise<NextResponse> {
         const token = authHeader.split(" ")[1];
         let clientId: string;
         try {
-          const decoded = verify(token, JWT_SECRET) as { clientId: string };
+          const decoded = verify(token, getConnectorJwtSecret(), {
+            algorithms: ["HS256"]
+          }) as { clientId: string };
           clientId = decoded.clientId;
         } catch (e) {
           throw new Error("Invalid token");

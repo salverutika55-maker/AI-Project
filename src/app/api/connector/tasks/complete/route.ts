@@ -2,8 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { verify } from "jsonwebtoken";
 import { encrypt } from "@/lib/encryption";
-
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret_for_dev_only";
+import { getConnectorJwtSecret } from "@/lib/connector-auth";
 
 export async function POST(req: Request) {
   try {
@@ -15,7 +14,9 @@ export async function POST(req: Request) {
     const token = authHeader.split(" ")[1];
     let clientId: string;
     try {
-      const decoded = verify(token, JWT_SECRET) as { clientId: string };
+      const decoded = verify(token, getConnectorJwtSecret(), {
+        algorithms: ["HS256"]
+      }) as { clientId: string };
       clientId = decoded.clientId;
     } catch (e) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
