@@ -13,7 +13,7 @@ export function dedupeClientsByName<
 
   for (const client of clients) {
     const normalized = client.normalizedName ? normalizeClientName(client.normalizedName) : normalizeClientName(client.name);
-    const scopedKey = client.organizationId ? `${client.organizationId}::${normalized}` : normalized;
+    const scopedKey = normalized;
 
     if (seen.has(scopedKey)) continue;
     seen.add(scopedKey);
