@@ -97,10 +97,10 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
       where: user.role === "ADMIN"
         ? undefined
         : { organizationId: { in: approvedOrgIds } },
-      orderBy: { name: "asc" }
+      orderBy: { createdAt: "desc" }
     });
 
-    const allClients = dedupeClientsByName(allClientsRaw);
+    const allClients = dedupeClientsByName(allClientsRaw).sort((a, b) => a.name.localeCompare(b.name));
 
     return (
       <UnifiedClientDashboard 
