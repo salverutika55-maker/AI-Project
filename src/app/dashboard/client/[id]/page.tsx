@@ -6,6 +6,8 @@ import { Sector } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getUserRoleInOrg } from "@/lib/rbac";
+import { dedupeClientsByName } from "@/lib/clientIdentity";
+import { headers } from "next/headers";
 
 export default async function ClientPNLPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -41,6 +43,24 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
   const userRole = await getUserRoleInOrg(user.id, client.organizationId);
   if (!userRole) redirect("/dashboard"); // Not in this org
 
+  try {
+    const hdrs = await headers();
+    const ipAddress = hdrs.get("x-forwarded-for") || "unknown";
+    const userAgent = hdrs.get("user-agent") || "unknown";
+
+    await prisma.clientAccessLog.create({
+      data: {
+        clientId: client.id,
+        userId: user.id,
+        email: user.email,
+        ipAddress,
+        userAgent,
+      },
+    });
+  } catch (logError) {
+    console.error("Failed to log client access", logError);
+  }
+
   // Automatically mark as OFFLINE if no heartbeat received for > 40 seconds
   if (client.connectorStatus === "ONLINE" && client.lastHeartbeat) {
     const timeSinceHeartbeat = Date.now() - client.lastHeartbeat.getTime();
@@ -73,12 +93,14 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
     const approvedOrgIds = user.memberships.map(membership => membership.organizationId);
 
     // Only expose clients from organizations this user can access.
-    const allClients = await prisma.client.findMany({
+    const allClientsRaw = await prisma.client.findMany({
       where: user.role === "ADMIN"
         ? undefined
         : { organizationId: { in: approvedOrgIds } },
       orderBy: { name: "asc" }
     });
+
+    const allClients = dedupeClientsByName(allClientsRaw);
 
     return (
       <UnifiedClientDashboard 

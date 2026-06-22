@@ -26,6 +26,8 @@ model User {
   memberships      OrganizationMembership[]
   auditLogs        AuditLog[]
   loginActivities  UserLoginActivity[]
+  createdClients   Client[]                 @relation("ClientsCreated")
+  clientAccessLogs ClientAccessLog[]
   securityAlerts   SecurityAlert[]
   tbUploads        TrialBalanceUpload[]
   resolvedAlerts   ComplianceAlert[]
@@ -84,6 +86,8 @@ enum Sector {
 model Client {
   id                   String            @id @default(cuid())
   name                 String
+  normalizedName       String?
+  createdByUserId      String?
   organizationId       String
   fiscalYearStartMonth Int               @default(4) // 4 = April, 1 = January
   baseCurrency         String            @default("USD")
@@ -95,6 +99,7 @@ model Client {
   lastAlterId          String?           @default("0") // Tally's Incremental Marker
   
   organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser        User?             @relation("ClientsCreated", fields: [createdByUserId], references: [id], onDelete: SetNull)
   credentials          IntegrationCredential?
   financialRecords     FinancialRecord[]
   pnlMappings          PNLMapping[]
@@ -117,7 +122,11 @@ model Client {
   reconStates          ReconciliationState[]
   unifiedMappings      UnifiedLedgerMapping[]
   bsValues             BSValue[]
+  accessLogs           ClientAccessLog[]
   createdAt            DateTime          @default(now())
+
+  @@index([normalizedName])
+  @@index([createdByUserId])
 }
 
 model FinancialRecord {
@@ -244,6 +253,23 @@ model UserLoginActivity {
   createdAt   DateTime @default(now())
 
   @@index([loginTime])
+}
+
+model ClientAccessLog {
+  id         String   @id @default(cuid())
+  clientId   String
+  userId     String
+  email      String
+  ipAddress  String?
+  userAgent  String?
+  loggedAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, loggedAt])
+  @@index([userId, loggedAt])
 }
 
 model RateLimit {

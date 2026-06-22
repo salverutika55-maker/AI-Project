@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, FileSpreadsheet } from "lucide-react";
 import { authOptions } from "@/lib/auth";
 import AdminLoginRegister from "@/components/AdminLoginRegister";
+import AdminClientAccessLogs from "@/components/AdminClientAccessLogs";
 
 export default async function AdminLoginRegisterPage() {
   const session = await getServerSession(authOptions);
@@ -31,6 +32,7 @@ export default async function AdminLoginRegisterPage() {
         </header>
 
         <AdminLoginRegister />
+        <AdminClientAccessLogs />
       </div>
     </div>
   );

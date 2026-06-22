@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import DashboardClient from "@/components/DashboardClient";
+import { dedupeClientsByName } from "@/lib/clientIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -86,10 +87,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const orgIds = approvedMemberships.map(m => m.organizationId);
 
     // Fetch Clients belonging to those organizations
-    const clients = await prisma.client.findMany({
+    const clientsRaw = await prisma.client.findMany({
       where: isGlobalAdmin ? undefined : { organizationId: { in: orgIds } },
       orderBy: { createdAt: "desc" },
     });
+
+    const clients = dedupeClientsByName(clientsRaw);
 
 
     // Only select a client if it's explicitly in the URL

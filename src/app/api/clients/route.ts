@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { normalizeClientName } from "@/lib/clientIdentity";
 
 export async function POST(req: Request) {
   try {
@@ -11,9 +12,26 @@ export async function POST(req: Request) {
     }
 
     const { name, software, sector } = await req.json();
+    const trimmedName = String(name || "").trim();
+    const normalizedName = normalizeClientName(trimmedName);
 
-    if (!name || name.trim() === "") {
+    if (!trimmedName) {
       return NextResponse.json({ message: "Client Name is required" }, { status: 400 });
+    }
+
+    const existingClient = await prisma.client.findFirst({
+      where: { normalizedName },
+      select: { id: true, name: true, organizationId: true },
+    });
+
+    if (existingClient) {
+      return NextResponse.json(
+        {
+          message: "Client with the same name already exists",
+          existingClient,
+        },
+        { status: 409 }
+      );
     }
 
     const user = await prisma.user.findUnique({
@@ -61,7 +79,9 @@ export async function POST(req: Request) {
 
     const newClient = await prisma.client.create({
       data: {
-        name: name.trim(),
+        name: trimmedName,
+        normalizedName,
+        createdByUserId: user.id,
         software: software || "TALLY",
         sector: sector || "TRADING",
         organizationId: organizationId,
