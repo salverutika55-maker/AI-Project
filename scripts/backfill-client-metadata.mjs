@@ -10,11 +10,20 @@ function normalizeClientName(name) {
     .toLowerCase();
 }
 
+function slugCode(source) {
+  const cleaned = String(source || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || "CLIENT";
+}
+
 async function main() {
   const clients = await prisma.client.findMany({
     select: {
       id: true,
       name: true,
+      clientCode: true,
       createdByUserId: true,
       organizationId: true,
       createdAt: true,
@@ -23,6 +32,14 @@ async function main() {
   });
 
   let updated = 0;
+  const assignedCodeByGroup = new Map();
+  const usedCodesByOrg = new Map();
+
+  for (const client of clients) {
+    const org = client.organizationId;
+    if (!usedCodesByOrg.has(org)) usedCodesByOrg.set(org, new Set());
+    if (client.clientCode) usedCodesByOrg.get(org).add(client.clientCode);
+  }
 
   for (const client of clients) {
     const data = {};
@@ -44,6 +61,26 @@ async function main() {
 
     const normalizedName = normalizeClientName(client.name);
     data.normalizedName = normalizedName;
+
+    if (!client.clientCode) {
+      const groupKey = `${client.organizationId}::${normalizedName}`;
+
+      if (assignedCodeByGroup.has(groupKey)) {
+        data.clientCode = assignedCodeByGroup.get(groupKey);
+      } else {
+        const used = usedCodesByOrg.get(client.organizationId);
+        const base = slugCode(client.name).slice(0, 18);
+        let candidate = `${base}-001`;
+        let index = 1;
+        while (used.has(candidate)) {
+          index += 1;
+          candidate = `${base}-${String(index).padStart(3, "0")}`;
+        }
+        used.add(candidate);
+        assignedCodeByGroup.set(groupKey, candidate);
+        data.clientCode = candidate;
+      }
+    }
 
     if (Object.keys(data).length > 0) {
       await prisma.client.update({

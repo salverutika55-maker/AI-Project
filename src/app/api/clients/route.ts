@@ -4,6 +4,13 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizeClientName } from "@/lib/clientIdentity";
 
+function normalizeClientCode(value: string): string {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "-");
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -11,27 +18,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { name, software, sector } = await req.json();
+    const { name, clientCode, software, sector } = await req.json();
     const trimmedName = String(name || "").trim();
+    const normalizedClientCode = normalizeClientCode(clientCode);
     const normalizedName = normalizeClientName(trimmedName);
 
     if (!trimmedName) {
       return NextResponse.json({ message: "Client Name is required" }, { status: 400 });
     }
 
-    const existingClient = await prisma.client.findFirst({
-      where: { normalizedName },
-      select: { id: true, name: true, organizationId: true },
-    });
-
-    if (existingClient) {
-      return NextResponse.json(
-        {
-          message: "Client with the same name already exists",
-          existingClient,
-        },
-        { status: 409 }
-      );
+    if (!normalizedClientCode) {
+      return NextResponse.json({ message: "Client Code is required" }, { status: 400 });
     }
 
     const user = await prisma.user.findUnique({
@@ -77,9 +74,28 @@ export async function POST(req: Request) {
       organizationId = org.id;
     }
 
+    const existingCode = await prisma.client.findFirst({
+      where: {
+        organizationId,
+        clientCode: normalizedClientCode,
+      },
+      select: { id: true, name: true, clientCode: true },
+    });
+
+    if (existingCode) {
+      return NextResponse.json(
+        {
+          message: "Client Code already exists in this organization",
+          existingClient: existingCode,
+        },
+        { status: 409 }
+      );
+    }
+
     const newClient = await prisma.client.create({
       data: {
         name: trimmedName,
+        clientCode: normalizedClientCode,
         normalizedName,
         createdByUserId: user.id,
         software: software || "TALLY",
@@ -103,7 +119,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { clientId, fiscalYearStartMonth, baseCurrency, sector } = await req.json();
+    const { clientId, fiscalYearStartMonth, baseCurrency, sector, clientCode } = await req.json();
 
     if (!clientId) {
       return NextResponse.json({ message: "Missing clientId" }, { status: 400 });
@@ -142,6 +158,28 @@ export async function PUT(req: Request) {
     if (fiscalYearStartMonth) updateData.fiscalYearStartMonth = parseInt(fiscalYearStartMonth);
     if (baseCurrency) updateData.baseCurrency = baseCurrency;
     if (sector) updateData.sector = sector;
+
+    if (typeof clientCode === "string") {
+      const normalizedClientCode = normalizeClientCode(clientCode);
+      if (!normalizedClientCode) {
+        return NextResponse.json({ message: "Client Code cannot be empty" }, { status: 400 });
+      }
+
+      const conflicting = await prisma.client.findFirst({
+        where: {
+          organizationId: client.organizationId,
+          clientCode: normalizedClientCode,
+          id: { not: client.id },
+        },
+        select: { id: true },
+      });
+
+      if (conflicting) {
+        return NextResponse.json({ message: "Client Code already exists in this organization" }, { status: 409 });
+      }
+
+      updateData.clientCode = normalizedClientCode;
+    }
 
     const updatedClient = await prisma.client.update({
       where: { id: clientId },

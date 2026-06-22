@@ -86,6 +86,7 @@ enum Sector {
 model Client {
   id                   String            @id @default(cuid())
   name                 String
+  clientCode           String?
   normalizedName       String?
   createdByUserId      String?
   organizationId       String
@@ -125,8 +126,10 @@ model Client {
   accessLogs           ClientAccessLog[]
   createdAt            DateTime          @default(now())
 
+  @@index([clientCode])
   @@index([normalizedName])
   @@index([createdByUserId])
+  @@unique([organizationId, clientCode])
 }
 
 model FinancialRecord {

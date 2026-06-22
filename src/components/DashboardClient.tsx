@@ -75,6 +75,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
   const [error, setError] = useState("");
   const [showNewClient, setShowNewClient] = useState(clients.length === 0);
   const [newClientName, setNewClientName] = useState("");
+  const [newClientCode, setNewClientCode] = useState("");
   const [newClientSoftware, setNewClientSoftware] = useState("TALLY");
   const [newClientSector, setNewClientSector] = useState("TRADING");
   const [showIntegrations, setShowIntegrations] = useState(false);
@@ -219,15 +220,16 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
       const res = await fetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newClientName, software: newClientSoftware, sector: newClientSector })
+        body: JSON.stringify({ name: newClientName, clientCode: newClientCode, software: newClientSoftware, sector: newClientSector })
       });
       if (res.ok) {
         setNewClientName("");
+        setNewClientCode("");
         setShowNewClient(false);
         router.refresh();
       } else {
         const data = await res.json();
-        setError(data.error || "Failed to create client");
+        setError(data.message || data.error || "Failed to create client");
       }
     } catch (err) {
       setError("An error occurred");
@@ -373,6 +375,11 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
             <div>
               <label className="block text-sm font-medium text-slate-400 mb-2">Company Name</label>
               <input type="text" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} required className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors" placeholder="e.g. Acme Corp LLC" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">Client Code (Unique)</label>
+              <input type="text" value={newClientCode} onChange={(e) => setNewClientCode(e.target.value)} required className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors uppercase" placeholder="e.g. ACME-001" />
+              <p className="text-[10px] text-slate-500 mt-2 ml-1 uppercase tracking-widest font-bold">Use a stable business identifier (GSTIN / PAN / internal client code).</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-400 mb-2">Accounting Software</label>
