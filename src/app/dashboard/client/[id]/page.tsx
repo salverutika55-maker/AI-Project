@@ -102,6 +102,17 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
 
     const allClients = dedupeClientsByName(allClientsRaw).sort((a, b) => a.name.localeCompare(b.name));
 
+      const canonicalClient = allClients.find((entry) => {
+        if (client.clientCode && entry.clientCode) {
+          return entry.clientCode === client.clientCode;
+        }
+        return entry.normalizedName && client.normalizedName && entry.normalizedName === client.normalizedName;
+      });
+
+      if (canonicalClient && canonicalClient.id !== client.id) {
+        redirect(`/dashboard/client/${canonicalClient.id}`);
+      }
+
     return (
       <UnifiedClientDashboard 
         client={client}
