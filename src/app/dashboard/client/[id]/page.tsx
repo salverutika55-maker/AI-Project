@@ -122,6 +122,9 @@ export default async function ClientPNLPage({ params }: { params: Promise<{ id: 
       />
     );
   } catch (error: any) {
+    if (typeof error?.digest === "string" && error.digest.startsWith("NEXT_REDIRECT")) {
+      throw error;
+    }
     console.error("Client PNL Page Error:", error);
     return (
       <div className="min-h-screen bg-[#0A0A0C] p-10 text-white font-mono flex items-center justify-center">
