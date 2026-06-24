@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default_secret_key_32_chars_long_!!'; // Must be 32 chars
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+if (!ENCRYPTION_KEY) {
+  throw new Error('ENCRYPTION_KEY environment variable is required and must be 32 characters');
+}
 const IV_LENGTH = 12; // GCM optimal IV length is 12 bytes
 
 export function encrypt(text: string): string {

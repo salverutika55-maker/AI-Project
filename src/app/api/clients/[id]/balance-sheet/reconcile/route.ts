@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { authorizeClientAction } from "@/lib/rbac";
-import { buildBalanceSheetReconciliation } from "@/lib/services/balance-sheet";
+import { buildBalanceSheetTrace } from "@/lib/services/balance-sheet-trace";
 
 export const dynamic = "force-dynamic";
 
@@ -26,64 +26,83 @@ export async function GET(
 
     await authorizeClientAction(user.id, id, "READ_ONLY");
 
-    const protocol = req.headers.get("x-forwarded-proto") || "http";
-    const host = req.headers.get("host") || "localhost:3000";
-    const bsResponse = await fetch(`${protocol}://${host}/api/clients/${id}/balance-sheet?year=${year}`, {
-      headers: {
-        Cookie: req.headers.get("cookie") || ""
-      }
-    });
+    const trace = await buildBalanceSheetTrace(id, year);
+    const mappedLedgerIds = trace.mappings
+      .map((m) => {
+        const match = trace.ledgers.find((l) => l.name.trim().toLowerCase() === m.softwareLedgerName.trim().toLowerCase());
+        return match?.id;
+      })
+      .filter((v): v is string => Boolean(v));
 
-    if (!bsResponse.ok) {
-      return NextResponse.json({ error: "Failed to fetch Balance Sheet data" }, { status: 502 });
-    }
-
-    const bsData = await bsResponse.json();
-    const displayedLedgerIds = new Set<string>();
-    const displayedSubheadTotals: Record<string, number> = {};
-
-    (bsData.dataNodes || []).forEach((node: any) => {
-      if (typeof node.ledgerId === "string") displayedLedgerIds.add(node.ledgerId);
-      const actualSubHead = node.subHeadName || node.subGroupName || node.groupName || "Unknown";
-      const actualGroup = node.groupName || "Unknown";
-      const key = `${actualGroup}|||${actualSubHead}`;
-      displayedSubheadTotals[key] = (displayedSubheadTotals[key] || 0) + (Number(node.amount) || 0);
-    });
-
-    const reconciler = await buildBalanceSheetReconciliation(id, year);
-    const mappedLedgerIds = reconciler.mappedLedgerIds || [];
+    const displayedLedgerIds = new Set(trace.ledgerTraces.map((l) => l.ledgerId));
     const missingLedgerIds = mappedLedgerIds.filter((ledgerId) => !displayedLedgerIds.has(ledgerId));
     const includedLedgerIds = mappedLedgerIds.filter((ledgerId) => displayedLedgerIds.has(ledgerId));
+
     const missingLedgerDetails = await prisma.normalizedLedger.findMany({
       where: { clientId: id, id: { in: missingLedgerIds } }
     });
 
-    const subheadSummaries = reconciler.subheadSummaries.map((summary) => {
-      const key = `${summary.groupName}|||${summary.subHeadName}`;
-      const displayedTotal = displayedSubheadTotals[key] || 0;
+    const subheadSummaries = trace.subheadDiagnostics.map((summary) => {
       return {
-        ...summary,
-        displayedTotal,
-        difference: Math.abs(displayedTotal - summary.ledgerTotal)
+        subHeadName: summary.subHeadName,
+        groupName: summary.groupName,
+        mainGroup: summary.mainGroup,
+        mappedLedgersCount: summary.mappedLedgersCount,
+        mappedLedgerIds: trace.ledgerTraces
+          .filter((l) => l.groupName === summary.groupName && l.subHeadName === summary.subHeadName && l.mainGroup === summary.mainGroup)
+          .map((l) => l.ledgerId),
+        missingLedgerIds: [],
+        ledgerTotal: summary.calculatedTotal,
+        displayedTotal: summary.displayedTotal,
+        difference: summary.variance,
       };
     });
 
-    const groupSummaries = reconciler.groupSummaries.map((group) => {
-      const recalculatedDisplayed = subheadSummaries
-        .filter((sh) => sh.groupName === group.groupName && sh.mainGroup === group.mainGroup)
-        .reduce((sum, sh) => sum + sh.displayedTotal, 0);
-      return {
-        ...group,
-        subheads: subheadSummaries.filter((sh) => sh.groupName === group.groupName && sh.mainGroup === group.mainGroup),
-        displayedTotal: recalculatedDisplayed,
-        difference: Math.abs(recalculatedDisplayed - group.ledgerTotal)
+    const groupMap = new Map<string, {
+      groupName: string;
+      mainGroup: "Assets" | "Liabilities";
+      subheads: typeof subheadSummaries;
+      ledgerTotal: number;
+      displayedTotal: number;
+      difference: number;
+    }>();
+
+    for (const sh of subheadSummaries) {
+      const key = `${sh.mainGroup}|||${sh.groupName}`;
+      const group = groupMap.get(key) || {
+        groupName: sh.groupName,
+        mainGroup: sh.mainGroup,
+        subheads: [],
+        ledgerTotal: 0,
+        displayedTotal: 0,
+        difference: 0,
       };
-    });
+
+      group.subheads.push(sh);
+      group.ledgerTotal += sh.ledgerTotal;
+      group.displayedTotal += sh.displayedTotal;
+      group.difference = Math.abs(group.displayedTotal - group.ledgerTotal);
+      groupMap.set(key, group);
+    }
+
+    const groupSummaries = Array.from(groupMap.values());
+
+    const reconciled = missingLedgerIds.length === 0 && subheadSummaries.every((s) => s.difference < 1);
 
     return NextResponse.json({
-      ...reconciler,
+      totalMappedLedgers: mappedLedgerIds.length,
+      totalIncludedLedgers: includedLedgerIds.length,
+      totalMissingLedgers: missingLedgerIds.length,
+      mappedLedgerIds,
+      includedLedgerIds,
+      missingLedgerIds,
       subheadSummaries,
       groupSummaries,
+      reconciled,
+      traceMode: {
+        formula: "opening + debit - credit",
+        syntheticValues: false,
+      },
       actualDisplayedLedgerIds: Array.from(displayedLedgerIds),
       actualIncludedLedgerCount: includedLedgerIds.length,
       actualMissingLedgerCount: missingLedgerIds.length,

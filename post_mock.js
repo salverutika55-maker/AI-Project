@@ -16,11 +16,15 @@ async function test() {
       ]
     };
     
+    const token = process.env.TEST_BEARER_TOKEN;
+    if (!token) {
+      throw new Error('TEST_BEARER_TOKEN environment variable is required');
+    }
     const res = await fetch("http://localhost:3000/api/ingest/vouchers", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer REDACTED_TEST_BEARER"
+        "Authorization": `Bearer ${token}`
       },
       body: JSON.stringify(payload)
     });

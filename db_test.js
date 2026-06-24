@@ -3,7 +3,10 @@ const { decrypt } = require('./src/lib/encryption.ts'); // Wait, I can't require
 
 // I will just copy the decrypt function into the script.
 const crypto = require('crypto');
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default_secret_key_32_chars_long_!!'; // Must be 32 chars
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+if (!ENCRYPTION_KEY) {
+  throw new Error('ENCRYPTION_KEY environment variable is required');
+}
 
 function decryptText(text) {
   if (!text) return text;

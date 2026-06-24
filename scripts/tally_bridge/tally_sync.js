@@ -8,7 +8,10 @@ require('dotenv').config();
 const TALLY_URL = process.env.TALLY_URL || 'http://localhost:9000';
 const VERCEL_WEBHOOK_URL = process.env.VERCEL_WEBHOOK_URL || 'https://ai-project-salverutika55-makers-projects.vercel.app/api/ingest';
 
-const API_KEY = process.env.API_KEY || 'REDACTED_API_KEY';
+const API_KEY = process.env.API_KEY;
+if (!API_KEY) {
+  throw new Error('API_KEY environment variable is required');
+}
 
 // Range formatting e.g. "2024-04" to "2026-03" (24 months)
 const START_PERIOD = process.env.START_PERIOD || '2024-04';

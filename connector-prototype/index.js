@@ -4,9 +4,13 @@ const { pipeline } = require('stream/promises');
 const Database = require('better-sqlite3');
 
 // Configuration
-const TALLY_URL = 'http://localhost:9000';
-const API_BASE_URL = 'https://ai-project-git-main-salverutika55-makers-projects.vercel.app/api';
-const CLIENT_TOKEN = 'REDACTED_CLIENT_TOKEN'; // Correct token for your account
+const TALLY_URL = process.env.TALLY_URL || 'http://localhost:9000';
+const API_BASE_URL = process.env.API_BASE_URL || 'https://ai-project-git-main-salverutika55-makers-projects.vercel.app/api';
+const CLIENT_TOKEN = process.env.CLIENT_TOKEN;
+
+if (!CLIENT_TOKEN) {
+  throw new Error('CLIENT_TOKEN environment variable is required');
+}
 const DB_PATH = path.join(__dirname, 'tally_cache.db');
 
 console.log("Starting Tally Incremental Sync Connector (Live Mode)...");
