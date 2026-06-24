@@ -14,6 +14,7 @@ export async function GET(
   const { id } = await params;
   const { searchParams } = new URL(req.url);
   const selectedYear = parseInt(searchParams.get("year") || new Date().getFullYear().toString(), 10);
+  const debugTrace = ["1", "true", "yes"].includes((searchParams.get("trace") || "").toLowerCase());
 
   const session = await getServerSession(authOptions);
   if (!session || !session.user?.email) {
@@ -43,7 +44,7 @@ export async function GET(
         nature: l.nature,
       }));
 
-    return NextResponse.json({
+    const responsePayload: Record<string, unknown> = {
       structure: trace.structure,
       dataNodes: trace.dataNodes,
       validation: {
@@ -63,7 +64,97 @@ export async function GET(
         formula: "opening + debit - credit",
         months: ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"],
       },
-    });
+    };
+
+    if (debugTrace) {
+      const keySubheads = [
+        "capital account",
+        "reserves & surplus",
+        "trade receivable",
+        "trade receivables",
+        "trade payable",
+        "trade payables",
+        "bank accounts",
+        "loans & advances",
+      ];
+
+      const mappingVerification = trace.subheadDiagnostics
+        .filter((row) => keySubheads.some((key) => row.subHeadName.toLowerCase().includes(key)))
+        .map((row) => ({
+          mainGroup: row.mainGroup,
+          groupName: row.groupName,
+          subHeadName: row.subHeadName,
+          mappedLedgerCount: row.mappedLedgersCount,
+          mappedLedgerNames: trace.ledgerTraces
+            .filter(
+              (ledger) =>
+                ledger.mainGroup === row.mainGroup &&
+                ledger.groupName === row.groupName &&
+                ledger.subHeadName === row.subHeadName
+            )
+            .map((ledger) => ledger.ledgerName),
+          failureType:
+            row.mappedLedgersCount === 0
+              ? "mapping_failure"
+              : row.calculatedTotal === 0 && row.displayedTotal === 0
+              ? "calculation_failure"
+              : "ok",
+        }));
+
+      const ledgerFlow = trace.ledgerTraces.map((ledger) => ({
+        ledgerName: ledger.ledgerName,
+        mainGroup: ledger.mainGroup,
+        groupName: ledger.groupName,
+        subHeadName: ledger.subHeadName,
+        openingSource: ledger.openingSource,
+        openingBalance: ledger.monthTraces.Opening?.closing || 0,
+        marchOpening: ledger.monthTraces.Opening?.closing || 0,
+        marchDebit: ledger.monthTraces.Mar?.debit || 0,
+        marchCredit: ledger.monthTraces.Mar?.credit || 0,
+        marchClosing: ledger.monthTraces.Mar?.closing || 0,
+        aprilDebit: ledger.monthTraces.Apr?.debit || 0,
+        aprilCredit: ledger.monthTraces.Apr?.credit || 0,
+        aprilClosing: ledger.monthTraces.Apr?.closing || 0,
+        mayDebit: ledger.monthTraces.May?.debit || 0,
+        mayCredit: ledger.monthTraces.May?.credit || 0,
+        mayClosing: ledger.monthTraces.May?.closing || 0,
+      }));
+
+      const subheadAuditReport = trace.subheadDiagnostics.map((row) => ({
+        mainGroup: row.mainGroup,
+        groupName: row.groupName,
+        subHeadName: row.subHeadName,
+        mappedLedgers: row.mappedLedgersCount,
+        expectedBalance: row.calculatedTotal,
+        displayedBalance: row.displayedTotal,
+        variance: row.variance,
+      }));
+
+      responsePayload.auditReport = {
+        mappingVerification,
+        ledgerFlow,
+        subheadAuditReport,
+        subheadMonthAudit: trace.subheadMonthAudit,
+        openingSourceSummary: trace.openingSourceSummary,
+        rootCauseIndicators: {
+          mappedButZeroOpeningCount: trace.subheadMonthAudit.filter(
+            (row) =>
+              row.period === "Opening" &&
+              row.expectedTotal === 0 &&
+              trace.subheadDiagnostics.some(
+                (diag) =>
+                  diag.mainGroup === row.mainGroup &&
+                  diag.groupName === row.groupName &&
+                  diag.subHeadName === row.subHeadName &&
+                  diag.mappedLedgersCount > 0
+              )
+          ).length,
+          missingMappedLedgerNames: trace.missingMappedLedgerNames,
+        },
+      };
+    }
+
+    return NextResponse.json(responsePayload);
   } catch (error: any) {
     console.error("Balance Sheet Fetch Error:", error);
     return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });

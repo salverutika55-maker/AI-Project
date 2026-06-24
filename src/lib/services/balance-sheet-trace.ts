@@ -87,6 +87,7 @@ export type BalanceSheetLedgerTrace = {
   subHeadName: string;
   mainGroup: "Assets" | "Liabilities";
   nature: string;
+  openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy";
   monthTraces: Record<string, LedgerMonthTrace>;
 };
 
@@ -101,13 +102,35 @@ export type BalanceSheetSubheadDiagnostic = {
   variance: number;
 };
 
+export type BalanceSheetSubheadMonthAudit = {
+  mainGroup: "Assets" | "Liabilities";
+  groupName: string;
+  subHeadName: string;
+  period: string;
+  expectedTotal: number;
+  displayedTotal: number;
+  variance: number;
+};
+
 function mappingKey(value: string) {
-  return value.trim().toLowerCase();
+  return value
+    .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 function safeNum(value: unknown) {
   const n = Number(value || 0);
   return Number.isFinite(n) ? n : 0;
+}
+
+function cleanLabel(value: string | null | undefined, fallback: string) {
+  const cleaned = (value || "")
+    .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || fallback;
 }
 
 function resolveMainGroup(groupName: string, nature: string): "Assets" | "Liabilities" {
@@ -142,11 +165,22 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
   const targetFYStart = new Date(`${year}-04-01T00:00:00.000Z`);
   const targetFYEnd = new Date(`${year + 1}-03-31T23:59:59.999Z`);
 
+  const preFYMovements: Record<string, { debit: number; credit: number }> = {};
   const monthlyMovements: Record<string, Record<string, { debit: number; credit: number }>> = {};
 
   for (const vl of voucherLines) {
     const d = new Date(vl.voucher.date);
-    if (d < targetFYStart || d > targetFYEnd) continue;
+    if (d < targetFYStart) {
+      if (!preFYMovements[vl.ledgerId]) preFYMovements[vl.ledgerId] = { debit: 0, credit: 0 };
+      if (vl.entryType === "DEBIT") {
+        preFYMovements[vl.ledgerId].debit += safeNum(vl.amount);
+      } else {
+        preFYMovements[vl.ledgerId].credit += safeNum(vl.amount);
+      }
+      continue;
+    }
+
+    if (d > targetFYEnd) continue;
 
     const mName = MONTH_SHORT_NAMES[d.getMonth()];
     if (!monthlyMovements[vl.ledgerId]) monthlyMovements[vl.ledgerId] = {};
@@ -174,11 +208,33 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     const mapping = mappingByLedger.get(mappingKey(ledger.name));
     if (!mapping) continue;
 
-    const groupName = mapping.groupName.trim();
-    const subHeadName = (mapping.subHeadName || mapping.subGroupName || mapping.groupName).trim();
+    const groupName = cleanLabel(mapping.groupName, cleanLabel(ledger.groupName, "Unclassified"));
+    const subHeadName = cleanLabel(mapping.subHeadName || mapping.subGroupName || mapping.groupName, groupName);
     const mainGroup = resolveMainGroup(groupName, ledger.nature);
 
+    const fyMovement = { debit: 0, credit: 0 };
+    for (const month of FY_MONTHS) {
+      const mv = monthlyMovements[ledger.id]?.[month] || { debit: 0, credit: 0 };
+      fyMovement.debit += safeNum(mv.debit);
+      fyMovement.credit += safeNum(mv.credit);
+    }
+
+    const preFY = preFYMovements[ledger.id] || { debit: 0, credit: 0 };
+
     let running = safeNum(ledger.openingBalance);
+    let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" = "ledger_opening";
+
+    if (running === 0) {
+      const closingBal = safeNum(ledger.closingBalance);
+      if (closingBal !== 0) {
+        running = closingBal - fyMovement.debit + fyMovement.credit;
+        openingSource = "derived_from_closing";
+      } else {
+        running = preFY.debit - preFY.credit;
+        openingSource = "derived_from_pre_fy";
+      }
+    }
+
     const monthTraces: Record<string, LedgerMonthTrace> = {
       Opening: {
         opening: running,
@@ -206,6 +262,7 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
       subHeadName,
       mainGroup,
       nature: ledger.nature,
+      openingSource,
       monthTraces,
     });
   }
@@ -293,6 +350,46 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     variance: Math.abs(d.displayedTotal - d.calculatedTotal),
   }));
 
+  const subheadMonthAudit: BalanceSheetSubheadMonthAudit[] = [];
+  for (const summary of subheadDiagnostics) {
+    for (const period of FULL_MONTHS) {
+      const expectedTotal = ledgerTraces
+        .filter(
+          (row) =>
+            row.mainGroup === summary.mainGroup &&
+            row.groupName === summary.groupName &&
+            row.subHeadName === summary.subHeadName
+        )
+        .reduce((sum, row) => sum + safeNum(row.monthTraces[period]?.closing), 0);
+
+      const displayedTotal = dataNodes
+        .filter(
+          (node) =>
+            node.mainGroup === summary.mainGroup &&
+            node.groupName === summary.groupName &&
+            node.subHeadName === summary.subHeadName &&
+            node.period === period
+        )
+        .reduce((sum, node) => sum + safeNum(node.amount), 0);
+
+      subheadMonthAudit.push({
+        mainGroup: summary.mainGroup,
+        groupName: summary.groupName,
+        subHeadName: summary.subHeadName,
+        period,
+        expectedTotal,
+        displayedTotal,
+        variance: Math.abs(displayedTotal - expectedTotal),
+      });
+    }
+  }
+
+  const openingSourceSummary = {
+    ledgerOpening: ledgerTraces.filter((row) => row.openingSource === "ledger_opening").length,
+    derivedFromClosing: ledgerTraces.filter((row) => row.openingSource === "derived_from_closing").length,
+    derivedFromPreFY: ledgerTraces.filter((row) => row.openingSource === "derived_from_pre_fy").length,
+  };
+
   const totalsByMainGroup = {
     Assets: dataNodes
       .filter((n) => n.mainGroup === "Assets" && n.period === latestMonth)
@@ -309,7 +406,9 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     dataNodes,
     structure,
     subheadDiagnostics,
+    subheadMonthAudit,
     totalsByMainGroup,
+    openingSourceSummary,
     missingMappedLedgerNames,
   };
 }
