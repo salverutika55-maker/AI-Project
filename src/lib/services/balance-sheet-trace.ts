@@ -10,12 +10,12 @@ const ASSET_GROUP_NAMES = new Set([
   "Fixed Assets",
   "Investments",
   "Sundry Debtors",
-  "Cash-in-hand",
+  "Cash-In-Hand",
   "Bank Accounts",
   "Closing Stock",
-  "Deposits (Asset)",
-  "Loans & Advances (Asset)",
-  "Trade Receivables",
+  "Deposits (Assets)",
+  "Short Term Loan & Advance",
+  "Trade Receivable",
 ]);
 
 const LIABILITY_GROUP_NAMES = new Set([
@@ -31,7 +31,7 @@ const LIABILITY_GROUP_NAMES = new Set([
   "Unsecured Loans",
   "Primary",
   "Reserves & Surplus",
-  "Trade Payables",
+  "Trade Payable",
 ]);
 
 const DEFAULT_STRUCTURE: Record<string, Record<string, Record<string, Record<string, never>>>> = {
@@ -49,7 +49,7 @@ const DEFAULT_STRUCTURE: Record<string, Record<string, Record<string, Record<str
       "Short Term Borrowing": {},
       "Duties & Taxes": {},
       "Suspense A/c": {},
-      "Trade Payables": {},
+      "Trade Payable": {},
       Provisions: {},
       "Other Current Liabilities": {},
     },
@@ -61,11 +61,11 @@ const DEFAULT_STRUCTURE: Record<string, Record<string, Record<string, Record<str
     },
     "Current Assets": {
       "Closing Stock": {},
-      "Trade Receivables": {},
-      "Cash-in-hand": {},
+      "Trade Receivable": {},
+      "Cash-In-Hand": {},
       "Bank Accounts": {},
-      "Deposits (Asset)": {},
-      "Loans & Advances (Asset)": {},
+      "Deposits (Assets)": {},
+      "Short Term Loan & Advance": {},
       "Other Current Assets": {},
     },
     "Branch Account": {},

@@ -6,11 +6,12 @@ const ASSET_GROUP_NAMES = new Set([
   "Fixed Assets",
   "Investments",
   "Sundry Debtors",
-  "Cash-in-hand",
+  "Cash-In-Hand",
   "Bank Accounts",
   "Closing Stock",
-  "Deposits (Asset)",
-  "Loans & Advances (Asset)"
+  "Deposits (Assets)",
+  "Short Term Loan & Advance",
+  "Trade Receivable"
 ]);
 
 const LIABILITY_GROUP_NAMES = new Set([
@@ -25,7 +26,8 @@ const LIABILITY_GROUP_NAMES = new Set([
   "Secured Loans",
   "Unsecured Loans",
   "Primary",
-  "Reserves & Surplus"
+  "Reserves & Surplus",
+  "Trade Payable"
 ]);
 
 const BS_MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
