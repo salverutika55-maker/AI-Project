@@ -58,10 +58,12 @@ export async function GET(
     const ledgerGroupMap = new Map<string, typeof ledgers>();
     for (const l of ledgers) {
       const lower = l.name.trim().toLowerCase();
-      if (!ledgerGroupMap.has(lower)) {
-        ledgerGroupMap.set(lower, []);
+      let list = ledgerGroupMap.get(lower);
+      if (!list) {
+        list = [];
+        ledgerGroupMap.set(lower, list);
       }
-      ledgerGroupMap.get(lower).push(l);
+      list.push(l);
     }
 
     for (const [lower, list] of ledgerGroupMap.entries()) {
