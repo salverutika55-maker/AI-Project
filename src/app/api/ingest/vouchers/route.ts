@@ -29,35 +29,32 @@ export async function POST(req: Request) {
 
     console.log(`[INGEST-VOUCHERS] Received ${vouchers.length} vouchers for client ${client.name}`);
 
-    // Upsert ledgers to NormalizedLedger and keep an ID map
+    // Fetch all existing ledgers for this client to map them case-insensitively
+    const existingLedgers = await prisma.normalizedLedger.findMany({
+      where: { clientId: client.id }
+    });
+
     const ledgerMap = new Map();
+    for (const l of existingLedgers) {
+      ledgerMap.set(l.name.toLowerCase(), l.id);
+    }
+
     const uniqueLedgerNames = new Map<string, string>(); // lowercase -> original case
-    
     for (const v of vouchers) {
       for (const line of v.lines) {
         if (line.ledgerName) {
            const original = line.ledgerName.trim();
            const lower = original.toLowerCase();
-           if (!uniqueLedgerNames.has(lower)) {
+           if (!ledgerMap.has(lower) && !uniqueLedgerNames.has(lower)) {
              uniqueLedgerNames.set(lower, original);
            }
         }
       }
     }
 
-    // Batch process Ledgers
-    const existingLedgers = await prisma.normalizedLedger.findMany({
-      where: { clientId: client.id, name: { in: Array.from(uniqueLedgerNames.values()) } }
-    });
-
-    for (const l of existingLedgers) {
-      ledgerMap.set(l.name.toLowerCase(), l.id);
-      uniqueLedgerNames.delete(l.name.toLowerCase());
-    }
-
     const ledgersToCreate = Array.from(uniqueLedgerNames.values()).map(name => {
       const id = crypto.randomUUID();
-      ledgerMap.set(name.toLowerCase(), id);
+      ledgerMap.set(name.toLowerCase(), id); // Temporary ID mapping
       return {
         id,
         clientId: client.id,
@@ -69,8 +66,17 @@ export async function POST(req: Request) {
 
     if (ledgersToCreate.length > 0) {
       await prisma.normalizedLedger.createMany({
-        data: ledgersToCreate
+        data: ledgersToCreate,
+        skipDuplicates: true
       });
+
+      // Re-fetch all ledgers for this client to ensure ledgerMap has the actual database IDs (handling any skipped/concurrently-created rows)
+      const finalLedgers = await prisma.normalizedLedger.findMany({
+        where: { clientId: client.id }
+      });
+      for (const l of finalLedgers) {
+        ledgerMap.set(l.name.toLowerCase(), l.id);
+      }
     }
 
     let processedCount = 0;

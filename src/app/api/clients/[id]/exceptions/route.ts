@@ -54,6 +54,32 @@ export async function GET(
 
     const exceptions: any[] = [];
 
+    // Find case-insensitive duplicate ledgers in ERP
+    const ledgerGroupMap = new Map<string, typeof ledgers>();
+    for (const l of ledgers) {
+      const lower = l.name.trim().toLowerCase();
+      if (!ledgerGroupMap.has(lower)) {
+        ledgerGroupMap.set(lower, []);
+      }
+      ledgerGroupMap.get(lower).push(l);
+    }
+
+    for (const [lower, list] of ledgerGroupMap.entries()) {
+      if (list.length > 1) {
+        const names = list.map(l => `"${l.name}"`).join(", ");
+        exceptions.push({
+          ledgerName: list[0].name,
+          erpGroup: "ERP Collision",
+          currentMapping: "Duplicate Ledgers",
+          recommendedMapping: "Merge Ledgers",
+          confidence: 100,
+          reason: `Found duplicate ledgers in ERP: ${names} that differ only by case or whitespace. Please merge them in your ERP system to prevent mapping conflicts.`,
+          type: "DUPLICATE_LEDGER",
+          severity: "HIGH"
+        });
+      }
+    }
+
     // Analyze each mapped ledger for anomalies
     mappings.forEach(mapping => {
       const ledgerName = mapping.softwareLedgerName;
