@@ -27,6 +27,7 @@ interface Ledger {
   name: string;
   nature: string;
   groupName: string;
+  mainGroup?: string; // Add mainGroup field
   isActive: boolean;
   amounts: Record<string, { opening: number, debit: number, credit: number, closing: number }>;
   isMapped: boolean;
@@ -97,6 +98,7 @@ export default function LedgerDrilldownDrawer({
       const row: any = {
         "Ledger Name": l.name,
         "Software Group": l.groupName,
+        "Classification": statementType === "BS" ? (l.mainGroup === "Assets" ? "Asset" : "Liability / Equity") : (l.nature === "CREDIT" ? "Revenue" : "Expense"),
         "Opening Balance": statementType === 'PNL' ? 0 : (l.amounts[months[0]]?.opening || 0),
       };
       
@@ -112,6 +114,7 @@ export default function LedgerDrilldownDrawer({
     const totalRow: any = {
       "Ledger Name": "Total / Subhead Total",
       "Software Group": "",
+      "Classification": "",
       "Opening Balance": statementType === 'PNL' ? 0 : filteredLedgers.reduce((sum, l) => sum + (l.amounts[months[0]]?.opening || 0), 0),
     };
     months.forEach(m => {
@@ -135,6 +138,7 @@ export default function LedgerDrilldownDrawer({
       const row: any = {
         "Ledger Name": l.name,
         "Software Group": l.groupName,
+        "Classification": statementType === "BS" ? (l.mainGroup === "Assets" ? "Asset" : "Liability / Equity") : (l.nature === "CREDIT" ? "Revenue" : "Expense"),
         "Opening Balance": statementType === 'PNL' ? 0 : (l.amounts[months[0]]?.opening || 0),
       };
       months.forEach(m => {
@@ -148,6 +152,7 @@ export default function LedgerDrilldownDrawer({
     const totalRow: any = {
       "Ledger Name": "Total / Subhead Total",
       "Software Group": "",
+      "Classification": "",
       "Opening Balance": statementType === 'PNL' ? 0 : filteredLedgers.reduce((sum, l) => sum + (l.amounts[months[0]]?.opening || 0), 0),
     };
     months.forEach(m => {
@@ -334,7 +339,7 @@ export default function LedgerDrilldownDrawer({
             <div className="flex items-center gap-2">
                <AlertCircle className="w-3.5 h-3.5 text-cyan-500" />
                <span className="text-[10px] font-mono font-bold text-cyan-500 uppercase tracking-widest">
-                 Formula: {statementType === "PNL" ? "Revenue (Credit - Debit) | Expense (Debit - Credit)" : "Opening + Debit - Credit"}
+                 Formula: {statementType === "PNL" ? "Revenue (Credit - Debit) | Expense (Debit - Credit)" : "Assets (Opening + Debit - Credit) | Liabilities & Equity (Opening + Credit - Debit)"}
                </span>
             </div>
             <button 
@@ -407,7 +412,7 @@ export default function LedgerDrilldownDrawer({
                       <th className="w-40 p-2 text-xs text-slate-500 font-bold uppercase tracking-widest">Summary</th>
                       {tableColumns.map(m => (
                         <th key={m} className="p-2 text-right text-xs text-slate-500 font-bold uppercase tracking-widest">
-                          {m === "Opening" && statementType === "PNL" ? "Opening" : m === "Closing" && statementType === "PNL" ? "Closing" : m}
+                          {m === "Opening" ? "Opening" : m === "Closing" ? "Closing" : m}
                         </th>
                       ))}
                     </tr>
@@ -418,9 +423,9 @@ export default function LedgerDrilldownDrawer({
                       <td className="p-2 text-xs text-slate-400 font-bold uppercase tracking-widest">Total Statement:</td>
                       {tableColumns.map(m => {
                         let val = 0;
-                        if (m === "Opening" && statementType === "PNL") {
-                          val = 0;
-                        } else if (m === "Closing" && statementType === "PNL") {
+                        if (m === "Opening") {
+                          val = statementType === "PNL" ? 0 : (totalAmounts["Opening"] || 0);
+                        } else if (m === "Closing") {
                           val = statementTotal;
                         } else {
                           val = totalAmounts[m] || 0;
@@ -437,9 +442,9 @@ export default function LedgerDrilldownDrawer({
                       <td className="p-2 text-xs text-slate-400 font-bold uppercase tracking-widest">Ledgers Sum:</td>
                       {tableColumns.map(m => {
                         let val = 0;
-                        if (m === "Opening" && statementType === "PNL") {
-                          val = 0;
-                        } else if (m === "Closing" && statementType === "PNL") {
+                        if (m === "Opening") {
+                          val = statementType === "PNL" ? 0 : ledgers.reduce((sum, l) => sum + (l.amounts["Opening"]?.closing || 0), 0);
+                        } else if (m === "Closing") {
                           val = ledgersTotal;
                         } else {
                           val = ledgers.reduce((sum, l) => sum + (l.amounts[m]?.closing || 0), 0);
@@ -456,9 +461,11 @@ export default function LedgerDrilldownDrawer({
                       <td className="p-2 text-xs text-slate-400 font-bold uppercase tracking-widest">Variance:</td>
                       {tableColumns.map(m => {
                         let variance = 0;
-                        if (m === "Opening" && statementType === "PNL") {
-                          variance = 0;
-                        } else if (m === "Closing" && statementType === "PNL") {
+                        if (m === "Opening") {
+                          const stmtVal = statementType === "PNL" ? 0 : (totalAmounts["Opening"] || 0);
+                          const ledSumVal = statementType === "PNL" ? 0 : ledgers.reduce((sum, l) => sum + (l.amounts["Opening"]?.closing || 0), 0);
+                          variance = Math.abs(stmtVal - ledSumVal);
+                        } else if (m === "Closing") {
                           variance = Math.abs(statementTotal - ledgersTotal);
                         } else {
                           const stmtVal = totalAmounts[m] || 0;
@@ -484,7 +491,7 @@ export default function LedgerDrilldownDrawer({
                       <th className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest border-b border-white/5">Ledger</th>
                       {tableColumns.map(m => (
                         <th key={m} className="p-3 text-xs text-slate-500 font-bold uppercase tracking-widest text-right border-b border-white/5">
-                          {m === "Opening" && statementType === "PNL" ? "Opening" : m === "Closing" && statementType === "PNL" ? "Closing" : m}
+                          {m === "Opening" ? "Opening" : m === "Closing" ? "Closing" : m}
                         </th>
                       ))}
                     </tr>
@@ -510,20 +517,50 @@ export default function LedgerDrilldownDrawer({
                                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-400">Inactive</span>
                                    )}
                                 </div>
+                                
+                                {/* Trace Mode Audit details per ledger */}
+                                {showTraceMode && (
+                                  <div className="mt-2 p-2 bg-[#1A1A24] border border-white/5 rounded-lg text-[10px] font-mono text-slate-400 space-y-1">
+                                    <div>
+                                      <span className="text-slate-500">Classification:</span>{" "}
+                                      <span className="text-slate-300 font-bold">
+                                        {statementType === "BS" ? (ledger.mainGroup === "Assets" ? "Asset" : "Liability / Equity") : (ledger.nature === "CREDIT" ? "Revenue" : "Expense")}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-slate-500">Formula Applied:</span>{" "}
+                                      <span className="text-cyan-400 font-bold">
+                                        {statementType === "BS"
+                                          ? ledger.mainGroup === "Assets"
+                                            ? "Opening + Debit - Credit"
+                                            : "Opening + Credit - Debit"
+                                          : ledger.nature === "CREDIT"
+                                          ? "Credit - Debit"
+                                          : "Debit - Credit"}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-slate-500 mt-1">
+                                      <span>Opening: <strong className="text-slate-400">{formatCurrency(statementType === "PNL" ? 0 : ledger.amounts[months[0]]?.opening || ledger.amounts["Opening"]?.closing || 0)}</strong></span>
+                                      <span>Debit: <strong className="text-slate-400">{formatCurrency(months.reduce((sum, m) => sum + (ledger.amounts[m]?.debit || 0), 0))}</strong></span>
+                                      <span>Credit: <strong className="text-slate-400">{formatCurrency(months.reduce((sum, m) => sum + (ledger.amounts[m]?.credit || 0), 0))}</strong></span>
+                                      <span>Closing: <strong className="text-white">{formatCurrency(ledTotalVal)}</strong></span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </td>
                             {tableColumns.map(m => {
                               let displayVal = 0;
-                              if (m === "Opening" && statementType === "PNL") {
-                                displayVal = 0;
-                              } else if (m === "Closing" && statementType === "PNL") {
+                              if (m === "Opening") {
+                                displayVal = statementType === "PNL" ? 0 : (ledger.amounts["Opening"]?.closing || 0);
+                              } else if (m === "Closing") {
                                 displayVal = ledTotalVal;
                               } else {
                                 displayVal = ledger.amounts[m]?.closing || 0;
                               }
                               return (
-                                <td key={m} className="p-3 text-right">
-                                  <span className="text-sm font-mono font-black text-slate-300 group-hover:text-white transition-colors">
+                                <td key={m} className="p-3 text-right font-mono font-bold">
+                                  <span className="text-sm text-slate-300 group-hover:text-white transition-colors">
                                     {formatCurrency(displayVal)}
                                   </span>
                                 </td>

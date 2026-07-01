@@ -226,6 +226,7 @@ export async function GET(
           name: row.ledgerName,
           nature: row.nature,
           groupName: row.groupName,
+          mainGroup: row.mainGroup,
           amounts,
           isMapped: true,
         };
@@ -237,6 +238,21 @@ export async function GET(
         return bv - av;
       });
 
+    // Prepare simulated queries for BS Trace Mode display
+    const sqlQueries = [
+      `SELECT * FROM "UnifiedLedgerMapping" WHERE "clientId" = '${id}' AND "statementType" = 'BS' AND "subHeadName" = '${subHeadName}';`,
+      `SELECT * FROM "NormalizedLedger" WHERE "clientId" = '${id}' AND "isActive" = true;`,
+      `SELECT * FROM "NormalizedVoucherLine" WHERE "voucherId" IN (SELECT "id" FROM "NormalizedVoucher" WHERE "clientId" = '${id}')`
+    ];
+
+    // Find any unmapped/skipped ledgers in the same database groups
+    const mappedGroups = Array.from(new Set(ledgers.map(l => l.groupName)));
+    const skippedLedgers = trace.ledgers.filter(l => 
+      l.isActive && 
+      mappedGroups.includes(l.groupName) && 
+      !trace.mappings.some(m => m.softwareLedgerName.trim().toLowerCase() === l.name.trim().toLowerCase())
+    );
+
     return NextResponse.json({
       subHeadName,
       statementType,
@@ -245,7 +261,17 @@ export async function GET(
       totalMapped: ledgers.length,
       ledgers,
       traceMode: {
-        formula: "opening + debit - credit",
+        subHeadId: "N/A",
+        mappedLedgersCount: ledgers.length,
+        mappedLedgerNames: ledgers.map(l => l.name),
+        sqlQueries,
+        skippedLedgers: skippedLedgers.map(l => ({
+          name: l.name,
+          groupName: l.groupName,
+          isActive: l.isActive,
+          closingBalance: l.closingBalance
+        })),
+        formula: "classification-based: Assets (Opening + Debit - Credit) | Liabilities & Equity (Opening + Credit - Debit)",
         syntheticValues: false,
       },
     });

@@ -100,7 +100,7 @@ export async function GET(
       groupSummaries,
       reconciled,
       traceMode: {
-        formula: "opening + debit - credit",
+        formula: "classification-based: Assets (Opening + Debit - Credit) | Liabilities & Equity (Opening + Credit - Debit)",
         syntheticValues: false,
       },
       actualDisplayedLedgerIds: Array.from(displayedLedgerIds),

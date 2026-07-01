@@ -186,13 +186,19 @@ export async function buildBalanceSheetReconciliation(clientId: string, year: nu
     let openingBalance = ledger.openingBalance;
     if (openingBalance === 0) {
       if (ledger.closingBalance !== 0) {
-        openingBalance = ledger.closingBalance - fyMvmt.debit + fyMvmt.credit;
+        openingBalance = mainGroup === "Assets"
+          ? ledger.closingBalance - fyMvmt.debit + fyMvmt.credit
+          : ledger.closingBalance - fyMvmt.credit + fyMvmt.debit;
       } else {
-        openingBalance = preFY.debit - preFY.credit;
+        openingBalance = mainGroup === "Assets"
+          ? preFY.debit - preFY.credit
+          : preFY.credit - preFY.debit;
       }
     }
 
-    const closingBalance = openingBalance + fyMvmt.debit - fyMvmt.credit;
+    const closingBalance = mainGroup === "Assets"
+      ? openingBalance + fyMvmt.debit - fyMvmt.credit
+      : openingBalance + fyMvmt.credit - fyMvmt.debit;
 
     const includedInBS = mapped;
     const reasonExcluded = mapped ? undefined : "Not mapped to Balance Sheet";

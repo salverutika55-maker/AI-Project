@@ -61,7 +61,7 @@ export async function GET(
         unmappedLedgers,
       },
       traceMode: {
-        formula: "opening + debit - credit",
+        formula: "classification-based: Assets (Opening + Debit - Credit) | Liabilities & Equity (Opening + Credit - Debit)",
         months: ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"],
       },
     };

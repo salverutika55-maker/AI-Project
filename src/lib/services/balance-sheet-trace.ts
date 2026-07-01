@@ -227,10 +227,14 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     if (running === 0) {
       const closingBal = safeNum(ledger.closingBalance);
       if (closingBal !== 0) {
-        running = closingBal - fyMovement.debit + fyMovement.credit;
+        running = mainGroup === "Assets"
+          ? closingBal - fyMovement.debit + fyMovement.credit
+          : closingBal - fyMovement.credit + fyMovement.debit;
         openingSource = "derived_from_closing";
       } else {
-        running = preFY.debit - preFY.credit;
+        running = mainGroup === "Assets"
+          ? preFY.debit - preFY.credit
+          : preFY.credit - preFY.debit;
         openingSource = "derived_from_pre_fy";
       }
     }
@@ -249,7 +253,9 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
       const opening = running;
       const debit = safeNum(mv.debit);
       const credit = safeNum(mv.credit);
-      const closing = opening + debit - credit;
+      const closing = mainGroup === "Assets"
+        ? opening + debit - credit
+        : opening + credit - debit;
       monthTraces[month] = { opening, debit, credit, closing };
       running = closing;
     }
