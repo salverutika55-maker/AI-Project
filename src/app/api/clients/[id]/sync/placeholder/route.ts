@@ -31,6 +31,7 @@ export async function POST(
 
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") || "Tally";
+  const forceFull = searchParams.get("forceFull") === "true";
 
   const client = await prisma.client.findUnique({ where: { id } });
 
@@ -49,7 +50,8 @@ export async function POST(
       data: {
         clientId: id,
         type: "TALLY_SYNC",
-        status: "PENDING"
+        status: "PENDING",
+        payload: { forceFull }
       }
     });
 

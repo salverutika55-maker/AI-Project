@@ -22,9 +22,53 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const vouchers = body.vouchers || [];
+    const syncTaskId = body.syncTaskId;
+    const forceFull = body.forceFull === true;
 
     if (vouchers.length === 0) {
       return NextResponse.json({ message: "No vouchers to process" }, { status: 400 });
+    }
+
+    // Force Full Sync: Purge existing records once per sync task session
+    if (syncTaskId) {
+      const task = await prisma.syncTask.findUnique({
+        where: { id: syncTaskId }
+      });
+      if (task && task.status === "PENDING") {
+        let purgedCount = 0;
+        await prisma.syncTask.update({
+          where: { id: syncTaskId },
+          data: { status: "PROCESSING" }
+        });
+
+        if (forceFull) {
+          console.log(`[INGEST-VOUCHERS] Force Full Sync: Purging data for client ${client.name}`);
+          
+          const deleteVouchers = await prisma.normalizedVoucher.deleteMany({
+            where: { clientId: client.id }
+          });
+          purgedCount = deleteVouchers.count;
+
+          await prisma.pNLValue.deleteMany({
+            where: { clientId: client.id }
+          });
+          await prisma.financialRecord.deleteMany({
+            where: { clientId: client.id }
+          });
+          await prisma.normalizedLedger.updateMany({
+            where: { clientId: client.id },
+            data: { closingBalance: 0 }
+          });
+        }
+
+        // Save initial status and purged count
+        await prisma.syncTask.update({
+          where: { id: syncTaskId },
+          data: {
+            payload: { forceFull, purgedCount }
+          }
+        });
+      }
     }
 
     console.log(`[INGEST-VOUCHERS] Received ${vouchers.length} vouchers for client ${client.name}`);
@@ -223,6 +267,21 @@ export async function POST(req: Request) {
           });
           await prisma.pNLValue.createMany({ data: finalEntries });
         }
+      }
+    }
+
+    if (syncTaskId) {
+      const task = await prisma.syncTask.findUnique({ where: { id: syncTaskId } });
+      if (task) {
+        const currentResult = (task.result || {}) as any;
+        currentResult.vouchersProcessed = (currentResult.vouchersProcessed || 0) + processedCount;
+        currentResult.vouchersCreated = (currentResult.vouchersCreated || 0) + vouchersToCreate.length;
+        currentResult.vouchersUpdated = (currentResult.vouchersUpdated || 0) + vouchersToDeleteLines.length;
+
+        await prisma.syncTask.update({
+          where: { id: syncTaskId },
+          data: { result: currentResult }
+        });
       }
     }
 

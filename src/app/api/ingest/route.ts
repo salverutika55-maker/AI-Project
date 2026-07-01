@@ -24,6 +24,8 @@ export async function POST(req: Request) {
 
     // 3. Parse JSON Body payload
     const body = await req.json();
+    const syncTaskId = body.syncTaskId;
+    const forceFull = body.forceFull === true;
     
     // Support either single object, array of objects, or object with 'records' array
     let records = [];
@@ -37,6 +39,37 @@ export async function POST(req: Request) {
 
     if (records.length === 0) {
       return NextResponse.json({ message: "Payload empty" }, { status: 400 });
+    }
+
+    // Force Full Sync: Purge existing records once per sync task session
+    if (syncTaskId) {
+      const task = await prisma.syncTask.findUnique({
+        where: { id: syncTaskId }
+      });
+      if (task && task.status === "PENDING") {
+        await prisma.syncTask.update({
+          where: { id: syncTaskId },
+          data: { status: "PROCESSING" }
+        });
+
+        if (forceFull) {
+          console.log(`[INGEST] Force Full Sync: Purging data for client ${client.name}`);
+          
+          await prisma.normalizedVoucher.deleteMany({
+            where: { clientId: client.id }
+          });
+          await prisma.pNLValue.deleteMany({
+            where: { clientId: client.id }
+          });
+          await prisma.financialRecord.deleteMany({
+            where: { clientId: client.id }
+          });
+          await prisma.normalizedLedger.updateMany({
+            where: { clientId: client.id },
+            data: { closingBalance: 0 }
+          });
+        }
+      }
     }
 
     let processedCount = 0;
@@ -185,6 +218,18 @@ export async function POST(req: Request) {
           }
         });
 
+        if (syncTaskId) {
+          const task = await prisma.syncTask.findUnique({ where: { id: syncTaskId } });
+          if (task) {
+            const currentResult = (task.result || {}) as any;
+            currentResult.ledgersProcessed = uniqueLedgers.size;
+            await prisma.syncTask.update({
+              where: { id: syncTaskId },
+              data: { result: currentResult }
+            });
+          }
+        }
+
         // 1. Update closing balances (Chunked to prevent Vercel 10s Timeout, No transaction to prevent deadlocks)
         const ledgerUpsertsData = Array.from(uniqueLedgers.values());
         const CHUNK_SIZE = 10;
@@ -218,20 +263,28 @@ export async function POST(req: Request) {
       }
     }
 
-    // 5. Resolve any pending UI sync tasks
-    await prisma.syncTask.updateMany({
+    // 5. Resolve any pending UI sync tasks (non-destructively preserving diagnostics result)
+    const pendingTasks = await prisma.syncTask.findMany({
       where: {
         clientId: client.id,
         status: { in: ["PENDING", "PROCESSING"] }
-      },
-      data: {
-        status: "COMPLETED",
-        result: {
-          message: client.pnlMappings?.length > 0 ? "Data successfully synced from desktop agent" : "Data synced successfully, but no Ledgers are Mapped! Please visit the Map Ledgers tab.",
-          recordsProcessed: processedCount
-        }
       }
     });
+
+    for (const task of pendingTasks) {
+      const currentResult = (task.result || {}) as any;
+      await prisma.syncTask.update({
+        where: { id: task.id },
+        data: {
+          status: "COMPLETED",
+          result: {
+            ...currentResult,
+            message: client.pnlMappings?.length > 0 ? "Data successfully synced from desktop agent" : "Data synced successfully, but no Ledgers are Mapped! Please visit the Map Ledgers tab.",
+            recordsProcessed: processedCount
+          }
+        }
+      });
+    }
 
     return NextResponse.json({ 
       message: client.pnlMappings?.length > 0 ? "Data successfully ingested via API" : "Data ingested, but no PNL Mappings found.",

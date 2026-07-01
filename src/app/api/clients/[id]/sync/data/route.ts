@@ -57,28 +57,40 @@ export async function POST(
       if (!clientWithMappings) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
       // 2. Fetch Vouchers for the Target Year
-      const vouchers = await prisma.tallyVoucher.findMany({
+      const vouchers = await prisma.normalizedVoucher.findMany({
         where: { 
           clientId: id,
           date: {
             gte: new Date(`${targetYear}-04-01`),
             lt: new Date(`${targetYear + 1}-04-01`),
           }
+        },
+        include: {
+          lines: {
+            include: {
+              ledger: true
+            }
+          }
         }
       });
 
       // 3. Aggregate Monthly Data by Ledger
       const monthlyData: Record<string, Record<string, number>> = {};
-      const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
       
       for (const v of vouchers) {
         const actualMonthStr = v.date.toLocaleString('default', { month: 'short' });
         
         if (!monthlyData[actualMonthStr]) monthlyData[actualMonthStr] = {};
-        if (!monthlyData[actualMonthStr][v.ledgerName]) monthlyData[actualMonthStr][v.ledgerName] = 0;
         
-        const amt = v.isDebit ? -v.amount : v.amount;
-        monthlyData[actualMonthStr][v.ledgerName] += amt;
+        for (const line of v.lines) {
+          if (!line.ledger?.name) continue;
+          const ledgerName = line.ledger.name;
+          if (!monthlyData[actualMonthStr][ledgerName]) monthlyData[actualMonthStr][ledgerName] = 0;
+          
+          // Debits are negative (expenses), Credits are positive (revenue)
+          const amt = line.entryType === "DEBIT" ? -line.amount : line.amount;
+          monthlyData[actualMonthStr][ledgerName] += amt;
+        }
       }
 
       // 4. Map and Save to PNLValue
@@ -125,6 +137,64 @@ export async function POST(
 
       await logSecurityEvent(user.id, "SYNC_TALLY_DATA_SUCCESS", id, `Aggregated Tally PNL from vouchers for ${recordsSaved} months`, req);
 
+      // 5. Build final Sync Diagnostics Report
+      const syncTaskId = searchParams.get("syncTaskId");
+      let diagnosticsReport: any = null;
+
+      if (syncTaskId) {
+        const task = await prisma.syncTask.findUnique({
+          where: { id: syncTaskId }
+        });
+        if (task) {
+          const currentResult = (task.result || {}) as any;
+          const totalLedgers = await prisma.normalizedLedger.count({
+            where: { clientId: id }
+          });
+          const totalVouchers = await prisma.normalizedVoucher.count({
+            where: { 
+              clientId: id, 
+              date: {
+                gte: new Date(`${targetYear}-04-01`),
+                lt: new Date(`${targetYear + 1}-04-01`),
+              }
+            }
+          });
+          const latestVoucher = await prisma.normalizedVoucher.findFirst({
+            where: { clientId: id },
+            orderBy: { date: "desc" }
+          });
+
+          const completedAt = new Date();
+          const startedAt = task.createdAt;
+
+          diagnosticsReport = {
+            syncStartedAt: startedAt.toISOString(),
+            syncCompletedAt: completedAt.toISOString(),
+            companyName: client.name,
+            financialYear: `${targetYear}-${(targetYear + 1).toString().slice(2)}`,
+            totalLedgersSynced: totalLedgers,
+            totalVouchersSynced: totalVouchers,
+            newRecordsAdded: currentResult.vouchersCreated || 0,
+            existingRecordsUpdated: currentResult.vouchersUpdated || 0,
+            deletedRecordsRemoved: (task.payload as any)?.purgedCount || 0,
+            latestVoucherDate: latestVoucher ? latestVoucher.date.toISOString().split("T")[0] : "N/A",
+            latestVoucherNumber: latestVoucher ? latestVoucher.voucherNumber : "N/A",
+            databaseRefreshStatus: "SUCCESS",
+            cacheCleared: true,
+            syncStatus: "SUCCESS"
+          };
+
+          // Update the SyncTask to COMPLETED with the final diagnostics report
+          await prisma.syncTask.update({
+            where: { id: syncTaskId },
+            data: {
+              status: "COMPLETED",
+              result: diagnosticsReport
+            }
+          });
+        }
+      }
+
       return NextResponse.json({ 
         success: true, 
         message: `Successfully aggregated Tally data for ${recordsSaved} months for FY ${targetYear}.`,
@@ -133,8 +203,9 @@ export async function POST(
         allNames: Object.keys(monthlyData).length > 0 ? Object.keys(monthlyData[Object.keys(monthlyData)[0]]) : [],
         orgName: client.name,
         apiBaseUsed: "Tally DB",
-        rawSnippet: "Aggregated from TallyVoucher",
-        ts: new Date().toISOString()
+        rawSnippet: "Aggregated from NormalizedVoucher",
+        ts: new Date().toISOString(),
+        diagnostics: diagnosticsReport
       });
     }
 

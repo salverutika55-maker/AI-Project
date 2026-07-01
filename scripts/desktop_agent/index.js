@@ -363,7 +363,7 @@ async function startBackgroundSync(config) {
     return vouchers;
   }
 
-  async function performSync() {
+  async function performSync(options = { forceFull: false, syncTaskId: null }) {
     if (isSyncing) {
       console.log("[AGENT] Sync already in progress, skipping...");
       return;
@@ -566,7 +566,11 @@ async function startBackgroundSync(config) {
                    console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}...`);
                    try {
                        await axios.post(`${VERCEL_API}/ingest/vouchers`, 
-                           { vouchers: periodVouchers },
+                           { 
+                                vouchers: periodVouchers,
+                                syncTaskId: options.syncTaskId,
+                                forceFull: options.forceFull
+                           },
                            {
                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${companyConfig.apiKey}` },
                                timeout: 60000
@@ -599,7 +603,12 @@ async function startBackgroundSync(config) {
             
             // 2. Push Trial Balance summary (High level metrics)
             await axios.post(`${VERCEL_API}/ingest`, 
-                { records: allFinancialPayloads, chartOfAccounts: finalLedgers },
+                { 
+                    records: allFinancialPayloads, 
+                    chartOfAccounts: finalLedgers,
+                    syncTaskId: options.syncTaskId,
+                    forceFull: options.forceFull
+                },
                 {
                     headers: {
                         'Content-Type': 'application/json',
@@ -658,8 +667,12 @@ async function startBackgroundSync(config) {
         }, { timeout: 15000 });
 
         if (res.data && res.data.pendingSync) {
-           console.log("\n[AGENT] ⚡ Cloud requested an immediate Force Sync! Starting now...");
-           performSync(); // trigger immediately
+           const pTask = res.data.pendingTask || {};
+           console.log(`\n[AGENT] ⚡ Cloud requested sync (Force Full: ${pTask.forceFull || false})! Starting now...`);
+           performSync({ 
+             forceFull: pTask.forceFull || false, 
+             syncTaskId: pTask.id || null 
+           });
         }
       }
     } catch (err) {

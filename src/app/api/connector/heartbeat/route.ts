@@ -71,7 +71,12 @@ export async function POST(req: Request) {
       client: client?.name,
       status: client?.connectorStatus,
       authType: clientId ? "SECURE_TOKEN" : "API_KEY",
-      pendingSync: !!pendingTask
+      pendingSync: !!pendingTask,
+      pendingTask: pendingTask ? {
+        id: pendingTask.id,
+        type: pendingTask.type,
+        forceFull: (pendingTask.payload as any)?.forceFull || false
+      } : null
     });
   } catch (error) {
     console.error("Heartbeat Error:", error);

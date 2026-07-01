@@ -151,13 +151,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
     return client.connectorStatus;
   }, [client.connectorStatus]);
 
-  const handleSync = async () => {
+  const handleSync = async (forceFull = false) => {
     setIsSyncing(true);
     try {
       const queryParams = new URLSearchParams({
         year: selectedYear.toString(),
         fyType: fyType,
-        ...( softwareConfig.softwareType ? { type: softwareConfig.softwareType } : {} )
+        ...( softwareConfig.softwareType ? { type: softwareConfig.softwareType } : {} ),
+        ...( forceFull ? { forceFull: "true" } : {} )
       });
 
       const response = await fetch(`/api/clients/${client.id}${softwareConfig.syncEndpoint}?${queryParams.toString()}`, { 
@@ -180,9 +181,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
       if (data.taskId) {
         // Tally Background Sync initiated
         localStorage.setItem(`sync_task_${client.id}`, data.taskId);
-        setSyncProgress("Sync requested...");
+        setSyncProgress(forceFull ? "Full Sync requested..." : "Sync requested...");
         pollTaskStatus(data.taskId);
-        // We DO NOT set isSyncing to false here; the poller will do it.
       } else {
         // Direct Sync (Zoho, etc.) - these are fast/synchronous
         setTopBalancesSample(data.topBalances || []);
@@ -201,7 +201,6 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
       alert(`Sync Error: ${err.message}`);
       setIsSyncing(false); // Re-enable button on error
     }
-    // Removed finally block that was prematurely resetting isSyncing
   };
 
   const pollTaskStatus = async (taskId: string) => {
@@ -230,9 +229,13 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           localStorage.removeItem(`sync_task_${client.id}`); // Remove immediately to stop other intervals
           setSyncProgress("Aggregating Tally P&L data...");
           try {
-            await fetch(`/api/clients/${client.id}/sync/data?year=${selectedYear}&fyType=${fyType}`, {
+            const syncDataRes = await fetch(`/api/clients/${client.id}/sync/data?year=${selectedYear}&fyType=${fyType}&syncTaskId=${taskId}`, {
               method: "POST"
             });
+            const syncData = await syncDataRes.json();
+            if (syncData.diagnostics) {
+               setSyncDiagnostic(syncData.diagnostics);
+            }
           } catch (err) {
             console.error("P&L Aggregation Error:", err);
           }
@@ -616,24 +619,43 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
               </div>
             )}
             
-            <div className="flex flex-col items-end gap-1">
-              <button 
-                onClick={() => {
-                  handleSync();
-                }} 
-                disabled={isSyncing || effectiveConnectorStatus === 'SYNCING'} 
-                className={`flex items-center gap-2 px-4 py-1.5 ${softwareConfig.bg} border ${softwareConfig.border} rounded-lg text-xs font-black ${softwareConfig.color} hover:opacity-80 transition-all disabled:opacity-50`}
-              >
-                {isSyncing || effectiveConnectorStatus === 'SYNCING' ? (
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                ) : (
-                  <softwareConfig.icon className="w-3 h-3" />
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="flex gap-2">
+                {client.software === 'TALLY' && (
+                  <button 
+                    onClick={() => {
+                      handleSync(true); // forceFull = true
+                    }} 
+                    disabled={isSyncing || effectiveConnectorStatus === 'SYNCING'} 
+                    className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs font-black text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 transition-all disabled:opacity-50"
+                    title="Delete all cached local records and fetch fresh data from Tally"
+                  >
+                    {isSyncing || effectiveConnectorStatus === 'SYNCING' ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Zap className="w-3 h-3" />
+                    )}
+                    Force Full Sync
+                  </button>
                 )}
-                
-                {effectiveConnectorStatus === 'SYNCING' || isSyncing
-                    ? 'Syncing...' 
-                    : `Sync ${softwareConfig.label}`}
-              </button>
+                <button 
+                  onClick={() => {
+                    handleSync(false); // forceFull = false
+                  }} 
+                  disabled={isSyncing || effectiveConnectorStatus === 'SYNCING'} 
+                  className={`flex items-center gap-2 px-4 py-1.5 ${softwareConfig.bg} border ${softwareConfig.border} rounded-lg text-xs font-black ${softwareConfig.color} hover:opacity-80 transition-all disabled:opacity-50`}
+                >
+                  {isSyncing || effectiveConnectorStatus === 'SYNCING' ? (
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <softwareConfig.icon className="w-3 h-3" />
+                  )}
+                  
+                  {effectiveConnectorStatus === 'SYNCING' || isSyncing
+                      ? 'Syncing...' 
+                      : `Sync ${softwareConfig.label}`}
+                </button>
+              </div>
               {syncProgress && (
                 <span className="text-[9px] font-black text-cyan-400 uppercase tracking-tighter animate-pulse">
                   {syncProgress}
@@ -1103,7 +1125,75 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                   </div>
                 </div>
 
-                {topBalancesSample.length > 0 ? (
+                {client.software === 'TALLY' && syncDiagnostic?.syncStatus ? (
+                  <div className="space-y-6 animate-in fade-in duration-300">
+                    <div className="bg-[#1A1A24] border border-white/5 p-6 rounded-3xl grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sync Status</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <p className="text-sm font-black text-emerald-400">{syncDiagnostic.syncStatus}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Financial Year</span>
+                        <p className="text-sm font-black text-white">{syncDiagnostic.financialYear}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Database Refresh Status</span>
+                        <p className="text-sm font-black text-cyan-400">{syncDiagnostic.databaseRefreshStatus}</p>
+                      </div>
+                      <div className="space-y-1 border-t border-white/5 pt-4">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sync Started At</span>
+                        <p className="text-xs font-mono font-bold text-slate-300">{new Date(syncDiagnostic.syncStartedAt).toLocaleString()}</p>
+                      </div>
+                      <div className="space-y-1 border-t border-white/5 pt-4">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sync Completed At</span>
+                        <p className="text-xs font-mono font-bold text-slate-300">{new Date(syncDiagnostic.syncCompletedAt).toLocaleString()}</p>
+                      </div>
+                      <div className="space-y-1 border-t border-white/5 pt-4">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Cache Status</span>
+                        <p className="text-xs font-bold text-emerald-400">CLEARED & INVALIDATED</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <div className="bg-[#1A1A24] p-6 rounded-3xl border border-white/5">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Total Ledgers Synced</span>
+                        <p className="text-2xl font-black text-white mt-1 font-mono">{syncDiagnostic.totalLedgersSynced}</p>
+                      </div>
+                      <div className="bg-[#1A1A24] p-6 rounded-3xl border border-white/5">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Total Vouchers Synced</span>
+                        <p className="text-2xl font-black text-white mt-1 font-mono">{syncDiagnostic.totalVouchersSynced}</p>
+                      </div>
+                      <div className="bg-[#1A1A24] p-6 rounded-3xl border border-white/5">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">New / Updated Vouchers</span>
+                        <p className="text-sm font-black text-white mt-2">
+                          Added: <strong className="text-emerald-400 font-mono">{syncDiagnostic.newRecordsAdded}</strong><br/>
+                          Updated: <strong className="text-cyan-400 font-mono">{syncDiagnostic.existingRecordsUpdated}</strong>
+                        </p>
+                      </div>
+                      <div className="bg-[#1A1A24] p-6 rounded-3xl border border-white/5">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Deleted Vouchers Cleared</span>
+                        <p className="text-2xl font-black text-rose-400 mt-1 font-mono">{syncDiagnostic.deletedRecordsRemoved}</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#1A1A24] border border-white/5 p-6 rounded-3xl space-y-4">
+                      <h4 className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Latest Transaction Audited</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                        <div>
+                          <span className="text-slate-500">Voucher Number:</span>
+                          <p className="text-slate-200 font-bold">{syncDiagnostic.latestVoucherNumber}</p>
+                        </div>
+                        <div>
+                          <span className="text-slate-500">Voucher Date:</span>
+                          <p className="text-slate-200 font-bold">{syncDiagnostic.latestVoucherDate}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : topBalancesSample.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {topBalancesSample.map((m: any) => (
                       <div key={m.month} className="bg-black/20 p-6 rounded-3xl border border-white/5 group hover:border-emerald-500/30 transition-all">
