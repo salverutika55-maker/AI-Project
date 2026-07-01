@@ -40,7 +40,7 @@ async function getActiveTallyCompanyName() {
   try {
     const res = await axios.post("http://localhost:9000", xmlPayload, {
       headers: { "Content-Type": "text/xml" },
-      timeout: 8000
+      timeout: 15000
     });
     const match = res.data.match(/<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/i);
     if (match && match[1]) {
@@ -246,7 +246,7 @@ async function startBackgroundSync(config) {
       
       const response = await axios.post("http://localhost:9000", coaXml, {
         headers: { "Content-Type": "text/xml" },
-        timeout: 5000 
+        timeout: 60000 
       });
       const parsed = await parser.parseStringPromise(response.data);
       let ledgers = [];
@@ -509,8 +509,8 @@ async function startBackgroundSync(config) {
         try {
             // -- Trial Balance & Day Book Requests Concurrently --
             const [tbResponse, dbResponse] = await Promise.all([
-                axios.post("http://localhost:9000", tbXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 15000 }).catch(() => null),
-                axios.post("http://localhost:9000", dayBookXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 20000 }).catch(() => null)
+                axios.post("http://localhost:9000", tbXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 60000 }).catch(() => null),
+                axios.post("http://localhost:9000", dayBookXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 90000 }).catch(() => null)
             ]);
 
             if (tbResponse && tbResponse.data) {
