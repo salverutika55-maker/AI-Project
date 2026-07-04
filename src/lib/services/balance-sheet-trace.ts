@@ -88,6 +88,8 @@ export type BalanceSheetLedgerTrace = {
   mainGroup: "Assets" | "Liabilities";
   nature: string;
   openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy";
+  dbOpeningBalance: number;
+  dbClosingBalance: number;
   monthTraces: Record<string, LedgerMonthTrace>;
 };
 
@@ -224,12 +226,28 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     let running = safeNum(ledger.openingBalance);
     let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" = "ledger_opening";
 
-    if (running === 0) {
-      const closingBal = safeNum(ledger.closingBalance);
-      if (closingBal !== 0) {
-        running = mainGroup === "Assets"
-          ? closingBal - fyMovement.debit + fyMovement.credit
-          : closingBal - fyMovement.credit + fyMovement.debit;
+    // 1. Apply true balance nature sign to ledger.openingBalance
+    if (running !== 0) {
+      if (mainGroup === "Assets") {
+        if (ledger.nature === "CREDIT") {
+          running = -running;
+        }
+      } else {
+        if (ledger.nature === "DEBIT") {
+          running = -running;
+        }
+      }
+    } else {
+      // 2. Derive from closing balance or pre-FY movements if opening is 0
+      let signedClosingBal = safeNum(ledger.closingBalance);
+      if (signedClosingBal !== 0) {
+        if (mainGroup === "Assets") {
+          if (ledger.nature === "CREDIT") signedClosingBal = -signedClosingBal;
+          running = signedClosingBal - fyMovement.debit + fyMovement.credit;
+        } else {
+          if (ledger.nature === "DEBIT") signedClosingBal = -signedClosingBal;
+          running = signedClosingBal - fyMovement.credit + fyMovement.debit;
+        }
         openingSource = "derived_from_closing";
       } else {
         running = mainGroup === "Assets"
@@ -268,6 +286,8 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
       subHeadName,
       mainGroup,
       nature: ledger.nature,
+      dbOpeningBalance: safeNum(ledger.openingBalance),
+      dbClosingBalance: safeNum(ledger.closingBalance),
       openingSource,
       monthTraces,
     });

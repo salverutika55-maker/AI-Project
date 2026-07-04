@@ -31,6 +31,9 @@ interface Ledger {
   isActive: boolean;
   amounts: Record<string, { opening: number, debit: number, credit: number, closing: number }>;
   isMapped: boolean;
+  dbOpeningBalance?: number;
+  dbClosingBalance?: number;
+  openingSource?: string;
 }
 
 interface DrilldownDrawerProps {
@@ -519,34 +522,104 @@ export default function LedgerDrilldownDrawer({
                                 </div>
                                 
                                 {/* Trace Mode Audit details per ledger */}
-                                {showTraceMode && (
-                                  <div className="mt-2 p-2 bg-[#1A1A24] border border-white/5 rounded-lg text-[10px] font-mono text-slate-400 space-y-1">
-                                    <div>
-                                      <span className="text-slate-500">Classification:</span>{" "}
-                                      <span className="text-slate-300 font-bold">
-                                        {statementType === "BS" ? (ledger.mainGroup === "Assets" ? "Asset" : "Liability / Equity") : (ledger.nature === "CREDIT" ? "Revenue" : "Expense")}
-                                      </span>
+                                {showTraceMode && (() => {
+                                  const dbOp = ledger.dbOpeningBalance || 0;
+                                  const dbOpNature = ledger.nature || "DEBIT";
+                                  
+                                  // Compute month movements sum
+                                  const totDebits = months.reduce((sum, m) => sum + (ledger.amounts[m]?.debit || 0), 0);
+                                  const totCredits = months.reduce((sum, m) => sum + (ledger.amounts[m]?.credit || 0), 0);
+                                  
+                                  // Calculated closing
+                                  const calcClosing = ledger.amounts[months[months.length - 1]]?.closing ?? ledTotalVal;
+                                  let calcClosingNature = "Nil";
+                                  if (calcClosing !== 0) {
+                                    if (ledger.mainGroup === "Assets") {
+                                      calcClosingNature = calcClosing > 0 ? "Dr" : "Cr";
+                                    } else {
+                                      calcClosingNature = calcClosing > 0 ? "Cr" : "Dr";
+                                    }
+                                  }
+
+                                  // Sign Tally closing
+                                  const dbClosing = ledger.dbClosingBalance || 0;
+                                  const signedTallyClosing = ledger.mainGroup === "Assets"
+                                    ? (ledger.nature === "CREDIT" ? -dbClosing : dbClosing)
+                                    : (ledger.nature === "DEBIT" ? -dbClosing : dbClosing);
+
+                                  const variance = calcClosing - signedTallyClosing;
+                                  const signedOpening = ledger.amounts[months[0]]?.opening ?? 0;
+
+                                  return (
+                                    <div className="mt-3 p-3 bg-[#13131c] border border-white/10 rounded-lg text-[11px] font-mono text-slate-300 space-y-2 max-w-xl">
+                                      <div className="grid grid-cols-2 gap-2 text-slate-400 border-b border-white/5 pb-2 font-sans">
+                                        <div>
+                                          <span className="text-slate-500">Classification:</span>{" "}
+                                          <span className="text-slate-300 font-bold">
+                                            {statementType === "BS" ? (ledger.mainGroup === "Assets" ? "Asset" : "Liability / Equity") : (ledger.nature === "CREDIT" ? "Revenue" : "Expense")}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-500">Formula:</span>{" "}
+                                          <span className="text-cyan-400 font-bold">
+                                            {statementType === "BS"
+                                              ? ledger.mainGroup === "Assets"
+                                                ? "Opening + Debit - Credit"
+                                                : "Opening + Credit - Debit"
+                                              : ledger.nature === "CREDIT"
+                                              ? "Credit - Debit"
+                                              : "Debit - Credit"}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      
+                                      <div className="grid grid-cols-3 gap-2 bg-white/[0.02] p-2 rounded border border-white/5">
+                                        <div>
+                                          <span className="text-slate-500 block text-[9px] uppercase font-sans">Opening Balance</span>
+                                          <span className="text-slate-300 font-semibold">{formatCurrency(dbOp)} {dbOpNature === "CREDIT" ? "Cr" : "Dr"}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-500 block text-[9px] uppercase font-sans">Signed Opening</span>
+                                          <span className="text-slate-300 font-semibold">{formatCurrency(signedOpening)}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-500 block text-[9px] uppercase font-sans">Source</span>
+                                          <span className="text-cyan-500 font-semibold text-[10px]">{ledger.openingSource || "ledger_opening"}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-4 gap-2 border-b border-white/5 pb-2">
+                                        <div>
+                                          <span className="text-slate-500 block text-[9px] uppercase font-sans">Debit (+)</span>
+                                          <span className="text-slate-300">{formatCurrency(totDebits)}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-500 block text-[9px] uppercase font-sans">Credit (-)</span>
+                                          <span className="text-slate-300">{formatCurrency(totCredits)}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-500 block text-[9px] uppercase font-sans">Calc Closing</span>
+                                          <span className={`font-semibold ${calcClosing < 0 ? "text-rose-400" : "text-emerald-400"}`}>
+                                            {formatCurrency(calcClosing)} {calcClosingNature}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-500 block text-[9px] uppercase font-sans">Tally Closing</span>
+                                          <span className="text-slate-300 font-semibold font-mono">
+                                            {formatCurrency(dbClosing)} {dbOpNature === "CREDIT" ? "Cr" : "Dr"}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex justify-between items-center bg-cyan-950/20 p-1.5 px-2 rounded border border-cyan-500/10 font-sans">
+                                        <span className="text-cyan-400 font-medium">Variance (Calculated vs Tally)</span>
+                                        <span className={`font-bold font-mono ${Math.abs(variance) > 0.01 ? "text-amber-400" : "text-cyan-400"}`}>
+                                          {formatCurrency(variance)}
+                                        </span>
+                                      </div>
                                     </div>
-                                    <div>
-                                      <span className="text-slate-500">Formula Applied:</span>{" "}
-                                      <span className="text-cyan-400 font-bold">
-                                        {statementType === "BS"
-                                          ? ledger.mainGroup === "Assets"
-                                            ? "Opening + Debit - Credit"
-                                            : "Opening + Credit - Debit"
-                                          : ledger.nature === "CREDIT"
-                                          ? "Credit - Debit"
-                                          : "Debit - Credit"}
-                                      </span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-slate-500 mt-1">
-                                      <span>Opening: <strong className="text-slate-400">{formatCurrency(statementType === "PNL" ? 0 : ledger.amounts[months[0]]?.opening || ledger.amounts["Opening"]?.closing || 0)}</strong></span>
-                                      <span>Debit: <strong className="text-slate-400">{formatCurrency(months.reduce((sum, m) => sum + (ledger.amounts[m]?.debit || 0), 0))}</strong></span>
-                                      <span>Credit: <strong className="text-slate-400">{formatCurrency(months.reduce((sum, m) => sum + (ledger.amounts[m]?.credit || 0), 0))}</strong></span>
-                                      <span>Closing: <strong className="text-white">{formatCurrency(ledTotalVal)}</strong></span>
-                                    </div>
-                                  </div>
-                                )}
+                                  );
+                                })()}
                               </div>
                             </td>
                             {tableColumns.map(m => {

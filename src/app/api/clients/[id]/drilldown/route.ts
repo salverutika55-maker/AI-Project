@@ -227,6 +227,9 @@ export async function GET(
           nature: row.nature,
           groupName: row.groupName,
           mainGroup: row.mainGroup,
+          dbOpeningBalance: row.dbOpeningBalance,
+          dbClosingBalance: row.dbClosingBalance,
+          openingSource: row.openingSource,
           amounts,
           isMapped: true,
         };

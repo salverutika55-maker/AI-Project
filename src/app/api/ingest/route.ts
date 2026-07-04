@@ -2,6 +2,27 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 
+function determineLedgerNature(groupName: string, opVal: number, closingVal: number): "DEBIT" | "CREDIT" {
+  if (opVal !== 0) {
+    return opVal > 0 ? "DEBIT" : "CREDIT";
+  }
+  if (closingVal !== 0) {
+    return closingVal > 0 ? "DEBIT" : "CREDIT";
+  }
+  
+  const creditGroups = [
+    "capital account", "reserves & surplus", "current liabilities", "duties & taxes",
+    "provisions", "sundry creditors", "loans (liability)", "bank od a/c",
+    "secured loans", "unsecured loans", "suspense a/c", "equity"
+  ];
+  const gLower = groupName.trim().toLowerCase();
+  if (creditGroups.some(cg => gLower.includes(cg))) {
+    return "CREDIT";
+  }
+  
+  return "DEBIT";
+}
+
 export async function POST(req: Request) {
   try {
     // 1. Authenticate via Bearer Token
@@ -285,6 +306,10 @@ export async function POST(req: Request) {
             reason = `Closing balance updated from ₹${matchedLedger.closingBalance} to ₹${Math.abs(balanceVal)}`;
           }
 
+          const opVal = Number(src.openingBalance) || 0;
+          const closingVal = balanceVal;
+          const determinedNature = determineLedgerNature(srcGroup, opVal, closingVal);
+
           // Update in DB
           await prisma.normalizedLedger.update({
             where: { id: matchedLedger.id },
@@ -297,7 +322,9 @@ export async function POST(req: Request) {
               sourceStatus: "active",
               isActive: true,
               deletedAt: null,
-              closingBalance: Math.abs(balanceVal),
+              openingBalance: Math.abs(opVal),
+              closingBalance: Math.abs(closingVal),
+              nature: determinedNature,
               mappingStatus: isMove ? "review_required" : (isReactivate ? "active" : matchedLedger.mappingStatus),
               previousGroupName: isMove ? prevGroup : matchedLedger.previousGroupName
             }
@@ -339,15 +366,19 @@ export async function POST(req: Request) {
           // ADDED ledger
           addedCount++;
           const newLedgerId = crypto.randomUUID();
+          const opVal = Number(src.openingBalance) || 0;
+          const closingVal = balanceVal;
+          const determinedNature = determineLedgerNature(srcGroup, opVal, closingVal);
+
           await prisma.normalizedLedger.create({
             data: {
               id: newLedgerId,
               clientId: client.id,
               name: srcName,
               groupName: srcGroup,
-              openingBalance: 0,
-              closingBalance: Math.abs(balanceVal),
-              nature: balanceVal > 0 ? "DEBIT" : "CREDIT",
+              openingBalance: Math.abs(opVal),
+              closingBalance: Math.abs(closingVal),
+              nature: determinedNature,
               isActive: true,
               sourcePlatform: "TALLY",
               sourceCompanyId: companyGuid || null,

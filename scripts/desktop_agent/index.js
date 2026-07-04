@@ -164,10 +164,12 @@ async function startBackgroundSync(config) {
    */
   function parseTallyAmount(str, keepSign = false) {
     if (!str || str.trim() === '') return 0;
+    const isCredit = String(str).toUpperCase().includes('CR') || String(str).includes('-');
     const cleaned = String(str).replace(/[^0-9.-]+/g, '');
     const val = parseFloat(cleaned);
     if (isNaN(val)) return 0;
-    return keepSign ? val : Math.abs(val);
+    const absVal = Math.abs(val);
+    return keepSign ? (isCredit ? -absVal : absVal) : absVal;
   }
 
   /**
