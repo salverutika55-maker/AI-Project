@@ -193,7 +193,7 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
 
     if (d > targetFYEnd) continue;
 
-    const mName = MONTH_SHORT_NAMES[d.getMonth()];
+    const mName = MONTH_SHORT_NAMES[d.getUTCMonth()];
     if (!monthlyMovements[vl.ledgerId]) monthlyMovements[vl.ledgerId] = {};
     if (!monthlyMovements[vl.ledgerId][mName]) monthlyMovements[vl.ledgerId][mName] = { debit: 0, credit: 0 };
 
@@ -232,24 +232,25 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
 
     const preFY = preFYMovements[ledger.id] || { debit: 0, credit: 0 };
 
-    let running = safeNum(ledger.openingBalance);
+    let running = normalizeOpeningForFormula(safeNum(ledger.openingBalance), ledger.nature, mainGroup);
     let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" = "ledger_opening";
 
-    // 1. Sign opening balance relative to the locked formula using normalizeOpeningForFormula
-    if (running !== 0) {
-      running = normalizeOpeningForFormula(running, ledger.nature, mainGroup);
+    if (preFY.debit !== 0 || preFY.credit !== 0) {
+      if (mainGroup === "Assets") {
+        running = running + preFY.debit - preFY.credit;
+      } else {
+        running = running + preFY.credit - preFY.debit;
+      }
+      openingSource = "derived_from_pre_fy";
     } else {
-      // 2. Derive from closing balance if opening is 0 but closing is non-zero
       let signedClosingBal = safeNum(ledger.closingBalance);
-      if (signedClosingBal !== 0) {
+      // Derive opening balance only if we do not have transaction history and initial opening is 0
+      if (running === 0 && signedClosingBal !== 0) {
         signedClosingBal = normalizeOpeningForFormula(signedClosingBal, ledger.nature, mainGroup);
         running = mainGroup === "Assets"
           ? signedClosingBal - fyMovement.debit + fyMovement.credit
           : signedClosingBal - fyMovement.credit + fyMovement.debit;
         openingSource = "derived_from_closing";
-      } else {
-        running = 0;
-        openingSource = "ledger_opening";
       }
     }
 

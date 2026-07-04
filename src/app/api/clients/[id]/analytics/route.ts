@@ -97,7 +97,8 @@ export async function GET(
         stats.lastDate = v.date;
       }
 
-      const monthName = v.date.toLocaleString("default", { month: "short" });
+      const MONTH_SHORT_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const monthName = MONTH_SHORT_NAMES[v.date.getUTCMonth()];
       if (!stats.monthlyValues[monthName]) stats.monthlyValues[monthName] = 0;
 
       const isTxAction = (type === "VENDORS" && v.voucherType.toLowerCase().includes("purchase")) ||

@@ -3,6 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 
 function determineLedgerNature(groupName: string, opVal: number, closingVal: number): "DEBIT" | "CREDIT" {
+  const val = opVal !== 0 ? opVal : closingVal;
+  
+  if (val !== 0) {
+    // Tally agent keepSign convention: Credit is negative, Debit is positive
+    return val < 0 ? "CREDIT" : "DEBIT";
+  }
+
+  // Fallback to parent group classification if both balances are 0
   const creditGroups = [
     "capital account", "reserves & surplus", "current liabilities", "duties & taxes",
     "provisions", "sundry creditors", "loans (liability)", "bank od a/c",
@@ -11,21 +19,6 @@ function determineLedgerNature(groupName: string, opVal: number, closingVal: num
   ];
   const gLower = groupName.trim().toLowerCase();
   const isCreditGroup = creditGroups.some(cg => gLower.includes(cg));
-
-  // If a balance is present, sign determines if it is normal (positive) or contra (negative)
-  const val = opVal !== 0 ? opVal : closingVal;
-  
-  if (val !== 0) {
-    if (isCreditGroup) {
-      // For credit groups, positive is CREDIT, negative is DEBIT
-      return val > 0 ? "CREDIT" : "DEBIT";
-    } else {
-      // For debit groups, positive is DEBIT, negative is CREDIT
-      return val > 0 ? "DEBIT" : "CREDIT";
-    }
-  }
-
-  // If both balances are 0, default to group classification
   return isCreditGroup ? "CREDIT" : "DEBIT";
 }
 

@@ -140,7 +140,7 @@ export async function GET(
 
       for (const vl of voucherLines) {
         const d = new Date(vl.voucher.date);
-        const mName = MONTH_SHORT_NAMES[d.getMonth()];
+        const mName = MONTH_SHORT_NAMES[d.getUTCMonth()];
         
         if (!monthlyMovements[vl.ledgerId]) monthlyMovements[vl.ledgerId] = {};
         if (!monthlyMovements[vl.ledgerId][mName]) monthlyMovements[vl.ledgerId][mName] = { debit: 0, credit: 0 };

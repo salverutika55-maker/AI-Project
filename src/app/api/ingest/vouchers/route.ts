@@ -139,6 +139,47 @@ export async function POST(req: Request) {
       }
     }
 
+    const fromDate = body.fromDate;
+    const toDate = body.toDate;
+    if (fromDate && toDate) {
+      const startYear = parseInt(fromDate.substring(0, 4), 10);
+      const startMonth = parseInt(fromDate.substring(4, 6), 10) - 1;
+      const startDay = parseInt(fromDate.substring(6, 8), 10);
+      const startUtc = new Date(Date.UTC(startYear, startMonth, startDay, 0, 0, 0, 0));
+
+      const endYear = parseInt(toDate.substring(0, 4), 10);
+      const endMonth = parseInt(toDate.substring(4, 6), 10) - 1;
+      const endDay = parseInt(toDate.substring(6, 8), 10);
+      const endUtc = new Date(Date.UTC(endYear, endMonth, endDay, 23, 59, 59, 999));
+
+      const incomingRefs = vouchers.map((v: any, idx: number) => v.guid || v.voucherNumber || `VCH-${v.date}-${idx}`);
+
+      const staleVouchers = await prisma.normalizedVoucher.findMany({
+        where: {
+          clientId: client.id,
+          date: {
+            gte: startUtc,
+            lte: endUtc
+          },
+          referenceNo: {
+            notIn: incomingRefs
+          }
+        },
+        select: { id: true }
+      });
+      const staleIds = staleVouchers.map(sv => sv.id);
+
+      if (staleIds.length > 0) {
+        console.log(`[INGEST-VOUCHERS] Purging ${staleIds.length} stale/deleted vouchers for period ${fromDate}-${toDate}`);
+        await prisma.normalizedVoucherLine.deleteMany({
+          where: { voucherId: { in: staleIds } }
+        });
+        await prisma.normalizedVoucher.deleteMany({
+          where: { id: { in: staleIds } }
+        });
+      }
+    }
+
     let processedCount = 0;
 
     // Batch process Vouchers
@@ -223,12 +264,13 @@ export async function POST(req: Request) {
       const monthBalances: Record<string, Record<string, number>> = {}; // { '2026-Apr': { 'Sales': 1000 } }
 
       // 1. Group vouchers by period
+      const MONTH_SHORT_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       for (const v of vouchers) {
         const d = new Date(v.date);
-        const mShort = d.toLocaleString('en-US', { month: 'short' });
-        const year = d.getFullYear();
+        const mShort = MONTH_SHORT_NAMES[d.getUTCMonth()];
+        const year = d.getUTCFullYear();
         // Adjust for fiscal year (assuming April start)
-        const syncYearToSave = d.getMonth() < 3 ? year - 1 : year;
+        const syncYearToSave = d.getUTCMonth() < 3 ? year - 1 : year;
         const periodKey = `${syncYearToSave}-${mShort}`;
 
         if (!monthBalances[periodKey]) {

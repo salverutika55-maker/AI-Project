@@ -131,7 +131,7 @@ export async function buildBalanceSheetReconciliation(clientId: string, year: nu
     }
 
     if (d >= targetFYStart && d <= targetFYEnd) {
-      const mName = MONTH_SHORT_NAMES[d.getMonth()];
+      const mName = MONTH_SHORT_NAMES[d.getUTCMonth()];
       if (!monthlyMovements[vl.ledgerId]) monthlyMovements[vl.ledgerId] = {};
       if (!monthlyMovements[vl.ledgerId][mName]) monthlyMovements[vl.ledgerId][mName] = { debit: 0, credit: 0 };
       if (vl.entryType === "DEBIT") monthlyMovements[vl.ledgerId][mName].debit += vl.amount;

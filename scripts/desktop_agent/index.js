@@ -647,7 +647,7 @@ async function startBackgroundSync(config) {
                 const stats = { outOfBounds: 0 };
                 const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
                 
-                if (periodVouchers.length > 0) {
+                if (periodVouchers.length >= 0) {
                    console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}...`);
                    try {
                         await axios.post(`${getVercelApi()}/ingest/vouchers`, 
@@ -655,7 +655,10 @@ async function startBackgroundSync(config) {
                                 vouchers: periodVouchers,
                                 syncTaskId: options.syncTaskId,
                                 forceFull: options.forceFull,
-                                companyGuid: activeCo?.guid || null
+                                companyGuid: activeCo?.guid || null,
+                                fromDate: period.fromDate,
+                                toDate: period.toDate,
+                                periodKey: period.periodKey
                            },
                            {
                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${companyConfig.apiKey}` },

@@ -180,9 +180,9 @@ export async function POST(
         
         const years = new Set<number>();
         for (const v of vouchers) {
-          const date = new Date(v.date);
-          const y = date.getFullYear();
-          const m = date.getMonth(); // 0-indexed
+           const date = new Date(v.date);
+           const y = date.getUTCFullYear();
+           const m = date.getUTCMonth(); // 0-indexed
           const fyStartYear = m < 3 ? y - 1 : y;
           years.add(fyStartYear);
         }

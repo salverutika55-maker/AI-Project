@@ -40,8 +40,9 @@ export async function recalculatePNLValues(clientId: string, targetYear: number)
 
   // 2. Aggregate Monthly Data by Ledger
   const monthlyData: Record<string, Record<string, number>> = {};
+  const MONTH_SHORT_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   for (const v of vouchers) {
-    const actualMonthStr = v.date.toLocaleString('default', { month: 'short' });
+    const actualMonthStr = MONTH_SHORT_NAMES[v.date.getUTCMonth()];
     if (!monthlyData[actualMonthStr]) monthlyData[actualMonthStr] = {};
 
     for (const line of v.lines) {
