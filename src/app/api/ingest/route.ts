@@ -3,24 +3,30 @@ import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 
 function determineLedgerNature(groupName: string, opVal: number, closingVal: number): "DEBIT" | "CREDIT" {
-  if (opVal !== 0) {
-    return opVal > 0 ? "DEBIT" : "CREDIT";
-  }
-  if (closingVal !== 0) {
-    return closingVal > 0 ? "DEBIT" : "CREDIT";
-  }
-  
   const creditGroups = [
     "capital account", "reserves & surplus", "current liabilities", "duties & taxes",
     "provisions", "sundry creditors", "loans (liability)", "bank od a/c",
-    "secured loans", "unsecured loans", "suspense a/c", "equity"
+    "secured loans", "unsecured loans", "suspense a/c", "equity", "owner's funds",
+    "liabilities", "revenue", "income", "sales"
   ];
   const gLower = groupName.trim().toLowerCase();
-  if (creditGroups.some(cg => gLower.includes(cg))) {
-    return "CREDIT";
-  }
+  const isCreditGroup = creditGroups.some(cg => gLower.includes(cg));
+
+  // If a balance is present, sign determines if it is normal (positive) or contra (negative)
+  const val = opVal !== 0 ? opVal : closingVal;
   
-  return "DEBIT";
+  if (val !== 0) {
+    if (isCreditGroup) {
+      // For credit groups, positive is CREDIT, negative is DEBIT
+      return val > 0 ? "CREDIT" : "DEBIT";
+    } else {
+      // For debit groups, positive is DEBIT, negative is CREDIT
+      return val > 0 ? "DEBIT" : "CREDIT";
+    }
+  }
+
+  // If both balances are 0, default to group classification
+  return isCreditGroup ? "CREDIT" : "DEBIT";
 }
 
 export async function POST(req: Request) {

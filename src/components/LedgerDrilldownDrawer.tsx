@@ -109,7 +109,9 @@ export default function LedgerDrilldownDrawer({
         row[m] = l.amounts[m]?.closing || 0;
       });
       
-      row["Closing Balance"] = months.reduce((sum, m) => sum + (l.amounts[m]?.closing || 0), 0);
+      row["Closing Balance"] = statementType === "PNL"
+        ? months.reduce((sum, m) => sum + (l.amounts[m]?.closing || 0), 0)
+        : (l.amounts[months[months.length - 1]]?.closing || 0);
       return row;
     });
 
@@ -123,9 +125,9 @@ export default function LedgerDrilldownDrawer({
     months.forEach(m => {
       totalRow[m] = filteredLedgers.reduce((sum, l) => sum + (l.amounts[m]?.closing || 0), 0);
     });
-    totalRow["Closing Balance"] = filteredLedgers.reduce((sum, l) => {
-      return sum + months.reduce((mSum, m) => mSum + (l.amounts[m]?.closing || 0), 0);
-    }, 0);
+    totalRow["Closing Balance"] = statementType === "PNL"
+      ? filteredLedgers.reduce((sum, l) => sum + months.reduce((mSum, m) => mSum + (l.amounts[m]?.closing || 0), 0), 0)
+      : filteredLedgers.reduce((sum, l) => sum + (l.amounts[months[months.length - 1]]?.closing || 0), 0);
     
     data.push(totalRow);
 
@@ -147,7 +149,9 @@ export default function LedgerDrilldownDrawer({
       months.forEach(m => {
         row[m] = l.amounts[m]?.closing || 0;
       });
-      row["Closing Balance"] = months.reduce((sum, m) => sum + (l.amounts[m]?.closing || 0), 0);
+      row["Closing Balance"] = statementType === "PNL"
+        ? months.reduce((sum, m) => sum + (l.amounts[m]?.closing || 0), 0)
+        : (l.amounts[months[months.length - 1]]?.closing || 0);
       return row;
     });
 
@@ -161,9 +165,9 @@ export default function LedgerDrilldownDrawer({
     months.forEach(m => {
       totalRow[m] = filteredLedgers.reduce((sum, l) => sum + (l.amounts[m]?.closing || 0), 0);
     });
-    totalRow["Closing Balance"] = filteredLedgers.reduce((sum, l) => {
-      return sum + months.reduce((mSum, m) => mSum + (l.amounts[m]?.closing || 0), 0);
-    }, 0);
+    totalRow["Closing Balance"] = statementType === "PNL"
+      ? filteredLedgers.reduce((sum, l) => sum + months.reduce((mSum, m) => mSum + (l.amounts[m]?.closing || 0), 0), 0)
+      : filteredLedgers.reduce((sum, l) => sum + (l.amounts[months[months.length - 1]]?.closing || 0), 0);
     
     data.push(totalRow);
 
@@ -207,7 +211,9 @@ export default function LedgerDrilldownDrawer({
         return l.isActive;
       }
       
-      const ledgerTotalVal = months.reduce((sum, m) => sum + (l.amounts[m]?.closing || 0), 0);
+      const ledgerTotalVal = statementType === "PNL"
+        ? months.reduce((sum, m) => sum + (l.amounts[m]?.closing || 0), 0)
+        : (l.amounts[months[months.length - 1]]?.closing || 0);
       if (statusFilter === "zero") {
         return Math.abs(ledgerTotalVal) < 0.01;
       }
@@ -218,9 +224,13 @@ export default function LedgerDrilldownDrawer({
     });
 
   // Calculate high-level summary balances
-  const statementTotal = months.reduce((sum, m) => sum + (totalAmounts[m] || 0), 0);
+  const statementTotal = statementType === "PNL"
+    ? months.reduce((sum, m) => sum + (totalAmounts[m] || 0), 0)
+    : (totalAmounts[months[months.length - 1]] || 0);
   const ledgersTotal = ledgers.reduce((sum, l) => {
-    return sum + months.reduce((mSum, m) => mSum + (l.amounts[m]?.closing || 0), 0);
+    return sum + (statementType === "PNL"
+      ? months.reduce((mSum, m) => mSum + (l.amounts[m]?.closing || 0), 0)
+      : (l.amounts[months[months.length - 1]]?.closing || 0));
   }, 0);
   const varianceValue = Math.abs(statementTotal - ledgersTotal);
 
@@ -508,7 +518,9 @@ export default function LedgerDrilldownDrawer({
                       </tr>
                     ) : (
                       filteredLedgers.map(ledger => {
-                        const ledTotalVal = months.reduce((sum, m) => sum + (ledger.amounts[m]?.closing || 0), 0);
+                        const ledTotalVal = statementType === "PNL"
+                          ? months.reduce((sum, m) => sum + (ledger.amounts[m]?.closing || 0), 0)
+                          : (ledger.amounts[months[months.length - 1]]?.closing || 0);
                         return (
                           <tr key={ledger.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
                             <td className="p-3">

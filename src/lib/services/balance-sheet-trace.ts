@@ -239,7 +239,7 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     if (running !== 0) {
       running = normalizeOpeningForFormula(running, ledger.nature, mainGroup);
     } else {
-      // 2. Derive from closing balance or pre-FY movements if opening is 0
+      // 2. Derive from closing balance if opening is 0 but closing is non-zero
       let signedClosingBal = safeNum(ledger.closingBalance);
       if (signedClosingBal !== 0) {
         signedClosingBal = normalizeOpeningForFormula(signedClosingBal, ledger.nature, mainGroup);
@@ -248,10 +248,8 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
           : signedClosingBal - fyMovement.credit + fyMovement.debit;
         openingSource = "derived_from_closing";
       } else {
-        running = mainGroup === "Assets"
-          ? preFY.debit - preFY.credit
-          : preFY.credit - preFY.debit;
-        openingSource = "derived_from_pre_fy";
+        running = 0;
+        openingSource = "ledger_opening";
       }
     }
 
