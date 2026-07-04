@@ -392,7 +392,9 @@ export async function POST(req: Request) {
               sourceStatus: "deleted",
               isActive: false,
               deletedAt: new Date(),
-              mappingStatus: "inactive_source_deleted"
+              mappingStatus: "inactive_source_deleted",
+              closingBalance: 0,
+              openingBalance: 0
             }
           });
 

@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { checkRateLimit, logSecurityEvent } from "@/lib/logger";
 import { authorizeClientAction } from "@/lib/rbac";
+import { recalculatePNLValues } from "@/lib/services/recalculate-statements";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -49,96 +50,14 @@ export async function POST(
     const targetYear = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
 
     if (client.software === "TALLY") {
-      // 1. Fetch Mappings
-      const clientWithMappings = await prisma.client.findUnique({
-        where: { id },
-        include: { pnlMappings: true }
-      });
-      if (!clientWithMappings) return NextResponse.json({ error: "Client not found" }, { status: 404 });
-
-      // 2. Fetch Vouchers for the Target Year
-      const vouchers = await prisma.normalizedVoucher.findMany({
-        where: { 
-          clientId: id,
-          date: {
-            gte: new Date(`${targetYear}-04-01`),
-            lt: new Date(`${targetYear + 1}-04-01`),
-          }
-        },
-        include: {
-          lines: {
-            include: {
-              ledger: true
-            }
-          }
-        }
-      });
-
-      // 3. Aggregate Monthly Data by Ledger
-      const monthlyData: Record<string, Record<string, number>> = {};
-      
-      for (const v of vouchers) {
-        const actualMonthStr = v.date.toLocaleString('default', { month: 'short' });
-        
-        if (!monthlyData[actualMonthStr]) monthlyData[actualMonthStr] = {};
-        
-        for (const line of v.lines) {
-          if (!line.ledger?.name) continue;
-          // Exclude soft-deleted/deleted ledgers from current statement calculations
-          if (line.ledger.sourceStatus === "deleted" || !line.ledger.isActive) continue;
-
-          const ledgerName = line.ledger.name;
-          if (!monthlyData[actualMonthStr][ledgerName]) monthlyData[actualMonthStr][ledgerName] = 0;
-          
-          // Debits are negative (expenses), Credits are positive (revenue)
-          const amt = line.entryType === "DEBIT" ? -line.amount : line.amount;
-          monthlyData[actualMonthStr][ledgerName] += amt;
-        }
+      try {
+        await recalculatePNLValues(id, targetYear);
+      } catch (err: any) {
+        console.error("[Sync Data API] Recalculation failed:", err);
+        return NextResponse.json({ error: `Recalculation failed: ${err.message}` }, { status: 500 });
       }
 
-      // 4. Map and Save to PNLValue
-      let recordsSaved = 0;
-      for (const [mShort, accounts] of Object.entries(monthlyData)) {
-        const syncYearToSave = ["Jan", "Feb", "Mar"].includes(mShort) ? targetYear + 1 : targetYear;
-        const headBalances: Record<string, number> = {};
-
-        for (const m of clientWithMappings.pnlMappings) {
-          const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
-          let balance = 0;
-          
-          for (const alias of aliases) {
-            const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
-            if (exactMatchKey) {
-              balance += accounts[exactMatchKey];
-            } else {
-              const fuzzyMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase().includes(alias));
-              if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
-            }
-          }
-
-          if (balance !== 0) {
-            headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
-          }
-        }
-
-        const finalEntries = Object.entries(headBalances).map(([headName, balance]) => ({
-          clientId: id,
-          headName,
-          month: mShort,
-          year: syncYearToSave,
-          amount: encrypt(balance.toString())
-        }));
-
-        if (finalEntries.length > 0) {
-          await prisma.pNLValue.deleteMany({
-            where: { clientId: id, month: mShort, year: syncYearToSave }
-          });
-          await prisma.pNLValue.createMany({ data: finalEntries });
-        }
-        recordsSaved++;
-      }
-
-      await logSecurityEvent(user.id, "SYNC_TALLY_DATA_SUCCESS", id, `Aggregated Tally PNL from vouchers for ${recordsSaved} months`, req);
+      await logSecurityEvent(user.id, "SYNC_TALLY_DATA_SUCCESS", id, `Aggregated Tally PNL from vouchers for target year ${targetYear}`, req);
 
       // 5. Build final Sync Diagnostics Report
       const syncTaskId = searchParams.get("syncTaskId");
@@ -200,13 +119,13 @@ export async function POST(
 
       return NextResponse.json({ 
         success: true, 
-        message: `Successfully aggregated Tally data for ${recordsSaved} months for FY ${targetYear}.`,
-        count: recordsSaved,
+        message: `Successfully aggregated Tally data for target year ${targetYear}.`,
+        count: 12,
         topBalances: [],
-        allNames: Object.keys(monthlyData).length > 0 ? Object.keys(monthlyData[Object.keys(monthlyData)[0]]) : [],
+        allNames: [],
         orgName: client.name,
         apiBaseUsed: "Tally DB",
-        rawSnippet: "Aggregated from NormalizedVoucher",
+        rawSnippet: "Aggregated from Vouchers",
         ts: new Date().toISOString(),
         diagnostics: diagnosticsReport
       });

@@ -47,6 +47,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Client not found" }, { status: 404 });
     }
 
+    // For Tally, we ALWAYS perform a full refresh to prevent stale/ghost vouchers & balances.
+    if (client.software === 'TALLY') {
+      console.log(`[Sync] Tally Client ${clientId}: Wiping historical vouchers and PNL values to ensure clean sync...`);
+      await prisma.normalizedVoucher.deleteMany({
+        where: { clientId: clientId }
+      });
+      await prisma.pNLValue.deleteMany({
+        where: { clientId: clientId }
+      });
+      await prisma.financialRecord.deleteMany({
+        where: { clientId: clientId }
+      });
+      await prisma.normalizedLedger.updateMany({
+        where: { clientId: clientId },
+        data: { closingBalance: 0 }
+      });
+    }
+
     // 4. Create Sync Task (Fire-and-Forget architecture)
     console.log(`[Sync] Creating Tally task for client ${clientId}. lastAlterId: ${client.lastAlterId || "0"}`);
     const task = await prisma.syncTask.create({

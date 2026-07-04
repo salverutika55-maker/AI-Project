@@ -247,10 +247,7 @@ async function startBackgroundSync(config) {
         }
         
         const closingNet = clDrAmt - clCrAmt;
-        
-        if (closingNet !== 0) {
-          ledgers[name] = closingNet;
-        }
+        ledgers[name] = closingNet;
       }
     });
     return ledgers;
@@ -279,6 +276,7 @@ async function startBackgroundSync(config) {
             <NATIVEMETHOD>ALTERID</NATIVEMETHOD>
             <NATIVEMETHOD>Name</NATIVEMETHOD>
             <NATIVEMETHOD>Parent</NATIVEMETHOD>
+            <NATIVEMETHOD>OpeningBalance</NATIVEMETHOD>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -322,6 +320,13 @@ async function startBackgroundSync(config) {
           let alterId = null;
           if (msg.ALTERID) alterId = Array.isArray(msg.ALTERID) ? msg.ALTERID[0] : msg.ALTERID;
           if (typeof alterId === 'object' && alterId._) alterId = alterId._;
+
+          let openingBalance = 0;
+          if (msg.OPENINGBALANCE) {
+            let opRaw = Array.isArray(msg.OPENINGBALANCE) ? msg.OPENINGBALANCE[0] : msg.OPENINGBALANCE;
+            if (typeof opRaw === 'object' && opRaw._) opRaw = opRaw._;
+            openingBalance = parseTallyAmount(opRaw, true);
+          }
           
           if (ledgerName) {
             ledgers.push({ 
@@ -329,7 +334,8 @@ async function startBackgroundSync(config) {
               groupName: String(parentGroup).trim(),
               guid: guid ? String(guid).trim() : null,
               masterId: masterId ? String(masterId).trim() : null,
-              alterId: alterId ? String(alterId).trim() : null
+              alterId: alterId ? String(alterId).trim() : null,
+              openingBalance: openingBalance
             });
           }
         });

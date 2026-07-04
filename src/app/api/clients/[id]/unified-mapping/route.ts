@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { authorizeClientAction } from "@/lib/rbac";
+import { recalculatePNLValues } from "@/lib/services/recalculate-statements";
 
 export async function GET(
   req: Request,
@@ -167,6 +168,33 @@ export async function POST(
         }
       }
     });
+
+    // After transaction succeeds, trigger statement recalculation for all relevant years
+    try {
+      const client = await prisma.client.findUnique({ where: { id } });
+      if (client && client.software === "TALLY") {
+        const vouchers = await prisma.normalizedVoucher.findMany({
+          where: { clientId: id },
+          select: { date: true }
+        });
+        
+        const years = new Set<number>();
+        for (const v of vouchers) {
+          const date = new Date(v.date);
+          const y = date.getFullYear();
+          const m = date.getMonth(); // 0-indexed
+          const fyStartYear = m < 3 ? y - 1 : y;
+          years.add(fyStartYear);
+        }
+
+        console.log(`[Unified Mapping POST] Recalculating PNL for client ${id} for years:`, Array.from(years));
+        for (const y of years) {
+          await recalculatePNLValues(id, y);
+        }
+      }
+    } catch (recalcErr) {
+      console.error("[Unified Mapping POST] Post-save recalculation failed:", recalcErr);
+    }
 
     return NextResponse.json({ success: true });
 

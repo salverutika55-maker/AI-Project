@@ -45,6 +45,22 @@ export async function POST(
       }, { status: 412 });
     }
 
+    // For Tally, we ALWAYS perform a full refresh to prevent stale/ghost vouchers & balances.
+    console.log(`[Sync-Placeholder] Tally Client ${id}: Wiping historical vouchers and PNL values to ensure clean sync...`);
+    await prisma.normalizedVoucher.deleteMany({
+      where: { clientId: id }
+    });
+    await prisma.pNLValue.deleteMany({
+      where: { clientId: id }
+    });
+    await prisma.financialRecord.deleteMany({
+      where: { clientId: id }
+    });
+    await prisma.normalizedLedger.updateMany({
+      where: { clientId: id },
+      data: { closingBalance: 0 }
+    });
+
     // Create a background sync task
     const task = await prisma.syncTask.create({
       data: {

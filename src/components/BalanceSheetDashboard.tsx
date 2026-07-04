@@ -195,6 +195,42 @@ export default function BalanceSheetDashboard({ clientId, visibleMonths = ["Apr"
         </div>
       </div>
 
+      {/* Ghost Balance Warning Banner */}
+      {reconciliation && !reconciliation.reconciled && (
+        <div className="border border-amber-500/30 bg-amber-500/5 rounded-2xl p-6 flex flex-col md:flex-row md:items-center gap-4 justify-between animate-in slide-in-from-top-4">
+          <div className="flex gap-4 items-start">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black text-amber-400 uppercase tracking-widest">
+                Source-of-Truth Alert: Mapping Discrepancies Detected
+              </h4>
+              <p className="text-xs text-slate-400 font-medium leading-relaxed mt-1">
+                Your Chart of Accounts has mappings pointing to deleted or inactive Tally ledgers. 
+                These ledgers are excluded from the balance sheet, resulting in potential variance.
+              </p>
+              {reconciliation.actualMissingLedgerDetails && reconciliation.actualMissingLedgerDetails.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase self-center">Missing/Deleted Ledgers:</span>
+                  {reconciliation.actualMissingLedgerDetails.map((l: any) => (
+                    <span key={l.id} className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-bold text-amber-400 font-mono">
+                      {l.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <button 
+            onClick={fetchBalanceSheet}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all shrink-0 self-start md:self-center"
+          >
+            Re-Reconcile Live Data
+          </button>
+        </div>
+      )}
+
       {reconciliation && (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="rounded-3xl border border-white/10 bg-[#11131b] p-6">
