@@ -226,33 +226,18 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     let running = safeNum(ledger.openingBalance);
     let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" = "ledger_opening";
 
-    // 1. Apply true balance nature sign to ledger.openingBalance
+    // 1. Sign opening balance correctly based on ledger.nature (Debit=+, Credit=-)
     if (running !== 0) {
-      if (mainGroup === "Assets") {
-        if (ledger.nature === "CREDIT") {
-          running = -running;
-        }
-      } else {
-        if (ledger.nature === "DEBIT") {
-          running = -running;
-        }
-      }
+      running = ledger.nature === "CREDIT" ? -running : running;
     } else {
       // 2. Derive from closing balance or pre-FY movements if opening is 0
       let signedClosingBal = safeNum(ledger.closingBalance);
       if (signedClosingBal !== 0) {
-        if (mainGroup === "Assets") {
-          if (ledger.nature === "CREDIT") signedClosingBal = -signedClosingBal;
-          running = signedClosingBal - fyMovement.debit + fyMovement.credit;
-        } else {
-          if (ledger.nature === "DEBIT") signedClosingBal = -signedClosingBal;
-          running = signedClosingBal - fyMovement.credit + fyMovement.debit;
-        }
+        signedClosingBal = ledger.nature === "CREDIT" ? -signedClosingBal : signedClosingBal;
+        running = signedClosingBal - fyMovement.debit + fyMovement.credit;
         openingSource = "derived_from_closing";
       } else {
-        running = mainGroup === "Assets"
-          ? preFY.debit - preFY.credit
-          : preFY.credit - preFY.debit;
+        running = preFY.debit - preFY.credit;
         openingSource = "derived_from_pre_fy";
       }
     }
@@ -271,9 +256,7 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
       const opening = running;
       const debit = safeNum(mv.debit);
       const credit = safeNum(mv.credit);
-      const closing = mainGroup === "Assets"
-        ? opening + debit - credit
-        : opening + credit - debit;
+      const closing = opening + debit - credit; // Universal bookkeeping formula
       monthTraces[month] = { opening, debit, credit, closing };
       running = closing;
     }
@@ -322,6 +305,8 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
   for (const row of ledgerTraces) {
     for (const month of FULL_MONTHS) {
       const trace = row.monthTraces[month];
+      const presentationClosing = row.mainGroup === "Assets" ? trace.closing : -trace.closing;
+      const presentationOpening = row.mainGroup === "Assets" ? trace.opening : -trace.opening;
       dataNodes.push({
         id: `${row.ledgerId}-${month}`,
         ledgerId: row.ledgerId,
@@ -331,12 +316,12 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
         subGroupName: row.subHeadName,
         subHeadName: row.subHeadName,
         ledgerName: row.ledgerName,
-        amount: trace.closing,
+        amount: presentationClosing,
         nature: row.nature,
-        opening: trace.opening,
+        opening: presentationOpening,
         debit: trace.debit,
         credit: trace.credit,
-        closing: trace.closing,
+        closing: presentationClosing,
       });
     }
   }
@@ -359,7 +344,9 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
 
     existing.mappedLedgersCount += 1;
     existing.mappedLedgerNames.push(row.ledgerName);
-    existing.calculatedTotal += row.monthTraces[latestMonth]?.closing || 0;
+    const calcClosing = row.monthTraces[latestMonth]?.closing || 0;
+    const presentationClosing = row.mainGroup === "Assets" ? calcClosing : -calcClosing;
+    existing.calculatedTotal += presentationClosing;
     bySubhead.set(key, existing);
   }
 
@@ -386,7 +373,11 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
             row.groupName === summary.groupName &&
             row.subHeadName === summary.subHeadName
         )
-        .reduce((sum, row) => sum + safeNum(row.monthTraces[period]?.closing), 0);
+        .reduce((sum, row) => {
+          const closing = safeNum(row.monthTraces[period]?.closing);
+          const presentationClosing = row.mainGroup === "Assets" ? closing : -closing;
+          return sum + presentationClosing;
+        }, 0);
 
       const displayedTotal = dataNodes
         .filter(

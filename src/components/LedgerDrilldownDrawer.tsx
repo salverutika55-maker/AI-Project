@@ -631,10 +631,13 @@ export default function LedgerDrilldownDrawer({
                               } else {
                                 displayVal = ledger.amounts[m]?.closing || 0;
                               }
+                              const presentationVal = ledger.mainGroup
+                                ? (ledger.mainGroup === "Assets" ? displayVal : -displayVal)
+                                : displayVal;
                               return (
                                 <td key={m} className="p-3 text-right font-mono font-bold">
                                   <span className="text-sm text-slate-300 group-hover:text-white transition-colors">
-                                    {formatCurrency(displayVal)}
+                                    {formatCurrency(presentationVal)}
                                   </span>
                                 </td>
                               );
