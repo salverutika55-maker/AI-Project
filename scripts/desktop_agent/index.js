@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const axios = require('axios');
 const xml2js = require('xml2js');
+const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
 
 const PORT = 4500;
 // Config path: %APPDATA%/FinAnalyzer/config.json
@@ -30,21 +31,34 @@ let guiServer = null;
 let tallyActiveCompanyName = null;
 let isSyncing = false;
 
-async function getActiveTallyCompanyName() {
+async function getActiveTallyCompanyDetails() {
   const xmlPayload = `
 <ENVELOPE>
   <HEADER>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>ActiveCompanyCollection</ID>
   </HEADER>
   <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>List of Accounts</REPORTNAME>
-        <STATICVARIABLES>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-    </EXPORTDATA>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="ActiveCompanyCollection" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>Company</TYPE>
+            <NATIVEMETHOD>Name</NATIVEMETHOD>
+            <NATIVEMETHOD>GUID</NATIVEMETHOD>
+            <FILTER>ActiveCompanyFilter</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE="Formulae" NAME="ActiveCompanyFilter">
+            $$IsSelected
+          </SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
   </BODY>
 </ENVELOPE>
   `.trim();
@@ -54,12 +68,25 @@ async function getActiveTallyCompanyName() {
       headers: { "Content-Type": "text/xml" },
       timeout: 15000
     });
-    const match = res.data.match(/<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/i);
-    if (match && match[1]) {
-      return match[1].trim();
+    const parsed = await parser.parseStringPromise(res.data);
+    if (parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY) {
+      const coNode = parsed.ENVELOPE.BODY.DATA.COLLECTION.COMPANY;
+      const name = coNode.NAME ? (Array.isArray(coNode.NAME) ? coNode.NAME[0] : coNode.NAME) : null;
+      const guid = coNode.GUID ? (Array.isArray(coNode.GUID) ? coNode.GUID[0] : coNode.GUID) : null;
+      if (name) {
+        return { name: String(name).trim(), guid: guid ? String(guid).trim() : null };
+      }
     }
   } catch (err) {
     // Tally not running or unreachable
+  }
+  return null;
+}
+
+async function getActiveTallyCompanyName() {
+  const details = await getActiveTallyCompanyDetails();
+  if (details) {
+    return details.name;
   }
   return null;
 }
@@ -247,6 +274,9 @@ async function startBackgroundSync(config) {
         <TDLMESSAGE>
           <COLLECTION NAME="List of Ledgers" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
             <TYPE>Ledger</TYPE>
+            <NATIVEMETHOD>GUID</NATIVEMETHOD>
+            <NATIVEMETHOD>MASTERID</NATIVEMETHOD>
+            <NATIVEMETHOD>ALTERID</NATIVEMETHOD>
             <NATIVEMETHOD>Name</NATIVEMETHOD>
             <NATIVEMETHOD>Parent</NATIVEMETHOD>
           </COLLECTION>
@@ -280,16 +310,37 @@ async function startBackgroundSync(config) {
               parentGroup = pRaw;
             }
           }
+
+          let guid = null;
+          if (msg.GUID) guid = Array.isArray(msg.GUID) ? msg.GUID[0] : msg.GUID;
+          if (typeof guid === 'object' && guid._) guid = guid._;
+
+          let masterId = null;
+          if (msg.MASTERID) masterId = Array.isArray(msg.MASTERID) ? msg.MASTERID[0] : msg.MASTERID;
+          if (typeof masterId === 'object' && masterId._) masterId = masterId._;
+
+          let alterId = null;
+          if (msg.ALTERID) alterId = Array.isArray(msg.ALTERID) ? msg.ALTERID[0] : msg.ALTERID;
+          if (typeof alterId === 'object' && alterId._) alterId = alterId._;
           
-          if (ledgerName) ledgers.push({ name: String(ledgerName), groupName: String(parentGroup) });
+          if (ledgerName) {
+            ledgers.push({ 
+              name: String(ledgerName).trim(), 
+              groupName: String(parentGroup).trim(),
+              guid: guid ? String(guid).trim() : null,
+              masterId: masterId ? String(masterId).trim() : null,
+              alterId: alterId ? String(alterId).trim() : null
+            });
+          }
         });
       }
-      // Deduplicate by name
+      // Deduplicate by masterId or guid, falling back to name
       const uniqueLedgers = [];
       const seen = new Set();
       for (const l of ledgers) {
-          if (!seen.has(l.name.toLowerCase())) {
-              seen.add(l.name.toLowerCase());
+          const key = l.masterId || l.guid || l.name.toLowerCase();
+          if (!seen.has(key)) {
+              seen.add(key);
               uniqueLedgers.push(l);
           }
       }
@@ -329,12 +380,22 @@ async function startBackgroundSync(config) {
       
       let dateObj = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T00:00:00Z`;
           
+          let alterId = vch.ALTERID || null;
+          if (Array.isArray(alterId)) alterId = alterId[0];
+          if (typeof alterId === 'object' && alterId._) alterId = alterId._;
+
+          let masterId = vch.MASTERID || null;
+          if (Array.isArray(masterId)) masterId = masterId[0];
+          if (typeof masterId === 'object' && masterId._) masterId = masterId._;
+
           const v = {
-            guid: vch.GUID || vch.VOUCHERNUMBER,
-            voucherNumber: vch.VOUCHERNUMBER || "N/A",
-            voucherType: vch.VOUCHERTYPENAME || "JOURNAL",
+            guid: vch.GUID ? (Array.isArray(vch.GUID) ? vch.GUID[0] : vch.GUID) : (vch.VOUCHERNUMBER || "N/A"),
+            voucherNumber: vch.VOUCHERNUMBER ? (Array.isArray(vch.VOUCHERNUMBER) ? vch.VOUCHERNUMBER[0] : vch.VOUCHERNUMBER) : "N/A",
+            voucherType: vch.VOUCHERTYPENAME ? (Array.isArray(vch.VOUCHERTYPENAME) ? vch.VOUCHERTYPENAME[0] : vch.VOUCHERTYPENAME) : "JOURNAL",
             date: dateObj,
-            narration: vch.NARRATION || "",
+            narration: vch.NARRATION ? (Array.isArray(vch.NARRATION) ? vch.NARRATION[0] : vch.NARRATION) : "",
+            alterId: alterId ? String(alterId) : null,
+            masterId: masterId ? String(masterId) : null,
             lines: []
           };
 
@@ -383,7 +444,8 @@ async function startBackgroundSync(config) {
     
     isSyncing = true;
     try {
-      let activeCompany = await getActiveTallyCompanyName();
+      let activeCo = await getActiveTallyCompanyDetails();
+      let activeCompany = activeCo ? activeCo.name : null;
 
       // If the live check timed out but we know the company from a previous successful check,
       // use the cached name rather than aborting the entire sync.
@@ -391,8 +453,10 @@ async function startBackgroundSync(config) {
         if (tallyActiveCompanyName) {
           console.log(`[AGENT] Tally check timed out — using last known company: "${tallyActiveCompanyName}". Retrying sync...`);
           activeCompany = tallyActiveCompanyName;
+          activeCo = { name: tallyActiveCompanyName, guid: null };
         } else {
           console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
+          isSyncing = false;
           return;
         }
       }
@@ -407,6 +471,7 @@ async function startBackgroundSync(config) {
     if (!companyConfig || !companyConfig.apiKey) {
       console.log(`[AGENT] Executing Sync: Active Tally company "${activeCompany}" is not paired yet.`);
       console.log(`[AGENT] Launching setup interface. Please enter the handshake code in your browser.`);
+      isSyncing = false;
       startLocalGUI();
       return;
     }
@@ -581,7 +646,8 @@ async function startBackgroundSync(config) {
                            { 
                                 vouchers: periodVouchers,
                                 syncTaskId: options.syncTaskId,
-                                forceFull: options.forceFull
+                                forceFull: options.forceFull,
+                                companyGuid: activeCo?.guid || null
                            },
                            {
                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${companyConfig.apiKey}` },
@@ -619,7 +685,8 @@ async function startBackgroundSync(config) {
                     records: allFinancialPayloads, 
                     chartOfAccounts: finalLedgers,
                     syncTaskId: options.syncTaskId,
-                    forceFull: options.forceFull
+                    forceFull: options.forceFull,
+                    companyGuid: activeCo?.guid || null
                 },
                 {
                     headers: {

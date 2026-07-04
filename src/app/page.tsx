@@ -20,7 +20,10 @@ export default async function Home() {
   let session = null;
   try {
     session = await getServerSession(authOptions);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message?.includes("Dynamic server usage") || err?.digest === "DYNAMIC_SERVER_USAGE") {
+      throw err;
+    }
     console.error("NextAuth session check failed:", err);
   }
   

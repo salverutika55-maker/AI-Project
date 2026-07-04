@@ -159,3 +159,26 @@ export async function POST(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const task = await prisma.syncTask.findFirst({
+      where: { clientId: id, status: "COMPLETED" },
+      orderBy: { createdAt: "desc" }
+    });
+
+    return NextResponse.json(task || null);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

@@ -84,6 +84,9 @@ export async function POST(
         
         for (const line of v.lines) {
           if (!line.ledger?.name) continue;
+          // Exclude soft-deleted/deleted ledgers from current statement calculations
+          if (line.ledger.sourceStatus === "deleted" || !line.ledger.isActive) continue;
+
           const ledgerName = line.ledger.name;
           if (!monthlyData[actualMonthStr][ledgerName]) monthlyData[actualMonthStr][ledgerName] = 0;
           

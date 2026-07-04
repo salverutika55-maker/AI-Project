@@ -72,9 +72,9 @@ export async function GET(
         mappedNames = legacyPnl.map(m => m.softwareLedgerName.trim().toLowerCase());
       }
 
-      // Fetch all normalized ledgers for the client
+      // Fetch all active normalized ledgers for the client
       const allLedgers = await prisma.normalizedLedger.findMany({
-        where: { clientId: id }
+        where: { clientId: id, isActive: true }
       });
 
       const matchedLedgers = allLedgers.filter(l => mappedNames.includes(l.name.trim().toLowerCase()));

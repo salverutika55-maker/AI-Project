@@ -26,6 +26,22 @@ export async function POST(req: Request) {
     const body = await req.json();
     const syncTaskId = body.syncTaskId;
     const forceFull = body.forceFull === true;
+
+    // Validate Tally Company GUID (if provided)
+    const companyGuid = body.companyGuid;
+    if (companyGuid && client.software === 'TALLY') {
+      if (!client.sourceCompanyId) {
+        // Pair on first sync
+        await prisma.client.update({
+          where: { id: client.id },
+          data: { sourceCompanyId: companyGuid }
+        });
+      } else if (client.sourceCompanyId !== companyGuid) {
+        return NextResponse.json({ 
+          message: `Sync rejected: Tally Company GUID mismatch! The currently loaded company in Tally does not match this client's paired company.` 
+        }, { status: 400 });
+      }
+    }
     
     // Support either single object, array of objects, or object with 'records' array
     let records = [];
@@ -174,93 +190,282 @@ export async function POST(req: Request) {
 
     // 4c. Update Unique Ledgers for the Mapping UI & Save Closing Balances
     if (client.software === 'TALLY') {
-      const uniqueLedgers = new Map<string, { original: string, balance: number, groupName?: string }>();
+      const chartOfAccounts = body.chartOfAccounts || [];
       
-      // Since records are chronological, the last record has the latest Trial Balance
+      // Read balances from Trial Balance records (latest one has current values)
+      const ledgerBalances: Record<string, number> = {};
       for (const record of records) {
         if (record.ledgers) {
           Object.entries(record.ledgers).forEach(([k, v]) => {
-             const original = k.trim();
-             const lower = original.toLowerCase();
-             uniqueLedgers.set(lower, { original, balance: Number(v) || 0 });
+            ledgerBalances[k.trim().toLowerCase()] = Number(v) || 0;
           });
         }
       }
-      
-      // Also add explicit chartOfAccounts if provided by the agent
-      if (body.chartOfAccounts && Array.isArray(body.chartOfAccounts)) {
-        body.chartOfAccounts.forEach((c: any) => {
-             const original = typeof c === 'string' ? c.trim() : c.name.trim();
-             const groupName = typeof c === 'string' ? "Unknown" : (c.groupName || "Unknown");
-             const lower = original.toLowerCase();
-             if (!uniqueLedgers.has(lower)) uniqueLedgers.set(lower, { original, balance: 0, groupName });
-             else {
-                 const existing = uniqueLedgers.get(lower);
-                 if (existing) {
-                     existing.groupName = groupName;
-                 }
-             }
-        });
+
+      // Fetch all existing ledgers in DB for this client
+      const dbLedgers = await prisma.normalizedLedger.findMany({
+        where: { clientId: client.id }
+      });
+
+      const dbLedgerBySourceId = new Map<string, typeof dbLedgers[0]>();
+      const dbLedgerByGuid = new Map<string, typeof dbLedgers[0]>();
+      const dbLedgerByName = new Map<string, typeof dbLedgers[0]>();
+
+      for (const l of dbLedgers) {
+        if (l.sourceLedgerId) dbLedgerBySourceId.set(l.sourceLedgerId, l);
+        if (l.sourceGuid) dbLedgerByGuid.set(l.sourceGuid, l);
+        dbLedgerByName.set(l.name.toLowerCase(), l);
       }
-      
-      if (uniqueLedgers.size > 0) {
-        const ledgersArr = Array.from(uniqueLedgers.values()).map(x => x.original);
-        const encryptedLedgers = encrypt(JSON.stringify(ledgersArr));
-        
-        await prisma.integrationCredential.upsert({
-          where: { clientId: client.id },
-          create: {
+
+      let addedCount = 0;
+      let updatedCount = 0;
+      let renamedCount = 0;
+      let movedCount = 0;
+      let deletedCount = 0;
+      let unchangedCount = 0;
+      let reactivatedCount = 0;
+
+      const traceLog: any[] = [];
+      const activeSourceIds = new Set<string>();
+      const activeNames = new Set<string>();
+
+      for (const src of chartOfAccounts) {
+        const srcName = (src.name || "").trim();
+        if (!srcName) continue;
+        const srcNameLower = srcName.toLowerCase();
+        const srcGroup = src.groupName || "Uncategorized";
+        const srcMasterId = src.masterId ? String(src.masterId) : null;
+        const srcGuid = src.guid ? String(src.guid) : null;
+        const balanceVal = ledgerBalances[srcNameLower] || 0;
+
+        activeNames.add(srcNameLower);
+        if (srcMasterId) activeSourceIds.add(srcMasterId);
+
+        // Find existing match by ID or Name
+        let matchedLedger = null;
+        if (srcMasterId && dbLedgerBySourceId.has(srcMasterId)) {
+          matchedLedger = dbLedgerBySourceId.get(srcMasterId);
+        } else if (srcGuid && dbLedgerByGuid.has(srcGuid)) {
+          matchedLedger = dbLedgerByGuid.get(srcGuid);
+        } else if (dbLedgerByName.has(srcNameLower)) {
+          matchedLedger = dbLedgerByName.get(srcNameLower);
+        }
+
+        if (matchedLedger) {
+          let isRename = matchedLedger.name !== srcName;
+          let isMove = matchedLedger.groupName !== srcGroup;
+          let isReactivate = !matchedLedger.isActive || matchedLedger.sourceStatus === 'deleted';
+          let isBalanceChange = Math.abs(matchedLedger.closingBalance - Math.abs(balanceVal)) > 0.01;
+
+          let action = "UNCHANGED";
+          let reason = "No changes detected";
+
+          const prevName = matchedLedger.name;
+          const prevGroup = matchedLedger.groupName;
+
+          if (isRename) {
+            action = "RENAMED";
+            reason = `Name changed from "${prevName}" to "${srcName}"`;
+          }
+          if (isMove) {
+            if (action === "UNCHANGED") {
+              action = "MOVED";
+              reason = `Group changed from "${prevGroup}" to "${srcGroup}"`;
+            } else {
+              action += "_AND_MOVED";
+              reason += ` and group changed from "${prevGroup}" to "${srcGroup}"`;
+            }
+          }
+          if (isReactivate) {
+            action = "REACTIVATED";
+            reason = `Reactivated ledger previously marked as deleted`;
+          }
+          if (isBalanceChange && action === "UNCHANGED") {
+            action = "UPDATED";
+            reason = `Closing balance updated from ₹${matchedLedger.closingBalance} to ₹${Math.abs(balanceVal)}`;
+          }
+
+          // Update in DB
+          await prisma.normalizedLedger.update({
+            where: { id: matchedLedger.id },
+            data: {
+              name: srcName,
+              groupName: srcGroup,
+              sourceLedgerId: srcMasterId || matchedLedger.sourceLedgerId,
+              sourceGuid: srcGuid || matchedLedger.sourceGuid,
+              sourcePlatform: "TALLY",
+              sourceStatus: "active",
+              isActive: true,
+              deletedAt: null,
+              closingBalance: Math.abs(balanceVal),
+              mappingStatus: isMove ? "review_required" : (isReactivate ? "active" : matchedLedger.mappingStatus),
+              previousGroupName: isMove ? prevGroup : matchedLedger.previousGroupName
+            }
+          });
+
+          // Renames propagation to mapping tables
+          if (isRename) {
+            renamedCount++;
+            await prisma.unifiedLedgerMapping.updateMany({
+              where: { clientId: client.id, softwareLedgerName: prevName },
+              data: { softwareLedgerName: srcName }
+            });
+            await prisma.pNLMapping.updateMany({
+              where: { clientId: client.id, softwareLedgerName: prevName },
+              data: { softwareLedgerName: srcName }
+            });
+          }
+
+          if (isMove) movedCount++;
+          else if (isReactivate) reactivatedCount++;
+          else if (isRename) {} // Already incremented renamedCount
+          else if (isBalanceChange) updatedCount++;
+          else unchangedCount++;
+
+          traceLog.push({
+            sourceId: srcMasterId || srcGuid || srcName,
+            previousName: prevName,
+            currentName: srcName,
+            previousGroup: prevGroup,
+            currentGroup: srcGroup,
+            previousStatus: matchedLedger.sourceStatus,
+            currentStatus: "active",
+            mappingStatus: isMove ? "review_required" : matchedLedger.mappingStatus,
+            syncAction: action,
+            reason
+          });
+
+        } else {
+          // ADDED ledger
+          addedCount++;
+          const newLedgerId = crypto.randomUUID();
+          await prisma.normalizedLedger.create({
+            data: {
+              id: newLedgerId,
+              clientId: client.id,
+              name: srcName,
+              groupName: srcGroup,
+              openingBalance: 0,
+              closingBalance: Math.abs(balanceVal),
+              nature: balanceVal > 0 ? "DEBIT" : "CREDIT",
+              isActive: true,
+              sourcePlatform: "TALLY",
+              sourceCompanyId: companyGuid || null,
+              sourceLedgerId: srcMasterId,
+              sourceGuid: srcGuid,
+              sourceStatus: "active",
+              mappingStatus: "review_required"
+            }
+          });
+
+          traceLog.push({
+            sourceId: srcMasterId || srcGuid || srcName,
+            previousName: null,
+            currentName: srcName,
+            previousGroup: null,
+            currentGroup: srcGroup,
+            previousStatus: null,
+            currentStatus: "active",
+            mappingStatus: "review_required",
+            syncAction: "ADDED",
+            reason: `Newly created ledger in Tally under "${srcGroup}"`
+          });
+        }
+      }
+
+      // Check for DELETED / REMOVED ledgers
+      for (const dbL of dbLedgers) {
+        if (dbL.sourceStatus === "deleted") continue;
+
+        let isPresent = false;
+        if (dbL.sourceLedgerId) {
+          isPresent = activeSourceIds.has(dbL.sourceLedgerId);
+        } else {
+          isPresent = activeNames.has(dbL.name.toLowerCase());
+        }
+
+        if (!isPresent) {
+          deletedCount++;
+          await prisma.normalizedLedger.update({
+            where: { id: dbL.id },
+            data: {
+              sourceStatus: "deleted",
+              isActive: false,
+              deletedAt: new Date(),
+              mappingStatus: "inactive_source_deleted"
+            }
+          });
+
+          // Mapping Reconciliation: Flag mappings pointing to deleted/nonexistent source ledger
+          await prisma.unifiedLedgerMapping.updateMany({
+            where: { clientId: client.id, softwareLedgerName: dbL.name },
+            data: { source: "DELETED_SOURCE" }
+          });
+
+          traceLog.push({
+            sourceId: dbL.sourceLedgerId || dbL.sourceGuid || dbL.name,
+            previousName: dbL.name,
+            currentName: null,
+            previousGroup: dbL.groupName,
+            currentGroup: null,
+            previousStatus: dbL.sourceStatus,
+            currentStatus: "deleted",
+            mappingStatus: "inactive_source_deleted",
+            syncAction: "DELETED",
+            reason: `Ledger no longer exists in Tally`
+          });
+        }
+      }
+
+      // Write results to SyncTask if present
+      if (syncTaskId) {
+        const task = await prisma.syncTask.findUnique({ where: { id: syncTaskId } });
+        if (task) {
+          const currentResult = (task.result || {}) as any;
+          const updatedResult = {
+            ...currentResult,
+            syncRunId: syncTaskId,
             clientId: client.id,
-            encryptedApiKey: encryptedLedgers
-          },
-          update: {
-            encryptedApiKey: encryptedLedgers
-          }
-        });
-
-        if (syncTaskId) {
-          const task = await prisma.syncTask.findUnique({ where: { id: syncTaskId } });
-          if (task) {
-            const currentResult = (task.result || {}) as any;
-            currentResult.ledgersProcessed = uniqueLedgers.size;
-            await prisma.syncTask.update({
-              where: { id: syncTaskId },
-              data: { result: currentResult }
-            });
-          }
-        }
-
-        // 1. Update closing balances (Chunked to prevent Vercel 10s Timeout, No transaction to prevent deadlocks)
-        const ledgerUpsertsData = Array.from(uniqueLedgers.values());
-        const CHUNK_SIZE = 10;
-        for (let i = 0; i < ledgerUpsertsData.length; i += CHUNK_SIZE) {
-          const chunk = ledgerUpsertsData.slice(i, i + CHUNK_SIZE);
-          await Promise.all(chunk.map(async (data) => {
-            const groupName = data.groupName || "Uncategorized";
-            await prisma.normalizedLedger.upsert({
-                where: {
-                  clientId_name: {
-                    clientId: client.id,
-                    name: data.original
-                  }
-                },
-                update: {
-                  closingBalance: Math.abs(data.balance),
-                  // Only update group name if the Tally agent actually sent a real group
-                  ...(groupName !== "Unknown" && groupName !== "Uncategorized" ? { groupName } : {})
-                },
-                create: {
-                  clientId: client.id,
-                  name: data.original,
-                  groupName: groupName,
-                  closingBalance: Math.abs(data.balance),
-                  nature: data.balance > 0 ? "DEBIT" : "CREDIT",
-                  isActive: true
-                }
-            });
-          }));
+            sourcePlatform: "TALLY",
+            sourceCompanyId: companyGuid || client.sourceCompanyId || "N/A",
+            startedAt: task.createdAt.toISOString(),
+            completedAt: new Date().toISOString(),
+            sourceLedgerCount: chartOfAccounts.length,
+            appLedgerCountBefore: dbLedgers.length,
+            appLedgerCountAfter: dbLedgers.length + addedCount - deletedCount,
+            added: addedCount,
+            updated: updatedCount,
+            renamed: renamedCount,
+            moved: movedCount,
+            deleted: deletedCount,
+            unchanged: unchangedCount,
+            reactivated: reactivatedCount,
+            traceLog: traceLog
+          };
+          await prisma.syncTask.update({
+            where: { id: syncTaskId },
+            data: { result: updatedResult }
+          });
         }
       }
+
+      // Update Integration Credentials API Key (which holds the encrypted master ledgers list)
+      const finalActiveLedgers = await prisma.normalizedLedger.findMany({
+        where: { clientId: client.id, isActive: true }
+      });
+      const ledgersArr = finalActiveLedgers.map(x => x.name);
+      const encryptedLedgers = encrypt(JSON.stringify(ledgersArr));
+      
+      await prisma.integrationCredential.upsert({
+        where: { clientId: client.id },
+        create: {
+          clientId: client.id,
+          encryptedApiKey: encryptedLedgers
+        },
+        update: {
+          encryptedApiKey: encryptedLedgers
+        }
+      });
     }
 
     // 5. Resolve any pending UI sync tasks (non-destructively preserving diagnostics result)

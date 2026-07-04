@@ -64,6 +64,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const [budgetData, setBudgetData] = useState<Record<string, Record<string, number>>>({});
   const [financialRecords, setFinancialRecords] = useState<any[]>([]);
   const [syncDiagnostic, setSyncDiagnostic] = useState<any>(null);
+  const [isTraceDrawerOpen, setIsTraceDrawerOpen] = useState(false);
   const [topBalancesSample, setTopBalancesSample] = useState<any[]>([]);
   const [misReport, setMisReport] = useState<any>(null);
   const [misLoading, setMisLoading] = useState(false);
@@ -139,6 +140,19 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
         subData = await refreshRes.json();
       }
       setCustomSubHeads(subData);
+
+      // 3. Fetch latest completed sync task diagnostics and trace log
+      try {
+        const syncTaskRes = await fetch(`/api/clients/${client.id}/sync`);
+        if (syncTaskRes.ok) {
+          const syncTask = await syncTaskRes.json();
+          if (syncTask && syncTask.result) {
+            setSyncDiagnostic(syncTask.result);
+          }
+        }
+      } catch (taskErr) {
+        console.error("Failed to load latest sync task details:", taskErr);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -728,6 +742,33 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           </div>
         )}
 
+        {/* Unmapped Ledgers Alert Banner */}
+        {client.software === 'TALLY' && syncDiagnostic?.added > 0 && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between animate-in slide-in-from-top-2 duration-400 shadow-md">
+            <div className="flex items-center gap-4">
+              <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center">
+                <AlertTriangle className="w-4 h-4 text-amber-400 animate-bounce" />
+              </div>
+              <div>
+                <p className="text-xs font-black text-amber-400 uppercase tracking-widest">
+                  {syncDiagnostic.added} New Ledgers Detected
+                </p>
+                <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                  Newly synced accounts from Tally Prime need mapping validation. Map them now to update your reports.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setIsMappingOpen(true)}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/20"
+              >
+                Map Manually
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 2. TAB NAVIGATION */}
         <div className="flex flex-wrap items-center gap-1 bg-[#13131A] p-1.5 rounded-2xl border border-white/5 w-fit shadow-lg">
           <button onClick={() => setActiveTab("executive")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "executive" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
@@ -1179,6 +1220,50 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                       </div>
                     </div>
 
+                    {syncDiagnostic.added !== undefined && (
+                      <div className="bg-[#1A1A24] p-6 rounded-3xl border border-white/5">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-4">Chart of Accounts Synchronization Delta</span>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                          <div className="bg-black/20 p-4 rounded-2xl border border-emerald-500/10">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Added</span>
+                            <span className="text-xl font-mono font-black text-emerald-400">{syncDiagnostic.added}</span>
+                          </div>
+                          <div className="bg-black/20 p-4 rounded-2xl border border-cyan-500/10">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Updated</span>
+                            <span className="text-xl font-mono font-black text-cyan-400">{syncDiagnostic.updated}</span>
+                          </div>
+                          <div className="bg-black/20 p-4 rounded-2xl border border-amber-500/10">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Renamed</span>
+                            <span className="text-xl font-mono font-black text-amber-400">{syncDiagnostic.renamed}</span>
+                          </div>
+                          <div className="bg-black/20 p-4 rounded-2xl border border-purple-500/10">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Moved</span>
+                            <span className="text-xl font-mono font-black text-purple-400">{syncDiagnostic.moved}</span>
+                          </div>
+                          <div className="bg-black/20 p-4 rounded-2xl border border-rose-500/10">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Deleted</span>
+                            <span className="text-xl font-mono font-black text-rose-400">{syncDiagnostic.deleted}</span>
+                          </div>
+                          <div className="bg-black/20 p-4 rounded-2xl border border-slate-800">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Unchanged</span>
+                            <span className="text-xl font-mono font-black text-slate-400">{syncDiagnostic.unchanged}</span>
+                          </div>
+                          <div className="bg-black/20 p-4 rounded-2xl border border-indigo-500/10">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Reactivated</span>
+                            <span className="text-xl font-mono font-black text-indigo-400">{syncDiagnostic.reactivated || 0}</span>
+                          </div>
+                        </div>
+                        {syncDiagnostic.traceLog && syncDiagnostic.traceLog.length > 0 && (
+                          <button
+                            onClick={() => setIsTraceDrawerOpen(true)}
+                            className="mt-6 px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+                          >
+                            <Activity className="w-4.5 h-4.5 animate-pulse" /> View Sync Trace Audit Log
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     <div className="bg-[#1A1A24] border border-white/5 p-6 rounded-3xl space-y-4">
                       <h4 className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Latest Transaction Audited</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
@@ -1267,6 +1352,94 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
         />
       )}
 
+      {/* Sync Trace Drawer */}
+      {isTraceDrawerOpen && syncDiagnostic?.traceLog && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-sm flex justify-end animate-in fade-in duration-300">
+          <div className="w-full max-w-4xl bg-[#0D0D12] h-full shadow-2xl flex flex-col border-l border-white/5 animate-in slide-in-from-right duration-350">
+            {/* Header */}
+            <div className="p-6 border-b border-white/5 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-cyan-400" /> Tally Sync Trace Audit Log
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">Sync Run: {syncDiagnostic.syncRunId} • Paired Company ID: {syncDiagnostic.sourceCompanyId}</p>
+              </div>
+              <button 
+                onClick={() => setIsTraceDrawerOpen(false)}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg transition-all text-xs font-black uppercase cursor-pointer"
+              >
+                ✕ Close
+              </button>
+            </div>
+            
+            {/* Stats Summary */}
+            <div className="p-6 bg-white/[0.01] border-b border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+              <div className="bg-[#13131A] p-4 rounded-xl border border-white/5">
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">Source Ledgers</span>
+                <span className="text-lg font-mono font-black text-white">{syncDiagnostic.sourceLedgerCount}</span>
+              </div>
+              <div className="bg-[#13131A] p-4 rounded-xl border border-white/5">
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">App Ledgers Before</span>
+                <span className="text-lg font-mono font-black text-white">{syncDiagnostic.appLedgerCountBefore}</span>
+              </div>
+              <div className="bg-[#13131A] p-4 rounded-xl border border-white/5">
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">App Ledgers After</span>
+                <span className="text-lg font-mono font-black text-cyan-400">{syncDiagnostic.appLedgerCountAfter}</span>
+              </div>
+              <div className="bg-[#13131A] p-4 rounded-xl border border-white/5 flex flex-col justify-center">
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">Sync Run Time</span>
+                <span className="text-[10px] font-mono font-bold text-slate-300 block mt-1">
+                  {new Date(syncDiagnostic.startedAt).toLocaleTimeString()} - {new Date(syncDiagnostic.completedAt).toLocaleTimeString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Logs Table */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/5 text-[10px] text-slate-500 font-black uppercase tracking-wider">
+                    <th className="pb-3 pr-2">Source ID</th>
+                    <th className="pb-3 pr-2">Ledger Name</th>
+                    <th className="pb-3 pr-2">Previous Group</th>
+                    <th className="pb-3 pr-2">Current Group</th>
+                    <th className="pb-3 pr-2">Sync Action</th>
+                    <th className="pb-3">Reason</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-xs">
+                  {syncDiagnostic.traceLog.map((log: any, idx: number) => {
+                    const actionColors: Record<string, string> = {
+                      ADDED: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+                      RENAMED: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+                      MOVED: "bg-purple-500/10 text-purple-400 border border-purple-500/20",
+                      DELETED: "bg-rose-500/10 text-rose-400 border border-rose-500/20",
+                      REACTIVATED: "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20",
+                      UPDATED: "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20",
+                      UNCHANGED: "bg-slate-800 text-slate-400"
+                    };
+                    const badgeClass = actionColors[log.syncAction] || "bg-slate-800 text-slate-400";
+                    return (
+                      <tr key={idx} className="hover:bg-white/[0.01]">
+                        <td className="py-3.5 pr-2 font-mono text-[10px] text-slate-400">{log.sourceId || "N/A"}</td>
+                        <td className="py-3.5 pr-2 font-bold text-white">{log.currentName || log.previousName}</td>
+                        <td className="py-3.5 pr-2 text-slate-400">{log.previousGroup || "-"}</td>
+                        <td className="py-3.5 pr-2 text-slate-300">{log.currentGroup || "-"}</td>
+                        <td className="py-3.5 pr-2">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${badgeClass}`}>
+                            {log.syncAction}
+                          </span>
+                        </td>
+                        <td className="py-3.5 text-slate-400 max-w-xs truncate" title={log.reason}>{log.reason}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center">

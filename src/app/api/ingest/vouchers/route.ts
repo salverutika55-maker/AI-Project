@@ -25,6 +25,22 @@ export async function POST(req: Request) {
     const syncTaskId = body.syncTaskId;
     const forceFull = body.forceFull === true;
 
+    // Validate Tally Company GUID (if provided)
+    const companyGuid = body.companyGuid;
+    if (companyGuid && client.software === 'TALLY') {
+      if (!client.sourceCompanyId) {
+        // Pair on first sync
+        await prisma.client.update({
+          where: { id: client.id },
+          data: { sourceCompanyId: companyGuid }
+        });
+      } else if (client.sourceCompanyId !== companyGuid) {
+        return NextResponse.json({ 
+          message: `Sync rejected: Tally Company GUID mismatch! The currently loaded company in Tally does not match this client's paired company.` 
+        }, { status: 400 });
+      }
+    }
+
     if (vouchers.length === 0) {
       return NextResponse.json({ message: "No vouchers to process" }, { status: 400 });
     }

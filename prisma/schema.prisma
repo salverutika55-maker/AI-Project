@@ -98,6 +98,7 @@ model Client {
   lastHeartbeat        DateTime?
   lastSyncedAt         DateTime?
   lastAlterId          String?           @default("0") // Tally's Incremental Marker
+  sourceCompanyId      String?           // Paired Tally GUID
   
   organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdByUser        User?             @relation("ClientsCreated", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -442,12 +443,22 @@ model NormalizedLedger {
   closingBalance Float                 @default(0.0)
   nature         String                // DEBIT, CREDIT
   isActive       Boolean               @default(true)
+  sourcePlatform     String?           @default("TALLY")
+  sourceCompanyId    String?
+  sourceLedgerId     String?
+  sourceGuid         String?
+  sourceStatus       String            @default("active") // "active", "deleted", "inactive"
+  deletedAt          DateTime?
+  mappingStatus      String            @default("active") // "active", "inactive_source_deleted", "review_required"
+  previousGroupName  String?
+  previousSubhead    String?
   
   voucherLines   NormalizedVoucherLine[]
   alerts         ScrutinyAlert[]
   
   @@unique([clientId, name])
   @@index([clientId, groupName])
+  @@index([clientId, sourcePlatform, sourceLedgerId])
 }
 
 model NormalizedVoucher {
