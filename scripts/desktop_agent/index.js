@@ -11,7 +11,7 @@ const configDir = path.join(os.homedir(), 'AppData', 'Roaming', 'FinAnalyzer');
 const configPath = path.join(configDir, 'config.json');
 
 // Default API URL (pointing to custom domain, fallback dynamically configurable in config.json)
-const DEFAULT_VERCEL_API = 'https://finanalyzer.com/api';
+const DEFAULT_VERCEL_API = 'https://finanalyzer-app.vercel.app/api';
 
 function getVercelApi() {
   try {
