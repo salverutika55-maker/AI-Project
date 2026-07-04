@@ -6,12 +6,24 @@ const axios = require('axios');
 const xml2js = require('xml2js');
 
 const PORT = 4500;
-// VERCEL_API is the backend endpoint
-const VERCEL_API = 'https://ai-project-salverutika55-makers-projects.vercel.app/api';
-
 // Config path: %APPDATA%/FinAnalyzer/config.json
 const configDir = path.join(os.homedir(), 'AppData', 'Roaming', 'FinAnalyzer');
 const configPath = path.join(configDir, 'config.json');
+
+// Default API URL (pointing to custom domain, fallback dynamically configurable in config.json)
+const DEFAULT_VERCEL_API = 'https://finanalyzer.com/api';
+
+function getVercelApi() {
+  try {
+    if (fs.existsSync(configPath)) {
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (parsed && parsed.apiUrl) {
+        return parsed.apiUrl;
+      }
+    }
+  } catch (e) {}
+  return DEFAULT_VERCEL_API;
+}
 let syncInterval;
 let heartbeatInterval;
 let guiServer = null;
@@ -565,7 +577,7 @@ async function startBackgroundSync(config) {
                 if (periodVouchers.length > 0) {
                    console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}...`);
                    try {
-                       await axios.post(`${VERCEL_API}/ingest/vouchers`, 
+                        await axios.post(`${getVercelApi()}/ingest/vouchers`, 
                            { 
                                 vouchers: periodVouchers,
                                 syncTaskId: options.syncTaskId,
@@ -602,7 +614,7 @@ async function startBackgroundSync(config) {
             const finalLedgers = Array.from(allUniqueLedgersMap.values());
             
             // 2. Push Trial Balance summary (High level metrics)
-            await axios.post(`${VERCEL_API}/ingest`, 
+            await axios.post(`${getVercelApi()}/ingest`, 
                 { 
                     records: allFinancialPayloads, 
                     chartOfAccounts: finalLedgers,
@@ -661,7 +673,7 @@ async function startBackgroundSync(config) {
       // Fallback removed for security
       
       if (companyConfig && companyConfig.apiKey) {
-        const res = await axios.post(`${VERCEL_API}/connector/heartbeat`, {
+        const res = await axios.post(`${getVercelApi()}/connector/heartbeat`, {
           apiKey: companyConfig.apiKey,
           status: 'ONLINE'
         }, { timeout: 15000 });
@@ -717,7 +729,7 @@ function startLocalGUI() {
 
     try {
       // Exchange 6-digit code for API Key via Vercel Cloud Handshake
-      const response = await axios.put(`${VERCEL_API}/handshake`, { code });
+       const response = await axios.put(`${getVercelApi()}/handshake`, { code });
       
       const { apiKey, clientName } = response.data;
 
@@ -777,7 +789,7 @@ async function init() {
       for (const [companyName, companyConfig] of Object.entries(currentConfig.companies)) {
         if (companyConfig.apiKey) {
           try {
-            await axios.post(`${VERCEL_API}/connector/heartbeat`, {
+             await axios.post(`${getVercelApi()}/connector/heartbeat`, {
               apiKey: companyConfig.apiKey,
               status: 'OFFLINE'
             }, { timeout: 10000 });

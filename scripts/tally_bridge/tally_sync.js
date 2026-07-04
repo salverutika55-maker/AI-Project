@@ -6,7 +6,7 @@ require('dotenv').config();
 // CONFIGURATION
 // ==========================================
 const TALLY_URL = process.env.TALLY_URL || 'http://localhost:9000';
-const VERCEL_WEBHOOK_URL = process.env.VERCEL_WEBHOOK_URL || 'https://ai-project-salverutika55-makers-projects.vercel.app/api/ingest';
+const VERCEL_WEBHOOK_URL = process.env.VERCEL_WEBHOOK_URL || 'https://finanalyzer.com/api/ingest';
 
 const API_KEY = process.env.API_KEY;
 if (!API_KEY) {
