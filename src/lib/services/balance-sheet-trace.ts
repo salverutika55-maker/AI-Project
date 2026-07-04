@@ -127,6 +127,15 @@ function safeNum(value: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
+export function normalizeOpeningForFormula(openingAmount: number, openingNature: string, mainGroup: "Assets" | "Liabilities"): number {
+  const absAmt = Math.abs(openingAmount);
+  if (mainGroup === "Assets") {
+    return openingNature === "CREDIT" ? -absAmt : absAmt;
+  } else {
+    return openingNature === "DEBIT" ? -absAmt : absAmt;
+  }
+}
+
 function cleanLabel(value: string | null | undefined, fallback: string) {
   const cleaned = (value || "")
     .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
@@ -226,18 +235,22 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     let running = safeNum(ledger.openingBalance);
     let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" = "ledger_opening";
 
-    // 1. Sign opening balance correctly based on ledger.nature (Debit=+, Credit=-)
+    // 1. Sign opening balance relative to the locked formula using normalizeOpeningForFormula
     if (running !== 0) {
-      running = ledger.nature === "CREDIT" ? -running : running;
+      running = normalizeOpeningForFormula(running, ledger.nature, mainGroup);
     } else {
       // 2. Derive from closing balance or pre-FY movements if opening is 0
       let signedClosingBal = safeNum(ledger.closingBalance);
       if (signedClosingBal !== 0) {
-        signedClosingBal = ledger.nature === "CREDIT" ? -signedClosingBal : signedClosingBal;
-        running = signedClosingBal - fyMovement.debit + fyMovement.credit;
+        signedClosingBal = normalizeOpeningForFormula(signedClosingBal, ledger.nature, mainGroup);
+        running = mainGroup === "Assets"
+          ? signedClosingBal - fyMovement.debit + fyMovement.credit
+          : signedClosingBal - fyMovement.credit + fyMovement.debit;
         openingSource = "derived_from_closing";
       } else {
-        running = preFY.debit - preFY.credit;
+        running = mainGroup === "Assets"
+          ? preFY.debit - preFY.credit
+          : preFY.credit - preFY.debit;
         openingSource = "derived_from_pre_fy";
       }
     }
@@ -256,7 +269,12 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
       const opening = running;
       const debit = safeNum(mv.debit);
       const credit = safeNum(mv.credit);
-      const closing = opening + debit - credit; // Universal bookkeeping formula
+      
+      // Apply locked formulas exactly
+      const closing = mainGroup === "Assets"
+        ? opening + debit - credit
+        : opening + credit - debit;
+        
       monthTraces[month] = { opening, debit, credit, closing };
       running = closing;
     }
@@ -305,8 +323,6 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
   for (const row of ledgerTraces) {
     for (const month of FULL_MONTHS) {
       const trace = row.monthTraces[month];
-      const presentationClosing = row.mainGroup === "Assets" ? trace.closing : -trace.closing;
-      const presentationOpening = row.mainGroup === "Assets" ? trace.opening : -trace.opening;
       dataNodes.push({
         id: `${row.ledgerId}-${month}`,
         ledgerId: row.ledgerId,
@@ -316,12 +332,12 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
         subGroupName: row.subHeadName,
         subHeadName: row.subHeadName,
         ledgerName: row.ledgerName,
-        amount: presentationClosing,
+        amount: trace.closing,
         nature: row.nature,
-        opening: presentationOpening,
+        opening: trace.opening,
         debit: trace.debit,
         credit: trace.credit,
-        closing: presentationClosing,
+        closing: trace.closing,
       });
     }
   }
@@ -344,9 +360,7 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
 
     existing.mappedLedgersCount += 1;
     existing.mappedLedgerNames.push(row.ledgerName);
-    const calcClosing = row.monthTraces[latestMonth]?.closing || 0;
-    const presentationClosing = row.mainGroup === "Assets" ? calcClosing : -calcClosing;
-    existing.calculatedTotal += presentationClosing;
+    existing.calculatedTotal += row.monthTraces[latestMonth]?.closing || 0;
     bySubhead.set(key, existing);
   }
 
@@ -373,11 +387,7 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
             row.groupName === summary.groupName &&
             row.subHeadName === summary.subHeadName
         )
-        .reduce((sum, row) => {
-          const closing = safeNum(row.monthTraces[period]?.closing);
-          const presentationClosing = row.mainGroup === "Assets" ? closing : -closing;
-          return sum + presentationClosing;
-        }, 0);
+        .reduce((sum, row) => sum + safeNum(row.monthTraces[period]?.closing), 0);
 
       const displayedTotal = dataNodes
         .filter(
