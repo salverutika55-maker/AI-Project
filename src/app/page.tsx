@@ -17,7 +17,12 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export default async function Home() {
-  const session = await getServerSession(authOptions);
+  let session = null;
+  try {
+    session = await getServerSession(authOptions);
+  } catch (err) {
+    console.error("NextAuth session check failed:", err);
+  }
   
   let isAnyAdmin = false;
   const sessionRole = (session?.user as any)?.role;
@@ -25,15 +30,19 @@ export default async function Home() {
   if (sessionRole === 'ADMIN') {
     isAnyAdmin = true;
   } else if (session?.user?.email) {
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      include: { 
-        memberships: {
-          where: { role: { in: ['SUPER_ADMIN', 'ORG_ADMIN'] }, status: 'APPROVED' }
+    try {
+      const user = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        include: { 
+          memberships: {
+            where: { role: { in: ['SUPER_ADMIN', 'ORG_ADMIN'] }, status: 'APPROVED' }
+          }
         }
-      }
-    });
-    isAnyAdmin = !!(user?.memberships && user.memberships.length > 0);
+      });
+      isAnyAdmin = !!(user?.memberships && user.memberships.length > 0);
+    } catch (dbErr) {
+      console.error("Database user query failed:", dbErr);
+    }
   }
 
   return (
