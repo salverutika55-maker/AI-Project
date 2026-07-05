@@ -11,14 +11,17 @@ import { encrypt } from "@/lib/encryption";
 export async function recalculatePNLValues(clientId: string, targetYear: number) {
   console.log(`[Recalculator] Recalculating PNL values for client ${clientId}, year ${targetYear}`);
 
-  const clientWithMappings = await prisma.client.findUnique({
-    where: { id: clientId },
-    include: { pnlMappings: true }
+  const client = await prisma.client.findUnique({
+    where: { id: clientId }
   });
 
-  if (!clientWithMappings) {
+  if (!client) {
     throw new Error("Client not found");
   }
+
+  const pnlMappings = await prisma.unifiedLedgerMapping.findMany({
+    where: { clientId, statementType: "PNL" }
+  });
 
   // 1. Fetch Vouchers for the Target Year
   const vouchers = await prisma.normalizedVoucher.findMany({
@@ -77,22 +80,15 @@ export async function recalculatePNLValues(clientId: string, targetYear: number)
     const syncYearToSave = ["Jan", "Feb", "Mar"].includes(mShort) ? targetYear + 1 : targetYear;
     const headBalances: Record<string, number> = {};
 
-    for (const m of clientWithMappings.pnlMappings) {
-      const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
-      let balance = 0;
-
-      for (const alias of aliases) {
-        const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
-        if (exactMatchKey) {
-          balance += accounts[exactMatchKey];
-        } else {
-          const fuzzyMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase().includes(alias));
-          if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
+    for (const m of pnlMappings) {
+      const exactMatchKey = Object.keys(accounts).find(
+        (k) => k.trim().toLowerCase() === m.softwareLedgerName.trim().toLowerCase()
+      );
+      if (exactMatchKey) {
+        const balance = accounts[exactMatchKey];
+        if (balance !== 0) {
+          headBalances[m.subHeadName] = (headBalances[m.subHeadName] || 0) + Math.abs(balance);
         }
-      }
-
-      if (balance !== 0) {
-        headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
       }
     }
 

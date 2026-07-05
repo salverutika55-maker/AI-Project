@@ -160,7 +160,7 @@ export async function POST(req: Request) {
         processedCount++;
 
         // Map and Save PNLValues for Detailed P&L
-        if (syncSource !== "Tally Prime Agent" && record.ledgers && Object.keys(record.ledgers).length > 0 && client.pnlMappings) {
+        if (syncSource !== "Tally Prime Agent" && record.ledgers && Object.keys(record.ledgers).length > 0) {
           const [yearStr, monthStr] = period.split("-");
           const dateObj = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
           const mShort = dateObj.toLocaleString('default', { month: 'short' });
@@ -170,23 +170,20 @@ export async function POST(req: Request) {
           
           const headBalances: Record<string, number> = {};
           const accounts = record.ledgers;
-          
-          for (const m of client.pnlMappings) {
-            const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
-            let balance = 0;
-            
-            for (const alias of aliases) {
-              const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
-              if (exactMatchKey) {
-                balance += accounts[exactMatchKey];
-              } else {
-                const fuzzyMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase().includes(alias));
-                if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
-              }
-            }
 
-            if (balance !== 0) {
-              headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
+          const pnlMappings = await prisma.unifiedLedgerMapping.findMany({
+            where: { clientId: client.id, statementType: "PNL" }
+          });
+          
+          for (const m of pnlMappings) {
+            const exactMatchKey = Object.keys(accounts).find(
+              (k) => k.trim().toLowerCase() === m.softwareLedgerName.trim().toLowerCase()
+            );
+            if (exactMatchKey) {
+              const balance = accounts[exactMatchKey];
+              if (balance !== 0) {
+                headBalances[m.subHeadName] = (headBalances[m.subHeadName] || 0) + Math.abs(balance);
+              }
             }
           }
 

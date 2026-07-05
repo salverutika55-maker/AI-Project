@@ -344,13 +344,9 @@ export async function POST(
       (monthlyData[mShort] as any)._raw = rawSample;
     }
 
-    const clientWithMappings = await prisma.client.findUnique({
-      where: { id },
-      include: { pnlMappings: true }
+    const pnlMappings = await prisma.unifiedLedgerMapping.findMany({
+      where: { clientId: id, statementType: "PNL" }
     });
-    if (!clientWithMappings) {
-      return NextResponse.json({ error: "Client not found" }, { status: 404 });
-    }
 
     // 8. Map and Save to DB
     let recordsSaved = 0;
@@ -361,25 +357,15 @@ export async function POST(
       const syncYearToSave = accounts.year || targetYear;
       const headBalances: Record<string, number> = {};
 
-      for (const m of clientWithMappings.pnlMappings) {
-        const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
-        let balance = 0;
-        
-        for (const alias of aliases) {
-          const exactMatchKey = Object.keys(accounts).find(k => k.trim().toLowerCase() === alias);
-          if (exactMatchKey) {
-            balance += accounts[exactMatchKey];
-          } else {
-            const fuzzyMatchKey = Object.keys(accounts).find(k => {
-              const lowerK = k.trim().toLowerCase();
-              return lowerK.includes(alias) || alias.includes(lowerK);
-            });
-            if (fuzzyMatchKey) balance += accounts[fuzzyMatchKey];
+      for (const m of pnlMappings) {
+        const exactMatchKey = Object.keys(accounts).find(
+          (k) => k.trim().toLowerCase() === m.softwareLedgerName.trim().toLowerCase()
+        );
+        if (exactMatchKey) {
+          const balance = accounts[exactMatchKey];
+          if (balance !== 0) {
+            headBalances[m.subHeadName] = (headBalances[m.subHeadName] || 0) + Math.abs(balance);
           }
-        }
-
-        if (balance !== 0) {
-          headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + Math.abs(balance);
         }
       }
 

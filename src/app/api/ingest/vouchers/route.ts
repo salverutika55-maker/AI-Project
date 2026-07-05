@@ -260,7 +260,11 @@ export async function POST(req: Request) {
     }
 
     // --- PNLValue Aggregation from Vouchers ---
-    if (client.pnlMappings && client.pnlMappings.length > 0) {
+    const pnlMappings = await prisma.unifiedLedgerMapping.findMany({
+      where: { clientId: client.id, statementType: "PNL" }
+    });
+
+    if (pnlMappings.length > 0) {
       const monthBalances: Record<string, Record<string, number>> = {}; // { '2026-Apr': { 'Sales': 1000 } }
 
       // 1. Group vouchers by period
@@ -277,6 +281,7 @@ export async function POST(req: Request) {
           monthBalances[periodKey] = {};
         }
 
+        // 2. Aggregate line amounts per ledger
         // 2. Aggregate line amounts per ledger
         for (const line of v.lines) {
           if (!line.ledgerName) continue;
@@ -295,19 +300,15 @@ export async function POST(req: Request) {
         const syncYearToSave = parseInt(yearStr);
         const headBalances: Record<string, number> = {};
 
-        for (const m of client.pnlMappings) {
-          const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
-          let balance = 0;
-          
-          for (const alias of aliases) {
-            const exactMatchKey = Object.keys(accounts).find(k => k === alias);
-            if (exactMatchKey) {
-              balance += accounts[exactMatchKey];
+        for (const m of pnlMappings) {
+          const exactMatchKey = Object.keys(accounts).find(
+            (k) => k.trim().toLowerCase() === m.softwareLedgerName.trim().toLowerCase()
+          );
+          if (exactMatchKey) {
+            const balance = accounts[exactMatchKey];
+            if (balance !== 0) {
+              headBalances[m.subHeadName] = (headBalances[m.subHeadName] || 0) + balance;
             }
-          }
-
-          if (balance !== 0) {
-            headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + balance;
           }
         }
 
