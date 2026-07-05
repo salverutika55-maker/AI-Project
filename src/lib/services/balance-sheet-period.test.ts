@@ -58,6 +58,33 @@ async function runTests() {
         sourceStatus: "active"
       }
     });
+    // 2c. Create Cash ledger
+    const cashLedgerId = "ledger_cash_test";
+    await prisma.normalizedLedger.create({
+      data: {
+        id: cashLedgerId,
+        clientId: testClientId,
+        name: "Cash",
+        groupName: "Cash-In-Hand",
+        openingBalance: 0,
+        closingBalance: 10000,
+        nature: "DEBIT",
+        isActive: true,
+        sourceStatus: "active"
+      }
+    });
+
+    // 2d. Create mapping for Cash
+    await prisma.unifiedLedgerMapping.create({
+      data: {
+        id: "mapping_cash_test",
+        clientId: testClientId,
+        softwareLedgerName: "Cash",
+        statementType: "BS",
+        groupName: "Current Assets",
+        subHeadName: "Cash-In-Hand"
+      }
+    });
 
     // 3. Create mapping for Suspense Account
     await prisma.unifiedLedgerMapping.create({
@@ -284,8 +311,8 @@ async function runTests() {
       -483715,
       "FY 2025 March closing balance of Drawing must include November addition and be -483715 (representing ₹4,83,715 Debit)"
     );
-    // --- TEST CASE 6: Synthetic Difference in Balances Exclusion Check ---
-    console.log("Running Test Case 6: Synthetic Difference in Balances Exclusion Check...");
+    // --- TEST CASE 6: Synthetic Difference in Balances Exclusion Check & Difference in Opening Balances Check ---
+    console.log("Running Test Case 6: Synthetic Difference in Balances Exclusion & Difference in Opening Balances Check...");
     
     const diffLedger2024 = trace2024D.ledgerTraces.find(t => t.ledgerName === "Difference in Balances" || t.ledgerId === "diff-balances");
     const diffLedger2025 = trace2025D.ledgerTraces.find(t => t.ledgerName === "Difference in Balances" || t.ledgerId === "diff-balances");
@@ -293,12 +320,15 @@ async function runTests() {
     assert(!diffLedger2024, "Difference in Balances ledger trace must NOT exist in FY 2024");
     assert(!diffLedger2025, "Difference in Balances ledger trace must NOT exist in FY 2025");
     
-    // The totals must reflect the true ledger values (which do not balance in the mock data), rather than forcing Assets = Liabilities
-    const diff2024 = Math.abs(trace2024D.totalsByMainGroup.Assets - trace2024D.totalsByMainGroup.Liabilities);
-    assert(diff2024 > 0, "FY 2024 totals must NOT be synthetically forced to balance (difference should be non-zero)");
+    // Assert Difference in Opening Balances is present and is exactly 10000
+    const diffOpLedger2024 = trace2024D.ledgerTraces.find(t => t.ledgerName === "Difference in Opening Balances" || t.ledgerId === "diff-opening-balances");
+    const diffOpLedger2025 = trace2025D.ledgerTraces.find(t => t.ledgerName === "Difference in Opening Balances" || t.ledgerId === "diff-opening-balances");
     
-    const diff2025 = Math.abs(trace2025D.totalsByMainGroup.Assets - trace2025D.totalsByMainGroup.Liabilities);
-    assert(diff2025 > 0, "FY 2025 totals must NOT be synthetically forced to balance (difference should be non-zero)");
+    assert(diffOpLedger2024, "Difference in Opening Balances must exist in FY 2024");
+    assert(diffOpLedger2025, "Difference in Opening Balances must exist in FY 2025");
+    
+    assert.strictEqual(diffOpLedger2024.monthTraces["Opening"].closing, 10000, "FY 2024 Difference in Opening Balances opening must be 10000");
+    assert.strictEqual(diffOpLedger2025.monthTraces["Opening"].closing, 10000, "FY 2025 Difference in Opening Balances opening must carry forward as 10000");
     
     console.log("✔ Test Case 6 Passed!");
 

@@ -398,15 +398,52 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
   });
 
   // 2. DIFFERENCE IN OPENING BALANCES INJECTION
-  let openingSum = 0;
-  for (const l of ledgers) {
-    const op = safeNum(l.openingBalance);
-    if (op !== 0) {
-      const isCredit = l.nature === "CREDIT";
-      openingSum += isCredit ? -op : op;
-    }
+  let earliestYear = year;
+  if (voucherYears.length > 0) {
+    earliestYear = Math.min(...voucherYears);
   }
-  const diffOpeningVal = -openingSum;
+
+  let diffOpeningVal = 0;
+  if (year === earliestYear) {
+    let openingSum = 0;
+    for (const row of ledgerTraces) {
+      const op = row.monthTraces["Opening"]?.closing || 0;
+      if (op !== 0) {
+        let signedOp = op;
+        if (row.mainGroup === "Liabilities") {
+          signedOp = -op;
+        }
+        openingSum += signedOp;
+      }
+    }
+    diffOpeningVal = -openingSum;
+  } else {
+    let earliestOpeningSum = 0;
+    for (const ledger of ledgers) {
+      const mapping = mappingByLedger.get(mappingKey(ledger.name));
+      if (!mapping) continue;
+
+      const groupName = cleanLabel(mapping.groupName, cleanLabel(ledger.groupName, "Unclassified"));
+      const mainGroup = resolveMainGroup(groupName, ledger.nature);
+
+      let running = normalizeOpeningForFormula(safeNum(ledger.closingBalance), ledger.nature, mainGroup);
+      for (let y = latestYear; y >= earliestYear; y--) {
+        const mov = movementsByLedgerYear.get(ledger.id)?.get(y) || { debit: 0, credit: 0 };
+        if (mainGroup === "Assets") {
+          running = running - mov.debit + mov.credit;
+        } else {
+          running = running - mov.credit + mov.debit;
+        }
+      }
+      
+      let signedOp = running;
+      if (mainGroup === "Liabilities") {
+        signedOp = -running;
+      }
+      earliestOpeningSum += signedOp;
+    }
+    diffOpeningVal = -earliestOpeningSum;
+  }
 
   if (Math.abs(diffOpeningVal) > 0.01) {
     const mainGroup = diffOpeningVal < 0 ? "Liabilities" : "Assets";
@@ -438,7 +475,7 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
       nature: diffOpeningVal < 0 ? "CREDIT" : "DEBIT",
       dbOpeningBalance: Math.abs(diffOpeningVal),
       dbClosingBalance: Math.abs(diffOpeningVal),
-      openingSource: "ledger_opening",
+      openingSource: "derived_from_pre_fy",
       monthTraces: diffMonthTraces,
     });
   }
