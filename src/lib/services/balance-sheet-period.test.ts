@@ -284,7 +284,23 @@ async function runTests() {
       -483715,
       "FY 2025 March closing balance of Drawing must include November addition and be -483715 (representing ₹4,83,715 Debit)"
     );
-    console.log("✔ Test Case 5 Passed!");
+    // --- TEST CASE 6: Synthetic Difference in Balances Exclusion Check ---
+    console.log("Running Test Case 6: Synthetic Difference in Balances Exclusion Check...");
+    
+    const diffLedger2024 = trace2024D.ledgerTraces.find(t => t.ledgerName === "Difference in Balances" || t.ledgerId === "diff-balances");
+    const diffLedger2025 = trace2025D.ledgerTraces.find(t => t.ledgerName === "Difference in Balances" || t.ledgerId === "diff-balances");
+    
+    assert(!diffLedger2024, "Difference in Balances ledger trace must NOT exist in FY 2024");
+    assert(!diffLedger2025, "Difference in Balances ledger trace must NOT exist in FY 2025");
+    
+    // The totals must reflect the true ledger values (which do not balance in the mock data), rather than forcing Assets = Liabilities
+    const diff2024 = Math.abs(trace2024D.totalsByMainGroup.Assets - trace2024D.totalsByMainGroup.Liabilities);
+    assert(diff2024 > 0, "FY 2024 totals must NOT be synthetically forced to balance (difference should be non-zero)");
+    
+    const diff2025 = Math.abs(trace2025D.totalsByMainGroup.Assets - trace2025D.totalsByMainGroup.Liabilities);
+    assert(diff2025 > 0, "FY 2025 totals must NOT be synthetically forced to balance (difference should be non-zero)");
+    
+    console.log("✔ Test Case 6 Passed!");
 
     await cleanup(otherClientId);
     console.log("\n=== ALL REGRESSION TESTS COMPLETED SUCCESSFULLY! ===");

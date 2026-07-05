@@ -443,43 +443,6 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     });
   }
 
-  // 3. DYNAMIC DIFFERENCE IN BALANCES INJECTION
-  const diffBalMonthTraces: Record<string, LedgerMonthTrace> = {};
-  for (const period of FULL_MONTHS) {
-    let assetsSum = 0;
-    let liabilitiesSum = 0;
-    for (const row of ledgerTraces) {
-      const val = row.monthTraces[period]?.closing || 0;
-      if (row.mainGroup === "Assets") {
-        assetsSum += val;
-      } else {
-        liabilitiesSum += val;
-      }
-    }
-    const diff = assetsSum - liabilitiesSum;
-    diffBalMonthTraces[period] = {
-      opening: diff,
-      debit: 0,
-      credit: 0,
-      closing: diff
-    };
-  }
-
-  ledgerTraces.push({
-    ledgerId: "diff-balances",
-    ledgerName: "Difference in Balances",
-    groupName: "Owner's Funds",
-    subGroupName: "Reserves & Surplus",
-    subHeadName: "Reserves & Surplus",
-    mainGroup: "Liabilities",
-    nature: "CREDIT",
-    dbOpeningBalance: 0,
-    dbClosingBalance: 0,
-    openingSource: "derived_from_pre_fy",
-    monthTraces: diffBalMonthTraces,
-  });
-
-
 
   const structure = cloneDefaultStructure();
   for (const row of ledgerTraces) {
