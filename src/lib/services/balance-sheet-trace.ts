@@ -266,12 +266,12 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
 
     const preFY = preFYMovements[ledger.id] || { debit: 0, credit: 0 };
 
-    let running = normalizeOpeningForFormula(safeNum(ledger.openingBalance), ledger.nature, mainGroup);
+    let running = normalizeOpeningForFormula(safeNum(ledger.closingBalance), ledger.nature, mainGroup);
     let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" | "derived_from_backward" = "ledger_opening";
 
     if (year < latestYear) {
       let currentClosing = running;
-      for (let y = latestYear - 1; y >= year; y--) {
+      for (let y = latestYear; y >= year; y--) {
         const mov = movementsByLedgerYear.get(ledger.id)?.get(y) || { debit: 0, credit: 0 };
         if (mainGroup === "Assets") {
           currentClosing = currentClosing - mov.debit + mov.credit;
@@ -282,24 +282,15 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
       running = currentClosing;
       openingSource = "derived_from_backward";
     } else {
-      if (preFY.debit !== 0 || preFY.credit !== 0) {
-        if (mainGroup === "Assets") {
-          running = running + preFY.debit - preFY.credit;
-        } else {
-          running = running + preFY.credit - preFY.debit;
-        }
-        openingSource = "derived_from_pre_fy";
+      const mov = movementsByLedgerYear.get(ledger.id)?.get(latestYear) || { debit: 0, credit: 0 };
+      let derivedOpening = running;
+      if (mainGroup === "Assets") {
+        derivedOpening = derivedOpening - mov.debit + mov.credit;
       } else {
-        let signedClosingBal = safeNum(ledger.closingBalance);
-        // Derive opening balance only if we do not have transaction history and initial opening is 0
-        if (running === 0 && signedClosingBal !== 0) {
-          signedClosingBal = normalizeOpeningForFormula(signedClosingBal, ledger.nature, mainGroup);
-          running = mainGroup === "Assets"
-            ? signedClosingBal - fyMovement.debit + fyMovement.credit
-            : signedClosingBal - fyMovement.credit + fyMovement.debit;
-          openingSource = "derived_from_closing";
-        }
+        derivedOpening = derivedOpening - mov.credit + mov.debit;
       }
+      running = derivedOpening;
+      openingSource = "derived_from_closing";
     }
 
     const monthTraces: Record<string, LedgerMonthTrace> = {
