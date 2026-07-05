@@ -5,6 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { authorizeClientAction } from "@/lib/rbac";
 import { buildBalanceSheetTrace } from "@/lib/services/balance-sheet-trace";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }

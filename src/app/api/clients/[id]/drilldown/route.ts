@@ -7,6 +7,8 @@ import { buildBalanceSheetTrace } from "@/lib/services/balance-sheet-trace";
 
 const MONTH_ORDER = ["Opening", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }

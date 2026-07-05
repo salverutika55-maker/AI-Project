@@ -157,7 +157,7 @@ function cloneDefaultStructure() {
 export async function buildBalanceSheetTrace(clientId: string, year: number) {
   const [mappings, ledgers, voucherLines] = await Promise.all([
     prisma.unifiedLedgerMapping.findMany({
-      where: { clientId, statementType: "BS" },
+      where: { clientId },
     }),
     prisma.normalizedLedger.findMany({
       where: { clientId, isActive: true },
@@ -204,12 +204,15 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     }
   }
 
-  const mappingByLedger = new Map<string, (typeof mappings)[number]>();
-  for (const m of mappings) {
+  const bsMappings = mappings.filter((m) => m.statementType === "BS");
+  const pnlMappings = mappings.filter((m) => m.statementType === "PNL");
+
+  const mappingByLedger = new Map<string, (typeof bsMappings)[number]>();
+  for (const m of bsMappings) {
     mappingByLedger.set(mappingKey(m.softwareLedgerName), m);
   }
 
-  const missingMappedLedgerNames = mappings
+  const missingMappedLedgerNames = bsMappings
     .filter((m) => !ledgers.some((l) => mappingKey(l.name) === mappingKey(m.softwareLedgerName)))
     .map((m) => m.softwareLedgerName);
 
@@ -292,6 +295,151 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
       monthTraces,
     });
   }
+
+  // 1. DYNAMIC PROFIT & LOSS ACCOUNT INJECTION
+  const pnlLedgerNames = new Set(pnlMappings.map((m) => mappingKey(m.softwareLedgerName)));
+  const pnlLedgers = ledgers.filter(
+    (l) =>
+      pnlLedgerNames.has(mappingKey(l.name)) ||
+      l.name.toLowerCase().includes("profit & loss") ||
+      l.name.toLowerCase().includes("p&l")
+  );
+  const pnlLedgerIds = new Set(pnlLedgers.map((l) => l.id));
+
+  let pnlPreFY = 0;
+  const pnlMonthlyNet: Record<string, number> = {
+    Apr: 0, May: 0, Jun: 0, Jul: 0, Aug: 0, Sep: 0, Oct: 0, Nov: 0, Dec: 0, Jan: 0, Feb: 0, Mar: 0
+  };
+
+  for (const vl of voucherLines) {
+    if (pnlLedgerIds.has(vl.ledgerId)) {
+      const d = new Date(vl.voucher.date);
+      const amt = vl.entryType === "CREDIT" ? safeNum(vl.amount) : -safeNum(vl.amount);
+      if (d < targetFYStart) {
+        pnlPreFY += amt;
+      } else if (d <= targetFYEnd) {
+        const mName = MONTH_SHORT_NAMES[d.getUTCMonth()];
+        if (pnlMonthlyNet[mName] !== undefined) {
+          pnlMonthlyNet[mName] += amt;
+        }
+      }
+    }
+  }
+
+  const pnlMonthTraces: Record<string, LedgerMonthTrace> = {};
+  let pnlRunning = pnlPreFY;
+  pnlMonthTraces["Opening"] = { opening: pnlRunning, debit: 0, credit: 0, closing: pnlRunning };
+  for (const month of FY_MONTHS) {
+    const opening = pnlRunning;
+    const net = pnlMonthlyNet[month];
+    const credit = net >= 0 ? net : 0;
+    const debit = net < 0 ? -net : 0;
+    const closing = opening + credit - debit;
+    pnlMonthTraces[month] = { opening, debit, credit, closing };
+    pnlRunning = closing;
+  }
+
+  const pnlLedgerRecord = ledgers.find(
+    (l) => l.name.toLowerCase().includes("profit & loss") || l.name.toLowerCase().includes("p&l")
+  );
+
+  ledgerTraces.push({
+    ledgerId: pnlLedgerRecord?.id || "pnl-retained-earnings",
+    ledgerName: "Profit & Loss A/c",
+    groupName: "Owner's Funds",
+    subGroupName: "Reserves & Surplus",
+    subHeadName: "Reserves & Surplus",
+    mainGroup: "Liabilities",
+    nature: "CREDIT",
+    dbOpeningBalance: 0,
+    dbClosingBalance: pnlLedgerRecord ? safeNum(pnlLedgerRecord.closingBalance) : 0,
+    openingSource: "derived_from_pre_fy",
+    monthTraces: pnlMonthTraces,
+  });
+
+  // 2. DIFFERENCE IN OPENING BALANCES INJECTION
+  let openingSum = 0;
+  for (const l of ledgers) {
+    const op = safeNum(l.openingBalance);
+    if (op !== 0) {
+      const isCredit = l.nature === "CREDIT";
+      openingSum += isCredit ? -op : op;
+    }
+  }
+  const diffOpeningVal = -openingSum;
+
+  if (Math.abs(diffOpeningVal) > 0.01) {
+    const mainGroup = diffOpeningVal < 0 ? "Liabilities" : "Assets";
+    const groupName = diffOpeningVal < 0 ? "Owner's Funds" : "Current Assets";
+    const subHeadName = "Difference in Opening Balances";
+    const diffMonthTraces: Record<string, LedgerMonthTrace> = {};
+    diffMonthTraces["Opening"] = {
+      opening: Math.abs(diffOpeningVal),
+      debit: 0,
+      credit: 0,
+      closing: Math.abs(diffOpeningVal),
+    };
+    for (const month of FY_MONTHS) {
+      diffMonthTraces[month] = {
+        opening: Math.abs(diffOpeningVal),
+        debit: 0,
+        credit: 0,
+        closing: Math.abs(diffOpeningVal),
+      };
+    }
+
+    ledgerTraces.push({
+      ledgerId: "diff-opening-balances",
+      ledgerName: "Difference in Opening Balances",
+      groupName,
+      subGroupName: subHeadName,
+      subHeadName,
+      mainGroup,
+      nature: diffOpeningVal < 0 ? "CREDIT" : "DEBIT",
+      dbOpeningBalance: Math.abs(diffOpeningVal),
+      dbClosingBalance: Math.abs(diffOpeningVal),
+      openingSource: "ledger_opening",
+      monthTraces: diffMonthTraces,
+    });
+  }
+
+  // 3. DYNAMIC DIFFERENCE IN BALANCES INJECTION
+  const diffBalMonthTraces: Record<string, LedgerMonthTrace> = {};
+  for (const period of FULL_MONTHS) {
+    let assetsSum = 0;
+    let liabilitiesSum = 0;
+    for (const row of ledgerTraces) {
+      const val = row.monthTraces[period]?.closing || 0;
+      if (row.mainGroup === "Assets") {
+        assetsSum += val;
+      } else {
+        liabilitiesSum += val;
+      }
+    }
+    const diff = assetsSum - liabilitiesSum;
+    diffBalMonthTraces[period] = {
+      opening: diff,
+      debit: 0,
+      credit: 0,
+      closing: diff
+    };
+  }
+
+  ledgerTraces.push({
+    ledgerId: "diff-balances",
+    ledgerName: "Difference in Balances",
+    groupName: "Owner's Funds",
+    subGroupName: "Reserves & Surplus",
+    subHeadName: "Reserves & Surplus",
+    mainGroup: "Liabilities",
+    nature: "CREDIT",
+    dbOpeningBalance: 0,
+    dbClosingBalance: 0,
+    openingSource: "derived_from_pre_fy",
+    monthTraces: diffBalMonthTraces,
+  });
+
+
 
   const structure = cloneDefaultStructure();
   for (const row of ledgerTraces) {
