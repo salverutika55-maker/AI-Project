@@ -87,7 +87,7 @@ export type BalanceSheetLedgerTrace = {
   subHeadName: string;
   mainGroup: "Assets" | "Liabilities";
   nature: string;
-  openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy";
+  openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" | "derived_from_backward";
   dbOpeningBalance: number;
   dbClosingBalance: number;
   monthTraces: Record<string, LedgerMonthTrace>;
@@ -216,6 +216,37 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     .filter((m) => !ledgers.some((l) => mappingKey(l.name) === mappingKey(m.softwareLedgerName)))
     .map((m) => m.softwareLedgerName);
 
+  // Determine latest synced year (maximum year of vouchers in database)
+  let latestYear = year;
+  const voucherYears = voucherLines.map((vl) => {
+    const d = new Date(vl.voucher.date);
+    return d.getUTCMonth() < 3 ? d.getUTCFullYear() - 1 : d.getUTCFullYear();
+  });
+  if (voucherYears.length > 0) {
+    latestYear = Math.max(...voucherYears);
+  }
+
+  // Pre-calculate movements by ledger ID and financial year
+  const movementsByLedgerYear = new Map<string, Map<number, { debit: number; credit: number }>>();
+  for (const vl of voucherLines) {
+    const d = new Date(vl.voucher.date);
+    const vYear = d.getUTCMonth() < 3 ? d.getUTCFullYear() - 1 : d.getUTCFullYear();
+    
+    if (!movementsByLedgerYear.has(vl.ledgerId)) {
+      movementsByLedgerYear.set(vl.ledgerId, new Map());
+    }
+    const yearMap = movementsByLedgerYear.get(vl.ledgerId)!;
+    if (!yearMap.has(vYear)) {
+      yearMap.set(vYear, { debit: 0, credit: 0 });
+    }
+    const mov = yearMap.get(vYear)!;
+    if (vl.entryType === "DEBIT") {
+      mov.debit += safeNum(vl.amount);
+    } else {
+      mov.credit += safeNum(vl.amount);
+    }
+  }
+
   const ledgerTraces: BalanceSheetLedgerTrace[] = [];
 
   for (const ledger of ledgers) {
@@ -236,24 +267,38 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     const preFY = preFYMovements[ledger.id] || { debit: 0, credit: 0 };
 
     let running = normalizeOpeningForFormula(safeNum(ledger.openingBalance), ledger.nature, mainGroup);
-    let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" = "ledger_opening";
+    let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" | "derived_from_backward" = "ledger_opening";
 
-    if (preFY.debit !== 0 || preFY.credit !== 0) {
-      if (mainGroup === "Assets") {
-        running = running + preFY.debit - preFY.credit;
-      } else {
-        running = running + preFY.credit - preFY.debit;
+    if (year < latestYear) {
+      let currentClosing = running;
+      for (let y = latestYear - 1; y >= year; y--) {
+        const mov = movementsByLedgerYear.get(ledger.id)?.get(y) || { debit: 0, credit: 0 };
+        if (mainGroup === "Assets") {
+          currentClosing = currentClosing - mov.debit + mov.credit;
+        } else {
+          currentClosing = currentClosing - mov.credit + mov.debit;
+        }
       }
-      openingSource = "derived_from_pre_fy";
+      running = currentClosing;
+      openingSource = "derived_from_backward";
     } else {
-      let signedClosingBal = safeNum(ledger.closingBalance);
-      // Derive opening balance only if we do not have transaction history and initial opening is 0
-      if (running === 0 && signedClosingBal !== 0) {
-        signedClosingBal = normalizeOpeningForFormula(signedClosingBal, ledger.nature, mainGroup);
-        running = mainGroup === "Assets"
-          ? signedClosingBal - fyMovement.debit + fyMovement.credit
-          : signedClosingBal - fyMovement.credit + fyMovement.debit;
-        openingSource = "derived_from_closing";
+      if (preFY.debit !== 0 || preFY.credit !== 0) {
+        if (mainGroup === "Assets") {
+          running = running + preFY.debit - preFY.credit;
+        } else {
+          running = running + preFY.credit - preFY.debit;
+        }
+        openingSource = "derived_from_pre_fy";
+      } else {
+        let signedClosingBal = safeNum(ledger.closingBalance);
+        // Derive opening balance only if we do not have transaction history and initial opening is 0
+        if (running === 0 && signedClosingBal !== 0) {
+          signedClosingBal = normalizeOpeningForFormula(signedClosingBal, ledger.nature, mainGroup);
+          running = mainGroup === "Assets"
+            ? signedClosingBal - fyMovement.debit + fyMovement.credit
+            : signedClosingBal - fyMovement.credit + fyMovement.debit;
+          openingSource = "derived_from_closing";
+        }
       }
     }
 
