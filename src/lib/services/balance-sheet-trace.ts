@@ -302,7 +302,11 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     (l) =>
       pnlLedgerNames.has(mappingKey(l.name)) ||
       l.name.toLowerCase().includes("profit & loss") ||
-      l.name.toLowerCase().includes("p&l")
+      l.name.toLowerCase().includes("p&l") ||
+      l.groupName.toLowerCase().includes("expense") ||
+      l.groupName.toLowerCase().includes("income") ||
+      l.groupName.toLowerCase().includes("sales") ||
+      l.groupName.toLowerCase().includes("purchase")
   );
   const pnlLedgerIds = new Set(pnlLedgers.map((l) => l.id));
 

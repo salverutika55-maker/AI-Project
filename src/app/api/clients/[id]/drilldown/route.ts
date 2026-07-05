@@ -223,6 +223,9 @@ export async function GET(
           amounts[month] = row.monthTraces[month] || { opening: 0, debit: 0, credit: 0, closing: 0 };
         }
 
+        const ledgerRecord = trace.ledgers.find((l) => l.id === row.ledgerId);
+        const isActive = ledgerRecord ? ledgerRecord.isActive : true;
+
         return {
           id: row.ledgerId,
           name: row.ledgerName,
@@ -234,6 +237,7 @@ export async function GET(
           openingSource: row.openingSource,
           amounts,
           isMapped: true,
+          isActive,
         };
       })
       .sort((a, b) => {
