@@ -4,29 +4,28 @@ const prisma = new PrismaClient();
 async function run() {
   const clientId = "cmprtm96f0001ju049crqkyre";
   
-  const dups = await prisma.normalizedVoucher.findMany({
-    where: {
-      clientId,
-      voucherNumber: "7",
-      date: new Date("2024-04-26T00:00:00.000Z")
-    },
-    include: {
-      lines: {
-        include: {
-          ledger: true
-        }
-      }
-    }
-  });
+  // Find duplicate vouchers by voucherNumber and date
+  const duplicates = await prisma.$queryRaw`
+    SELECT "voucherNumber", date, COUNT(*) 
+    FROM "NormalizedVoucher"
+    WHERE "clientId" = ${clientId}
+    GROUP BY "voucherNumber", date
+    HAVING COUNT(*) > 1
+  `;
 
-  console.log(`Found ${dups.length} vouchers for #7 on 2024-04-26:`);
-  for (const v of dups) {
-    console.log(`\n- Voucher ID: ${v.id}, Ref: ${v.referenceNo}, Type: ${v.type}, Amount: ${v.totalAmount}`);
-    console.log("  Lines:");
-    for (const l of v.lines) {
-      console.log(`    * Ledger: ${l.ledger.name}, EntryType: ${l.entryType}, Amount: ${l.amount}`);
-    }
+  console.log(`=== Duplicate Vouchers in Database (${duplicates.length}) ===`);
+  for (const d of duplicates) {
+    console.log(`- VoucherNo: ${d.voucherNumber} | Date: ${d.date.toISOString().split('T')[0]} | Count: ${d.count}`);
   }
+
+  // Also check if there are duplicate voucher lines on the same voucher for same ledger
+  const duplicateLines = await prisma.$queryRaw`
+    SELECT "voucherId", "ledgerId", "amount", "entryType", COUNT(*)
+    FROM "NormalizedVoucherLine"
+    GROUP BY "voucherId", "ledgerId", "amount", "entryType"
+    HAVING COUNT(*) > 1
+  `;
+  console.log(`\n=== Duplicate Voucher Lines on Same Voucher (${duplicateLines.length}) ===`);
 }
 
 run().catch(console.error).finally(() => prisma.$disconnect());
