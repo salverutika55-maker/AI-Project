@@ -3,11 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 
 function determineLedgerNature(groupName: string, opVal: number, closingVal: number): "DEBIT" | "CREDIT" {
-  const val = opVal !== 0 ? opVal : closingVal;
-  
-  if (val !== 0) {
-    // Tally agent keepSign convention: Credit is negative, Debit is positive
-    return val < 0 ? "CREDIT" : "DEBIT";
+  if (opVal !== 0) {
+    // For opening balance in Tally XML: negative is DEBIT, positive is CREDIT
+    return opVal < 0 ? "DEBIT" : "CREDIT";
+  }
+  if (closingVal !== 0) {
+    // For closing balance (closingVal = drAmt - crAmt): positive is DEBIT, negative is CREDIT
+    return closingVal > 0 ? "DEBIT" : "CREDIT";
   }
 
   // Fallback to parent group classification if both balances are 0

@@ -87,7 +87,7 @@ export type BalanceSheetLedgerTrace = {
   subHeadName: string;
   mainGroup: "Assets" | "Liabilities";
   nature: string;
-  openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" | "derived_from_backward";
+  openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" | "derived_from_backward" | "derived_from_forward";
   dbOpeningBalance: number;
   dbClosingBalance: number;
   monthTraces: Record<string, LedgerMonthTrace>;
@@ -280,31 +280,24 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
 
     const preFY = preFYMovements[ledger.id] || { debit: 0, credit: 0 };
 
-    let running = normalizeOpeningForFormula(safeNum(ledger.closingBalance), ledger.nature, mainGroup);
-    let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" | "derived_from_backward" = "ledger_opening";
+    let earliestYear = year;
+    if (voucherYears.length > 0) {
+      earliestYear = Math.min(...voucherYears);
+    }
 
-    if (year < latestYear) {
-      let currentClosing = running;
-      for (let y = latestYear; y >= year; y--) {
+    let running = normalizeOpeningForFormula(safeNum(ledger.openingBalance), ledger.nature, mainGroup);
+    let openingSource: "ledger_opening" | "derived_from_closing" | "derived_from_pre_fy" | "derived_from_backward" | "derived_from_forward" = "ledger_opening";
+
+    if (year > earliestYear) {
+      for (let y = earliestYear; y < year; y++) {
         const mov = movementsByLedgerYear.get(ledger.id)?.get(y) || { debit: 0, credit: 0 };
         if (mainGroup === "Assets") {
-          currentClosing = currentClosing - mov.debit + mov.credit;
+          running = running + mov.debit - mov.credit;
         } else {
-          currentClosing = currentClosing - mov.credit + mov.debit;
+          running = running + mov.credit - mov.debit;
         }
       }
-      running = currentClosing;
-      openingSource = "derived_from_backward";
-    } else {
-      const mov = movementsByLedgerYear.get(ledger.id)?.get(latestYear) || { debit: 0, credit: 0 };
-      let derivedOpening = running;
-      if (mainGroup === "Assets") {
-        derivedOpening = derivedOpening - mov.debit + mov.credit;
-      } else {
-        derivedOpening = derivedOpening - mov.credit + mov.debit;
-      }
-      running = derivedOpening;
-      openingSource = "derived_from_closing";
+      openingSource = "derived_from_forward";
     }
 
     const monthTraces: Record<string, LedgerMonthTrace> = {
