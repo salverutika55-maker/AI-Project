@@ -207,14 +207,35 @@ export async function POST(req: Request) {
 
     // 4c. Update Unique Ledgers for the Mapping UI & Save Closing Balances
     if (client.software === 'TALLY') {
-      const chartOfAccounts = body.chartOfAccounts || [];
-      
       // Read balances from Trial Balance records (latest one has current values)
       const ledgerBalances: Record<string, number> = {};
       for (const record of records) {
         if (record.ledgers) {
           Object.entries(record.ledgers).forEach(([k, v]) => {
             ledgerBalances[k.trim().toLowerCase()] = Number(v) || 0;
+          });
+        }
+      }
+
+      let chartOfAccounts = [...(body.chartOfAccounts || [])];
+
+      // Explicitly inject "Difference in Opening Balances" virtual ledger into chartOfAccounts
+      // if it has a non-zero balance in the synced Trial Balance data
+      const diffKey = Object.keys(ledgerBalances).find(
+        (k) => k.includes("difference in opening balances") || k.includes("difference in opening bal")
+      );
+      if (diffKey && ledgerBalances[diffKey] !== 0) {
+        const hasCOA = chartOfAccounts.some((c: any) => {
+          const name = (c.name || "").toLowerCase();
+          return name.includes("difference in opening balances") || name.includes("difference in opening bal");
+        });
+        if (!hasCOA) {
+          chartOfAccounts.push({
+            name: "Difference in Opening Balances",
+            groupName: "Difference in Opening Balances",
+            openingBalance: ledgerBalances[diffKey],
+            masterId: "difference-in-opening-balances-virtual",
+            guid: "difference-in-opening-balances-virtual-guid"
           });
         }
       }

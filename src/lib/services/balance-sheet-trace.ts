@@ -252,7 +252,18 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
 
   const ledgerTraces: BalanceSheetLedgerTrace[] = [];
 
+  const dbDiffOpeningLedger = ledgers.find((l) => {
+    const name = l.name.toLowerCase();
+    return name.includes("difference in opening balances") || name.includes("difference in opening bal");
+  });
+
   for (const ledger of ledgers) {
+    if (
+      ledger.name.toLowerCase().includes("difference in opening balances") ||
+      ledger.name.toLowerCase().includes("difference in opening bal")
+    ) {
+      continue;
+    }
     const mapping = mappingByLedger.get(mappingKey(ledger.name));
     if (!mapping) continue;
 
@@ -400,85 +411,74 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
     monthTraces: pnlMonthTraces,
   });
 
-  // 1b. VIRTUAL CAPITAL ACCOUNT INJECTION FOR SSA TAX CONSULTANT
+  // 1b. VIRTUAL CAPITAL ACCOUNT INJECTION REMOVED (Strict source-backed data integrity)
   let earliestYear = year;
   if (voucherYears.length > 0) {
     earliestYear = Math.min(...voucherYears);
   }
 
-  if (isSSATaxConsultant && earliestYear === 2024) {
-    const hasCapital = ledgerTraces.some(
-      (l) => l.subGroupName === "Capital Account" && l.mainGroup === "Liabilities" && l.ledgerName !== "Drawing"
-    );
-    if (!hasCapital) {
-      const capVal = 112500;
-      const capMonthTraces: Record<string, LedgerMonthTrace> = {};
-      capMonthTraces["Opening"] = { opening: capVal, debit: 0, credit: 0, closing: capVal };
-      for (const month of FY_MONTHS) {
-        capMonthTraces[month] = { opening: capVal, debit: 0, credit: 0, closing: capVal };
-      }
-      
-      ledgerTraces.push({
-        ledgerId: "virtual-capital-account",
-        ledgerName: "Capital Account",
-        groupName: "Owner's Funds",
-        subGroupName: "Capital Account",
-        subHeadName: "Capital Account",
-        mainGroup: "Liabilities",
-        nature: "CREDIT",
-        dbOpeningBalance: capVal,
-        dbClosingBalance: capVal,
-        openingSource: "derived_from_pre_fy",
-        monthTraces: capMonthTraces,
-      });
-    }
-  }
-
   // 2. DIFFERENCE IN OPENING BALANCES INJECTION
-
   let diffOpeningVal = 0;
-  if (year === earliestYear) {
-    let openingSum = 0;
-    for (const row of ledgerTraces) {
-      const op = row.monthTraces["Opening"]?.closing || 0;
-      if (op !== 0) {
-        let signedOp = op;
-        if (row.mainGroup === "Liabilities") {
-          signedOp = -op;
-        }
-        openingSum += signedOp;
+  if (dbDiffOpeningLedger) {
+    const mainGroup = dbDiffOpeningLedger.nature === "CREDIT" ? "Liabilities" : "Assets";
+    let running = normalizeOpeningForFormula(safeNum(dbDiffOpeningLedger.closingBalance), dbDiffOpeningLedger.nature, mainGroup);
+    for (let y = latestYear; y >= earliestYear; y--) {
+      const mov = movementsByLedgerYear.get(dbDiffOpeningLedger.id)?.get(y) || { debit: 0, credit: 0 };
+      if (mainGroup === "Assets") {
+        running = running - mov.debit + mov.credit;
+      } else {
+        running = running - mov.credit + mov.debit;
       }
     }
-    diffOpeningVal = -openingSum;
+    diffOpeningVal = dbDiffOpeningLedger.nature === "CREDIT" ? -Math.abs(running) : Math.abs(running);
   } else {
-    let earliestOpeningSum = 0;
-    for (const ledger of ledgers) {
-      const mapping = mappingByLedger.get(mappingKey(ledger.name));
-      if (!mapping) continue;
-
-      const groupName = cleanLabel(mapping.groupName, cleanLabel(ledger.groupName, "Unclassified"));
-      const mainGroup = resolveMainGroup(groupName, ledger.nature);
-
-      let running = normalizeOpeningForFormula(safeNum(ledger.closingBalance), ledger.nature, mainGroup);
-      for (let y = latestYear; y >= earliestYear; y--) {
-        const mov = movementsByLedgerYear.get(ledger.id)?.get(y) || { debit: 0, credit: 0 };
-        if (mainGroup === "Assets") {
-          running = running - mov.debit + mov.credit;
-        } else {
-          running = running - mov.credit + mov.debit;
+    // FALLBACK to calculated trial balance mismatch for compatibility/legacy data
+    if (year === earliestYear) {
+      let openingSum = 0;
+      for (const row of ledgerTraces) {
+        const op = row.monthTraces["Opening"]?.closing || 0;
+        if (op !== 0) {
+          let signedOp = op;
+          if (row.mainGroup === "Liabilities") {
+            signedOp = -op;
+          }
+          openingSum += signedOp;
         }
       }
-      
-      let signedOp = running;
-      if (mainGroup === "Liabilities") {
-        signedOp = -running;
+      diffOpeningVal = -openingSum;
+    } else {
+      let earliestOpeningSum = 0;
+      for (const ledger of ledgers) {
+        if (
+          ledger.name.toLowerCase().includes("difference in opening balances") ||
+          ledger.name.toLowerCase().includes("difference in opening bal")
+        ) {
+          continue;
+        }
+        const mapping = mappingByLedger.get(mappingKey(ledger.name));
+        if (!mapping) continue;
+
+        const groupName = cleanLabel(mapping.groupName, cleanLabel(ledger.groupName, "Unclassified"));
+        const mainGroup = resolveMainGroup(groupName, ledger.nature);
+
+        let running = normalizeOpeningForFormula(safeNum(ledger.closingBalance), ledger.nature, mainGroup);
+        for (let y = latestYear; y >= earliestYear; y--) {
+          const mov = movementsByLedgerYear.get(ledger.id)?.get(y) || { debit: 0, credit: 0 };
+          if (mainGroup === "Assets") {
+            running = running - mov.debit + mov.credit;
+          } else {
+            running = running - mov.credit + mov.debit;
+          }
+        }
+        
+        let signedOp = running;
+        if (mainGroup === "Liabilities") {
+          signedOp = -running;
+        }
+        earliestOpeningSum += signedOp;
       }
-      earliestOpeningSum += signedOp;
+      diffOpeningVal = -earliestOpeningSum;
     }
-    if (isSSATaxConsultant && earliestYear === 2024) {
-      earliestOpeningSum += -112500;
-    }
-    diffOpeningVal = -earliestOpeningSum;
   }
 
   if (Math.abs(diffOpeningVal) > 0.01) {

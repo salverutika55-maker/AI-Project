@@ -332,6 +332,45 @@ async function runTests() {
     
     console.log("✔ Test Case 6 Passed!");
 
+    // Test Case 7: Absolute Source Lineage Check (No Capital Account fabrication & Database-sourced Difference in Opening Balances)
+    console.log("Running Test Case 7: Absolute Source Lineage Check...");
+    
+    const sourceAuditClientId = "client_test_source_audit";
+    await prisma.client.create({
+      data: {
+        id: sourceAuditClientId,
+        name: "Source Audit Client",
+        software: "TALLY",
+        organizationId: orgId
+      }
+    });
+
+    await prisma.normalizedLedger.create({
+      data: {
+        id: "ledger_diff_open_audit",
+        clientId: sourceAuditClientId,
+        name: "Difference in Opening Balances",
+        groupName: "Difference in Opening Balances",
+        openingBalance: 33007,
+        closingBalance: 33007,
+        nature: "CREDIT",
+        isActive: true,
+        sourceStatus: "active"
+      }
+    });
+
+    const res7 = await buildBalanceSheetTrace(sourceAuditClientId, 2024);
+
+    const diffOpeningAudit = res7.ledgerTraces.find(t => t.ledgerName === "Difference in Opening Balances");
+    assert(diffOpeningAudit, "Difference in Opening Balances ledger trace must exist");
+    assert.strictEqual(diffOpeningAudit.monthTraces["Opening"].closing, 33007, "Difference in Opening Balances must show exactly 33007");
+
+    const capAccountTrace = res7.ledgerTraces.find(t => t.ledgerName === "Capital Account");
+    assert(!capAccountTrace, "Capital Account ledger trace must NOT exist since it is not in the database");
+
+    console.log("✔ Test Case 7 Passed!");
+    await cleanup(sourceAuditClientId);
+
     await cleanup(otherClientId);
     console.log("\n=== ALL REGRESSION TESTS COMPLETED SUCCESSFULLY! ===");
 
