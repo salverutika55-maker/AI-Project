@@ -36346,30 +36346,17 @@ async function getActiveTallyCompanyDetails() {
   const xmlPayload = `
 <ENVELOPE>
   <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Collection</TYPE>
-    <ID>ActiveCompanyCollection</ID>
+    <TALLYREQUEST>Export Data</TALLYREQUEST>
   </HEADER>
   <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-      </STATICVARIABLES>
-      <TDL>
-        <TDLMESSAGE>
-          <COLLECTION NAME="ActiveCompanyCollection" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <TYPE>Company</TYPE>
-            <NATIVEMETHOD>Name</NATIVEMETHOD>
-            <NATIVEMETHOD>GUID</NATIVEMETHOD>
-            <FILTER>ActiveCompanyFilter</FILTER>
-          </COLLECTION>
-          <SYSTEM TYPE="Formulae" NAME="ActiveCompanyFilter">
-            $$IsSelected
-          </SYSTEM>
-        </TDLMESSAGE>
-      </TDL>
-    </DESC>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>List of Accounts</REPORTNAME>
+        <STATICVARIABLES>
+          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+    </EXPORTDATA>
   </BODY>
 </ENVELOPE>
   `.trim();
@@ -36379,14 +36366,15 @@ async function getActiveTallyCompanyDetails() {
       headers: { "Content-Type": "text/xml" },
       timeout: 15000
     });
-    const parsed = await parser.parseStringPromise(res.data);
-    if (parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY) {
-      const coNode = parsed.ENVELOPE.BODY.DATA.COLLECTION.COMPANY;
-      const name = coNode.NAME ? (Array.isArray(coNode.NAME) ? coNode.NAME[0] : coNode.NAME) : null;
-      const guid = coNode.GUID ? (Array.isArray(coNode.GUID) ? coNode.GUID[0] : coNode.GUID) : null;
-      if (name) {
-        return { name: String(name).trim(), guid: guid ? String(guid).trim() : null };
-      }
+    
+    const coMatch = res.data.match(/<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/i);
+    const guidMatch = res.data.match(/<COMPANYGUID>([^<]+)<\/COMPANYGUID>/i) || res.data.match(/<GUID>([^<]+)<\/GUID>/i);
+    
+    if (coMatch && coMatch[1]) {
+      return {
+        name: coMatch[1].trim(),
+        guid: guidMatch ? guidMatch[1].trim() : null
+      };
     }
   } catch (err) {
     // Tally not running or unreachable

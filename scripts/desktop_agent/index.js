@@ -38,30 +38,17 @@ async function getActiveTallyCompanyDetails() {
   const xmlPayload = `
 <ENVELOPE>
   <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Collection</TYPE>
-    <ID>ActiveCompanyCollection</ID>
+    <TALLYREQUEST>Export Data</TALLYREQUEST>
   </HEADER>
   <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-      </STATICVARIABLES>
-      <TDL>
-        <TDLMESSAGE>
-          <COLLECTION NAME="ActiveCompanyCollection" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <TYPE>Company</TYPE>
-            <NATIVEMETHOD>Name</NATIVEMETHOD>
-            <NATIVEMETHOD>GUID</NATIVEMETHOD>
-            <FILTER>ActiveCompanyFilter</FILTER>
-          </COLLECTION>
-          <SYSTEM TYPE="Formulae" NAME="ActiveCompanyFilter">
-            $$IsSelected
-          </SYSTEM>
-        </TDLMESSAGE>
-      </TDL>
-    </DESC>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>List of Accounts</REPORTNAME>
+        <STATICVARIABLES>
+          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+    </EXPORTDATA>
   </BODY>
 </ENVELOPE>
   `.trim();
@@ -71,14 +58,15 @@ async function getActiveTallyCompanyDetails() {
       headers: { "Content-Type": "text/xml" },
       timeout: 15000
     });
-    const parsed = await parser.parseStringPromise(res.data);
-    if (parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY) {
-      const coNode = parsed.ENVELOPE.BODY.DATA.COLLECTION.COMPANY;
-      const name = coNode.NAME ? (Array.isArray(coNode.NAME) ? coNode.NAME[0] : coNode.NAME) : null;
-      const guid = coNode.GUID ? (Array.isArray(coNode.GUID) ? coNode.GUID[0] : coNode.GUID) : null;
-      if (name) {
-        return { name: String(name).trim(), guid: guid ? String(guid).trim() : null };
-      }
+    
+    const coMatch = res.data.match(/<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/i);
+    const guidMatch = res.data.match(/<COMPANYGUID>([^<]+)<\/COMPANYGUID>/i) || res.data.match(/<GUID>([^<]+)<\/GUID>/i);
+    
+    if (coMatch && coMatch[1]) {
+      return {
+        name: coMatch[1].trim(),
+        guid: guidMatch ? guidMatch[1].trim() : null
+      };
     }
   } catch (err) {
     // Tally not running or unreachable
@@ -293,12 +281,21 @@ async function startBackgroundSync(config) {
         headers: { "Content-Type": "text/xml" },
         timeout: 60000 
       });
+      const rawText = response.data;
+      const tallyRawCount = (rawText.match(/<LEDGER/g) || []).length;
+
       const parsed = await parser.parseStringPromise(response.data);
       let ledgers = [];
+      let parsedCount = 0;
+      let normalizedCount = 0;
+      let filteredCount = 0;
       
       if (parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION?.LEDGER) {
         const ledgerNodes = parsed.ENVELOPE.BODY.DATA.COLLECTION.LEDGER;
         const msgArr = Array.isArray(ledgerNodes) ? ledgerNodes : [ledgerNodes];
+        parsedCount = msgArr.length;
+        normalizedCount = msgArr.length;
+        
         msgArr.forEach(msg => {
           let ledgerName = null;
           if (msg.$?.NAME) ledgerName = msg.$.NAME;
@@ -334,6 +331,7 @@ async function startBackgroundSync(config) {
           }
           
           if (ledgerName) {
+            filteredCount++;
             ledgers.push({ 
               name: String(ledgerName).trim(), 
               groupName: String(parentGroup).trim(),
@@ -355,6 +353,17 @@ async function startBackgroundSync(config) {
               uniqueLedgers.push(l);
           }
       }
+
+      const dedupedCount = uniqueLedgers.length;
+      const agentPayloadCount = uniqueLedgers.length;
+
+      console.log(`[COA_TRACE] tallyRawCount=${tallyRawCount}`);
+      console.log(`[COA_TRACE] parsedCount=${parsedCount}`);
+      console.log(`[COA_TRACE] normalizedCount=${normalizedCount}`);
+      console.log(`[COA_TRACE] filteredCount=${filteredCount}`);
+      console.log(`[COA_TRACE] dedupedCount=${dedupedCount}`);
+      console.log(`[COA_TRACE] agentPayloadCount=${agentPayloadCount}`);
+
       return uniqueLedgers;
     } catch (e) {
       console.error("[AGENT] Failed to extract Chart of Accounts master list:", e.message);

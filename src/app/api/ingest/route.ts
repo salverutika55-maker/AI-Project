@@ -276,6 +276,11 @@ export async function POST(req: Request) {
       const updateQueries: any[] = [];
       const createData: any[] = [];
 
+      const backendReceivedCount = body.chartOfAccounts ? body.chartOfAccounts.length : 0;
+      const dbUpsertInputCount = chartOfAccounts.length;
+      console.log(`[COA_TRACE] backendReceivedCount=${backendReceivedCount}`);
+      console.log(`[COA_TRACE] dbUpsertInputCount=${dbUpsertInputCount}`);
+
       for (const src of chartOfAccounts) {
         const srcName = (src.name || "").trim();
         if (!srcName) continue;
@@ -520,6 +525,11 @@ export async function POST(req: Request) {
       const unmappedCount = await prisma.normalizedLedger.count({
         where: { clientId: client.id, isActive: true, mappingStatus: "review_required" }
       });
+
+      const dbActiveCount = await prisma.normalizedLedger.count({
+        where: { clientId: client.id, isActive: true }
+      });
+      console.log(`[COA_TRACE] dbActiveCount=${dbActiveCount}`);
 
       console.log(`[SYNC] [COA_RECONCILIATION_COMPLETE] syncRunId=${syncTaskId || 'N/A'} companyId=${client.id} sourceLedgerCount=${body.chartOfAccounts ? body.chartOfAccounts.length : 0} parsedLedgerCount=${chartOfAccounts.length} existingAppLedgerCount=${dbLedgers.length} insertedCount=${addedCount} updatedCount=${updatedCount} renamedCount=${renamedCount} deactivatedCount=${deletedCount} reactivatedCount=${reactivatedCount} unmappedCount=${unmappedCount} errorCount=0`);
 

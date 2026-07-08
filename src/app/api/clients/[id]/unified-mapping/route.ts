@@ -92,6 +92,9 @@ export async function GET(
       }));
     }
 
+    const uiReturnedCount = chartOfAccounts.length;
+    console.log(`[COA_TRACE] uiReturnedCount=${uiReturnedCount}`);
+
     return NextResponse.json({ 
       software: client?.software || "TALLY",
       chartOfAccounts,
