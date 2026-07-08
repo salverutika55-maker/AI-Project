@@ -25,6 +25,9 @@ export async function POST(req: Request) {
     const syncTaskId = body.syncTaskId;
     const forceFull = body.forceFull === true;
 
+    const startTime = Date.now();
+    console.log(`[SYNC] [SYNC_REQUEST_RECEIVED] syncRunId=${syncTaskId || 'N/A'} client=${client.name} payloadBytes=${req.headers.get('content-length') || 'N/A'} vouchersCount=${vouchers.length}`);
+
     // Validate Tally Company GUID (if provided)
     const companyGuid = body.companyGuid;
     if (companyGuid && client.software === 'TALLY') {
@@ -343,6 +346,8 @@ export async function POST(req: Request) {
         });
       }
     }
+
+    console.log(`[SYNC] [VOUCHER_WRITE_DONE] syncRunId=${syncTaskId || 'N/A'} client=${client.name} count=${processedCount} durationMs=${Date.now() - startTime}ms`);
 
     return NextResponse.json({ 
       message: `Successfully processed ${processedCount} vouchers.`,

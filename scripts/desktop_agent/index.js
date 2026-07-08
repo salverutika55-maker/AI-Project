@@ -30,6 +30,9 @@ let heartbeatInterval;
 let guiServer = null;
 let tallyActiveCompanyName = null;
 let isSyncing = false;
+let pendingForceSyncOptions = null;
+let syncStartTime = 0;
+const MAX_SYNC_DURATION = 15 * 60 * 1000; // 15 minutes
 
 async function getActiveTallyCompanyDetails() {
   const xmlPayload = `
@@ -446,11 +449,22 @@ async function startBackgroundSync(config) {
 
   async function performSync(options = { forceFull: false, syncTaskId: null }) {
     if (isSyncing) {
-      console.log("[AGENT] Sync already in progress, skipping...");
-      return;
+      if (syncStartTime > 0 && (Date.now() - syncStartTime) > MAX_SYNC_DURATION) {
+        console.warn(`[AGENT] ⚠️ Detected stale sync lock (active for ${Math.round((Date.now() - syncStartTime)/1000)}s). Force releasing lock.`);
+        isSyncing = false;
+      } else {
+        if (options.syncTaskId) {
+          console.log(`[AGENT] Sync already in progress. Queueing Force Sync task ${options.syncTaskId}.`);
+          pendingForceSyncOptions = options;
+        } else {
+          console.log("[AGENT] Sync already in progress, skipping auto-sync...");
+        }
+        return;
+      }
     }
     
     isSyncing = true;
+    syncStartTime = Date.now();
     try {
       let activeCo = await getActiveTallyCompanyDetails();
       let activeCompany = activeCo ? activeCo.name : null;
@@ -737,6 +751,15 @@ async function startBackgroundSync(config) {
     }
     } finally {
       isSyncing = false;
+      syncStartTime = 0;
+      if (pendingForceSyncOptions) {
+        const nextOpts = pendingForceSyncOptions;
+        pendingForceSyncOptions = null;
+        console.log(`\n[AGENT] Executing queued Force Sync task ${nextOpts.syncTaskId} now...`);
+        setTimeout(() => {
+          performSync(nextOpts).catch(err => console.error("[AGENT] Error running queued Force Sync:", err.message));
+        }, 0);
+      }
     }
   }
 

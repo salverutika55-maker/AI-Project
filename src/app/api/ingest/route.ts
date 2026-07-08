@@ -269,6 +269,12 @@ export async function POST(req: Request) {
       const activeSourceIds = new Set<string>();
       const activeNames = new Set<string>();
 
+      const startTime = Date.now();
+      console.log(`[SYNC] [SYNC_REQUEST_RECEIVED] syncRunId=${syncTaskId || 'N/A'} client=${client.name} payloadBytes=${req.headers.get('content-length') || 'N/A'}`);
+
+      const updateQueries: any[] = [];
+      const createData: any[] = [];
+
       for (const src of chartOfAccounts) {
         const srcName = (src.name || "").trim();
         if (!srcName) continue;
@@ -329,37 +335,41 @@ export async function POST(req: Request) {
           const closingVal = balanceVal;
           const determinedNature = determineLedgerNature(srcGroup, opVal, closingVal);
 
-          // Update in DB
-          await prisma.normalizedLedger.update({
-            where: { id: matchedLedger.id },
-            data: {
-              name: srcName,
-              groupName: srcGroup,
-              sourceLedgerId: srcMasterId || matchedLedger.sourceLedgerId,
-              sourceGuid: srcGuid || matchedLedger.sourceGuid,
-              sourcePlatform: "TALLY",
-              sourceStatus: "active",
-              isActive: true,
-              deletedAt: null,
-              openingBalance: Math.abs(opVal),
-              closingBalance: Math.abs(closingVal),
-              nature: determinedNature,
-              mappingStatus: isMove ? "review_required" : (isReactivate ? "active" : matchedLedger.mappingStatus),
-              previousGroupName: isMove ? prevGroup : matchedLedger.previousGroupName
-            }
-          });
+          // Queue update query
+          updateQueries.push(
+            prisma.normalizedLedger.update({
+              where: { id: matchedLedger.id },
+              data: {
+                name: srcName,
+                groupName: srcGroup,
+                sourceLedgerId: srcMasterId || matchedLedger.sourceLedgerId,
+                sourceGuid: srcGuid || matchedLedger.sourceGuid,
+                sourcePlatform: "TALLY",
+                sourceStatus: "active",
+                isActive: true,
+                deletedAt: null,
+                openingBalance: Math.abs(opVal),
+                closingBalance: Math.abs(closingVal),
+                nature: determinedNature,
+                mappingStatus: isMove ? "review_required" : (isReactivate ? "active" : matchedLedger.mappingStatus),
+                previousGroupName: isMove ? prevGroup : matchedLedger.previousGroupName
+              }
+            })
+          );
 
           // Renames propagation to mapping tables
           if (isRename) {
             renamedCount++;
-            await prisma.unifiedLedgerMapping.updateMany({
-              where: { clientId: client.id, softwareLedgerName: prevName },
-              data: { softwareLedgerName: srcName }
-            });
-            await prisma.pNLMapping.updateMany({
-              where: { clientId: client.id, softwareLedgerName: prevName },
-              data: { softwareLedgerName: srcName }
-            });
+            updateQueries.push(
+              prisma.unifiedLedgerMapping.updateMany({
+                where: { clientId: client.id, softwareLedgerName: prevName },
+                data: { softwareLedgerName: srcName }
+              }),
+              prisma.pNLMapping.updateMany({
+                where: { clientId: client.id, softwareLedgerName: prevName },
+                data: { softwareLedgerName: srcName }
+              })
+            );
           }
 
           if (isMove) movedCount++;
@@ -389,23 +399,21 @@ export async function POST(req: Request) {
           const closingVal = balanceVal;
           const determinedNature = determineLedgerNature(srcGroup, opVal, closingVal);
 
-          await prisma.normalizedLedger.create({
-            data: {
-              id: newLedgerId,
-              clientId: client.id,
-              name: srcName,
-              groupName: srcGroup,
-              openingBalance: Math.abs(opVal),
-              closingBalance: Math.abs(closingVal),
-              nature: determinedNature,
-              isActive: true,
-              sourcePlatform: "TALLY",
-              sourceCompanyId: companyGuid || null,
-              sourceLedgerId: srcMasterId,
-              sourceGuid: srcGuid,
-              sourceStatus: "active",
-              mappingStatus: "review_required"
-            }
+          createData.push({
+            id: newLedgerId,
+            clientId: client.id,
+            name: srcName,
+            groupName: srcGroup,
+            openingBalance: Math.abs(opVal),
+            closingBalance: Math.abs(closingVal),
+            nature: determinedNature,
+            isActive: true,
+            sourcePlatform: "TALLY",
+            sourceCompanyId: companyGuid || null,
+            sourceLedgerId: srcMasterId,
+            sourceGuid: srcGuid,
+            sourceStatus: "active",
+            mappingStatus: "review_required"
           });
 
           traceLog.push({
@@ -423,7 +431,24 @@ export async function POST(req: Request) {
         }
       }
 
+      // Execute creations in bulk
+      if (createData.length > 0) {
+        await prisma.normalizedLedger.createMany({
+          data: createData,
+          skipDuplicates: true
+        });
+      }
+
+      // Execute updates in a single transaction
+      if (updateQueries.length > 0) {
+        await prisma.$transaction(updateQueries);
+      }
+
       // Check for DELETED / REMOVED ledgers
+      const deletedLedgerIds: string[] = [];
+      const deletedLedgerNames: string[] = [];
+      const deletedTraces: any[] = [];
+
       for (const dbL of dbLedgers) {
         if (dbL.sourceStatus === "deleted") continue;
 
@@ -436,25 +461,10 @@ export async function POST(req: Request) {
 
         if (!isPresent) {
           deletedCount++;
-          await prisma.normalizedLedger.update({
-            where: { id: dbL.id },
-            data: {
-              sourceStatus: "deleted",
-              isActive: false,
-              deletedAt: new Date(),
-              mappingStatus: "inactive_source_deleted",
-              closingBalance: 0,
-              openingBalance: 0
-            }
-          });
+          deletedLedgerIds.push(dbL.id);
+          deletedLedgerNames.push(dbL.name);
 
-          // Mapping Reconciliation: Flag mappings pointing to deleted/nonexistent source ledger
-          await prisma.unifiedLedgerMapping.updateMany({
-            where: { clientId: client.id, softwareLedgerName: dbL.name },
-            data: { source: "DELETED_SOURCE" }
-          });
-
-          traceLog.push({
+          deletedTraces.push({
             sourceId: dbL.sourceLedgerId || dbL.sourceGuid || dbL.name,
             previousName: dbL.name,
             currentName: null,
@@ -468,6 +478,29 @@ export async function POST(req: Request) {
           });
         }
       }
+
+      if (deletedLedgerIds.length > 0) {
+        await prisma.normalizedLedger.updateMany({
+          where: { id: { in: deletedLedgerIds } },
+          data: {
+            sourceStatus: "deleted",
+            isActive: false,
+            deletedAt: new Date(),
+            mappingStatus: "inactive_source_deleted",
+            closingBalance: 0,
+            openingBalance: 0
+          }
+        });
+
+        await prisma.unifiedLedgerMapping.updateMany({
+          where: { clientId: client.id, softwareLedgerName: { in: deletedLedgerNames } },
+          data: { source: "DELETED_SOURCE" }
+        });
+
+        traceLog.push(...deletedTraces);
+      }
+
+      console.log(`[SYNC] [LEDGER_WRITE_DONE] syncRunId=${syncTaskId || 'N/A'} client=${client.name} count=${chartOfAccounts.length} durationMs=${Date.now() - startTime}ms`);
 
       // Write results to SyncTask if present
       if (syncTaskId) {

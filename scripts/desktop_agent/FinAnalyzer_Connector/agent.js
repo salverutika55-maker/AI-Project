@@ -31106,6 +31106,14 @@ module.exports = require("querystring");
 
 /***/ }),
 
+/***/ 3785:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("readline");
+
+/***/ }),
+
 /***/ 2203:
 /***/ ((module) => {
 
@@ -36304,34 +36312,64 @@ const fs = __nccwpck_require__(9896);
 const os = __nccwpck_require__(857);
 const axios = __nccwpck_require__(7269);
 const xml2js = __nccwpck_require__(758);
+const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
 
 const PORT = 4500;
-const VERCEL_API = 'https://ai-project-salverutika55-makers-projects.vercel.app/api';
-
 // Config path: %APPDATA%/FinAnalyzer/config.json
 const configDir = path.join(os.homedir(), 'AppData', 'Roaming', 'FinAnalyzer');
 const configPath = path.join(configDir, 'config.json');
+
+// Default API URL (pointing to custom domain, fallback dynamically configurable in config.json)
+const DEFAULT_VERCEL_API = 'https://finanalyzer-app.vercel.app/api';
+
+function getVercelApi() {
+  try {
+    if (fs.existsSync(configPath)) {
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (parsed && parsed.apiUrl) {
+        return parsed.apiUrl;
+      }
+    }
+  } catch (e) {}
+  return DEFAULT_VERCEL_API;
+}
 let syncInterval;
 let heartbeatInterval;
 let guiServer = null;
 let tallyActiveCompanyName = null;
 let isSyncing = false;
+let pendingForceSyncOptions = null;
+let syncStartTime = 0;
+const MAX_SYNC_DURATION = 15 * 60 * 1000; // 15 minutes
 
-async function getActiveTallyCompanyName() {
+async function getActiveTallyCompanyDetails() {
   const xmlPayload = `
 <ENVELOPE>
   <HEADER>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>ActiveCompanyCollection</ID>
   </HEADER>
   <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>List of Accounts</REPORTNAME>
-        <STATICVARIABLES>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-    </EXPORTDATA>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="ActiveCompanyCollection" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>Company</TYPE>
+            <NATIVEMETHOD>Name</NATIVEMETHOD>
+            <NATIVEMETHOD>GUID</NATIVEMETHOD>
+            <FILTER>ActiveCompanyFilter</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE="Formulae" NAME="ActiveCompanyFilter">
+            $$IsSelected
+          </SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
   </BODY>
 </ENVELOPE>
   `.trim();
@@ -36339,14 +36377,27 @@ async function getActiveTallyCompanyName() {
   try {
     const res = await axios.post("http://localhost:9000", xmlPayload, {
       headers: { "Content-Type": "text/xml" },
-      timeout: 8000
+      timeout: 15000
     });
-    const match = res.data.match(/<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/i);
-    if (match && match[1]) {
-      return match[1].trim();
+    const parsed = await parser.parseStringPromise(res.data);
+    if (parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY) {
+      const coNode = parsed.ENVELOPE.BODY.DATA.COLLECTION.COMPANY;
+      const name = coNode.NAME ? (Array.isArray(coNode.NAME) ? coNode.NAME[0] : coNode.NAME) : null;
+      const guid = coNode.GUID ? (Array.isArray(coNode.GUID) ? coNode.GUID[0] : coNode.GUID) : null;
+      if (name) {
+        return { name: String(name).trim(), guid: guid ? String(guid).trim() : null };
+      }
     }
   } catch (err) {
     // Tally not running or unreachable
+  }
+  return null;
+}
+
+async function getActiveTallyCompanyName() {
+  const details = await getActiveTallyCompanyDetails();
+  if (details) {
+    return details.name;
   }
   return null;
 }
@@ -36422,11 +36473,14 @@ async function startBackgroundSync(config) {
    * Parse a Tally amount string safely.
    * Handles empty strings, negative values, and comma-separated numbers.
    */
-  function parseTallyAmount(str) {
+  function parseTallyAmount(str, keepSign = false) {
     if (!str || str.trim() === '') return 0;
+    const isCredit = String(str).toUpperCase().includes('CR') || String(str).includes('-');
     const cleaned = String(str).replace(/[^0-9.-]+/g, '');
     const val = parseFloat(cleaned);
-    return isNaN(val) ? 0 : Math.abs(val);
+    if (isNaN(val)) return 0;
+    const absVal = Math.abs(val);
+    return keepSign ? (isCredit ? -absVal : absVal) : absVal;
   }
 
   /**
@@ -36471,39 +36525,257 @@ async function startBackgroundSync(config) {
     const nameArr = Array.isArray(names) ? names : [names];
     const infoArr = Array.isArray(infos) ? infos : [infos];
 
+    const getVal = (infoObj, baseTag, keepSign = false) => {
+      if (!infoObj || !infoObj[baseTag]) return 0;
+      let node = infoObj[baseTag];
+      if (Array.isArray(node)) node = node[0]; // Unwrap xml2js array
+      
+      if (node && typeof node === 'object' && node[`${baseTag}A`] !== undefined) {
+          let inner = node[`${baseTag}A`];
+          if (Array.isArray(inner)) inner = inner[0];
+          return parseTallyAmount(inner, keepSign);
+      }
+      return parseTallyAmount(node, keepSign);
+    };
+
     nameArr.forEach((nameObj, idx) => {
       if (!nameObj || !nameObj.DSPDISPNAME) return;
       const name = String(nameObj.DSPDISPNAME);
       const info = infoArr[idx];
       if (info) {
-        // Try movement/period fields first
-        const totDrAmt = parseTallyAmount(info?.DSPTOTDRAMT?.DSPTOTDRAMTA);
-        const totCrAmt = parseTallyAmount(info?.DSPTOTCRAMT?.DSPTOTCRAMTA);
-        // Fallback to closing balance
-        const clDrAmt = parseTallyAmount(info?.DSPCLDRAMT?.DSPCLDRAMTA);
-        const clCrAmt = parseTallyAmount(info?.DSPCLCRAMT?.DSPCLCRAMTA);
+        // Try ALL known Tally movement/period tag variations
+        const totDrAmt = getVal(info, 'DSPTOTDRAMT') || getVal(info, 'DSPDRAMT') || getVal(info, 'DSPTRDRAMT') || getVal(info, 'DSPTRANSDR') || 0;
+        const totCrAmt = getVal(info, 'DSPTOTCRAMT') || getVal(info, 'DSPCRAMT') || getVal(info, 'DSPTRCRAMT') || getVal(info, 'DSPTRANSCR') || 0;
         
-        const periodAmt = totDrAmt + totCrAmt;
-        const closingAmt = clDrAmt + clCrAmt;
-        const amt = periodAmt > 0 ? periodAmt : closingAmt;
+        // For Balance Sheet, we need the ACTUAL CLOSING BALANCE, not the net movement.
+        // P&L uses /ingest/vouchers directly, so Trial Balance ledgers are exclusively for Balance Sheet.
+        let clDrAmt = getVal(info, 'DSPCLDRAMT') || getVal(info, 'DSPCLOSDR') || 0;
+        let clCrAmt = getVal(info, 'DSPCLCRAMT') || getVal(info, 'DSPCLOSCR') || 0;
         
-        if (amt !== 0) {
-          ledgers[name] = amt;
+        if (clDrAmt === 0 && clCrAmt === 0) {
+          const clAmt = getVal(info, 'DSPCLAMT', true); // KEEP SIGN
+          // In Tally XML: Negative is DEBIT, Positive is CREDIT
+          if (clAmt < 0) clDrAmt = Math.abs(clAmt);
+          else if (clAmt > 0) clCrAmt = clAmt;
         }
+        
+        const closingNet = clDrAmt - clCrAmt;
+        ledgers[name] = closingNet;
       }
     });
     return ledgers;
   }
 
-  async function performSync() {
+  async function extractChartOfAccounts() {
+    try {
+      const coaXml = `<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>List of Ledgers</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="List of Ledgers" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>Ledger</TYPE>
+            <NATIVEMETHOD>GUID</NATIVEMETHOD>
+            <NATIVEMETHOD>MASTERID</NATIVEMETHOD>
+            <NATIVEMETHOD>ALTERID</NATIVEMETHOD>
+            <NATIVEMETHOD>Name</NATIVEMETHOD>
+            <NATIVEMETHOD>Parent</NATIVEMETHOD>
+            <NATIVEMETHOD>OpeningBalance</NATIVEMETHOD>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+      
+      const response = await axios.post("http://localhost:9000", coaXml, {
+        headers: { "Content-Type": "text/xml" },
+        timeout: 60000 
+      });
+      const parsed = await parser.parseStringPromise(response.data);
+      let ledgers = [];
+      
+      if (parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION?.LEDGER) {
+        const ledgerNodes = parsed.ENVELOPE.BODY.DATA.COLLECTION.LEDGER;
+        const msgArr = Array.isArray(ledgerNodes) ? ledgerNodes : [ledgerNodes];
+        msgArr.forEach(msg => {
+          let ledgerName = null;
+          if (msg.$?.NAME) ledgerName = msg.$.NAME;
+          else if (msg.NAME) ledgerName = Array.isArray(msg.NAME) ? msg.NAME[0] : msg.NAME;
+          
+          let parentGroup = "Unknown";
+          if (msg.PARENT) {
+            let pRaw = Array.isArray(msg.PARENT) ? msg.PARENT[0] : msg.PARENT;
+            if (typeof pRaw === 'object' && pRaw._) {
+              parentGroup = pRaw._;
+            } else if (typeof pRaw === 'string') {
+              parentGroup = pRaw;
+            }
+          }
+
+          let guid = null;
+          if (msg.GUID) guid = Array.isArray(msg.GUID) ? msg.GUID[0] : msg.GUID;
+          if (typeof guid === 'object' && guid._) guid = guid._;
+
+          let masterId = null;
+          if (msg.MASTERID) masterId = Array.isArray(msg.MASTERID) ? msg.MASTERID[0] : msg.MASTERID;
+          if (typeof masterId === 'object' && masterId._) masterId = masterId._;
+
+          let alterId = null;
+          if (msg.ALTERID) alterId = Array.isArray(msg.ALTERID) ? msg.ALTERID[0] : msg.ALTERID;
+          if (typeof alterId === 'object' && alterId._) alterId = alterId._;
+
+          let openingBalance = 0;
+          if (msg.OPENINGBALANCE) {
+            let opRaw = Array.isArray(msg.OPENINGBALANCE) ? msg.OPENINGBALANCE[0] : msg.OPENINGBALANCE;
+            if (typeof opRaw === 'object' && opRaw._) opRaw = opRaw._;
+            openingBalance = parseTallyAmount(opRaw, true);
+          }
+          
+          if (ledgerName) {
+            ledgers.push({ 
+              name: String(ledgerName).trim(), 
+              groupName: String(parentGroup).trim(),
+              guid: guid ? String(guid).trim() : null,
+              masterId: masterId ? String(masterId).trim() : null,
+              alterId: alterId ? String(alterId).trim() : null,
+              openingBalance: openingBalance
+            });
+          }
+        });
+      }
+      // Deduplicate by masterId or guid, falling back to name
+      const uniqueLedgers = [];
+      const seen = new Set();
+      for (const l of ledgers) {
+          const key = l.masterId || l.guid || l.name.toLowerCase();
+          if (!seen.has(key)) {
+              seen.add(key);
+              uniqueLedgers.push(l);
+          }
+      }
+      return uniqueLedgers;
+    } catch (e) {
+      console.error("[AGENT] Failed to extract Chart of Accounts master list:", e.message);
+      return [];
+    }
+  }
+
+  function extractDayBookVouchers(parsedData, fromDateStr, toDateStr, stats = { outOfBounds: 0 }) {
+    const vouchers = [];
+    if (!parsedData || !parsedData.ENVELOPE || !parsedData.ENVELOPE.BODY) {
+      return vouchers;
+    }
+    
+    // Convert YYYYMMDD to integer for easy comparison
+    const fromDtInt = parseInt(fromDateStr, 10);
+    const toDtInt = parseInt(toDateStr, 10);
+    
+    // Tally Collection export returns <DATA><COLLECTION><VOUCHER>
+    const body = parsedData.ENVELOPE.BODY;
+    let messages = null;
+    
+    if (body.DATA && body.DATA.COLLECTION && body.DATA.COLLECTION.VOUCHER) {
+      messages = body.DATA.COLLECTION.VOUCHER;
+    }
+
+    if (!messages) return vouchers;
+    
+    if (!Array.isArray(messages)) messages = [messages];
+
+    messages.forEach(vch => {
+      if (!vch) return;
+      
+      let dateStr = vch.DATE ? String(vch.DATE) : "20000101";
+      
+      let dateObj = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T00:00:00Z`;
+          
+          let alterId = vch.ALTERID || null;
+          if (Array.isArray(alterId)) alterId = alterId[0];
+          if (typeof alterId === 'object' && alterId._) alterId = alterId._;
+
+          let masterId = vch.MASTERID || null;
+          if (Array.isArray(masterId)) masterId = masterId[0];
+          if (typeof masterId === 'object' && masterId._) masterId = masterId._;
+
+          const v = {
+            guid: vch.GUID ? (Array.isArray(vch.GUID) ? vch.GUID[0] : vch.GUID) : (vch.VOUCHERNUMBER || "N/A"),
+            voucherNumber: vch.VOUCHERNUMBER ? (Array.isArray(vch.VOUCHERNUMBER) ? vch.VOUCHERNUMBER[0] : vch.VOUCHERNUMBER) : "N/A",
+            voucherType: vch.VOUCHERTYPENAME ? (Array.isArray(vch.VOUCHERTYPENAME) ? vch.VOUCHERTYPENAME[0] : vch.VOUCHERTYPENAME) : "JOURNAL",
+            date: dateObj,
+            narration: vch.NARRATION ? (Array.isArray(vch.NARRATION) ? vch.NARRATION[0] : vch.NARRATION) : "",
+            alterId: alterId ? String(alterId) : null,
+            masterId: masterId ? String(masterId) : null,
+            lines: []
+          };
+
+          let entries = [];
+          if (vch["ALLLEDGERENTRIES.LIST"]) {
+            entries = entries.concat(Array.isArray(vch["ALLLEDGERENTRIES.LIST"]) ? vch["ALLLEDGERENTRIES.LIST"] : [vch["ALLLEDGERENTRIES.LIST"]]);
+          }
+          if (vch["LEDGERENTRIES.LIST"]) {
+            entries = entries.concat(Array.isArray(vch["LEDGERENTRIES.LIST"]) ? vch["LEDGERENTRIES.LIST"] : [vch["LEDGERENTRIES.LIST"]]);
+          }
+          
+          let vchTotal = 0;
+
+          entries.forEach(entry => {
+            if (!entry || !entry.LEDGERNAME) return;
+            const amtStr = String(entry.AMOUNT || "0").replace(/[^0-9.-]+/g, '');
+            const rawAmt = parseFloat(amtStr) || 0;
+            // Tally represents debits as negative values in AMOUNT for Vouchers, or uses ISDEEMEDPOSITIVE="Yes"
+            const isDebit = entry.ISDEEMEDPOSITIVE === "Yes" || rawAmt < 0;
+            const absAmt = Math.abs(rawAmt);
+            
+            if (absAmt > 0) {
+              v.lines.push({
+                ledgerName: String(entry.LEDGERNAME),
+                amount: absAmt,
+                isDebit: isDebit
+              });
+              if (isDebit) vchTotal += absAmt;
+            }
+          });
+          
+          v.totalAmount = vchTotal;
+          if (v.lines.length > 0) {
+            vouchers.push(v);
+          }
+    });
+    
+    return vouchers;
+  }
+
+  async function performSync(options = { forceFull: false, syncTaskId: null }) {
     if (isSyncing) {
-      console.log("[AGENT] Sync already in progress, skipping...");
-      return;
+      if (syncStartTime > 0 && (Date.now() - syncStartTime) > MAX_SYNC_DURATION) {
+        console.warn(`[AGENT] ⚠️ Detected stale sync lock (active for ${Math.round((Date.now() - syncStartTime)/1000)}s). Force releasing lock.`);
+        isSyncing = false;
+      } else {
+        if (options.syncTaskId) {
+          console.log(`[AGENT] Sync already in progress. Queueing Force Sync task ${options.syncTaskId}.`);
+          pendingForceSyncOptions = options;
+        } else {
+          console.log("[AGENT] Sync already in progress, skipping auto-sync...");
+        }
+        return;
+      }
     }
     
     isSyncing = true;
+    syncStartTime = Date.now();
     try {
-      let activeCompany = await getActiveTallyCompanyName();
+      let activeCo = await getActiveTallyCompanyDetails();
+      let activeCompany = activeCo ? activeCo.name : null;
 
       // If the live check timed out but we know the company from a previous successful check,
       // use the cached name rather than aborting the entire sync.
@@ -36511,8 +36783,10 @@ async function startBackgroundSync(config) {
         if (tallyActiveCompanyName) {
           console.log(`[AGENT] Tally check timed out — using last known company: "${tallyActiveCompanyName}". Retrying sync...`);
           activeCompany = tallyActiveCompanyName;
+          activeCo = { name: tallyActiveCompanyName, guid: null };
         } else {
           console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
+          isSyncing = false;
           return;
         }
       }
@@ -36522,27 +36796,22 @@ async function startBackgroundSync(config) {
     const currentConfig = loadConfig() || { companies: {} };
     let companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
     
-    // Fallback: If not paired by active Tally company name, but exactly one company is paired, use it!
-    if (!companyConfig && currentConfig.companies) {
-      const keys = Object.keys(currentConfig.companies);
-      if (keys.length === 1) {
-        companyConfig = currentConfig.companies[keys[0]];
-      }
-    }
+    // Fallback removed: We must require exact Tally Company Name matching to prevent pushing data to the wrong dashboard.
     
     if (!companyConfig || !companyConfig.apiKey) {
       console.log(`[AGENT] Executing Sync: Active Tally company "${activeCompany}" is not paired yet.`);
       console.log(`[AGENT] Launching setup interface. Please enter the handshake code in your browser.`);
+      isSyncing = false;
       startLocalGUI();
       return;
     }
     
     console.log(`[AGENT] Executing Sync for client: "${companyConfig.clientName}" (Active Tally: "${activeCompany}")`);
     
-    // Calculate last 24 months
+    // Calculate last 36 months (3 years) to ensure full fiscal years are captured
     const periodsToSync = [];
     const now = new Date();
-    for (let i = 23; i >= 0; i--) {
+    for (let i = 35; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -36557,9 +36826,29 @@ async function startBackgroundSync(config) {
     }
 
     const allFinancialPayloads = [];
+    const allUniqueLedgersMap = new Map();
 
-    for (const period of periodsToSync) {
-        const xmlPayload = `<ENVELOPE>
+    // Process periods concurrently to reduce sync time from minutes to seconds
+    const concurrencyLimit = 12; // Tally and Vercel can easily handle 12 concurrent requests
+    
+    // Helper for concurrency
+    async function processConcurrently(items, limit, asyncFn) {
+        const results = [];
+        let index = 0;
+        const exec = async () => {
+            while (index < items.length) {
+                const i = index++;
+                results[i] = await asyncFn(items[i]);
+            }
+        };
+        const workers = Array(Math.min(limit, items.length)).fill(null).map(exec);
+        await Promise.all(workers);
+        return results;
+    }
+
+    await processConcurrently(periodsToSync, concurrencyLimit, async (period) => {
+        // 1. Fetch Trial Balance for high-level FinancialRecord (Assets, Liab, Cash)
+        const tbXmlPayload = `<ENVELOPE>
   <HEADER>
     <TALLYREQUEST>Export Data</TALLYREQUEST>
   </HEADER>
@@ -36569,6 +36858,11 @@ async function startBackgroundSync(config) {
         <REPORTNAME>Trial Balance</REPORTNAME>
         <STATICVARIABLES>
           <EXPLODEFLAG>Yes</EXPLODEFLAG>
+          <EXPLODEALLLEVELS>Yes</EXPLODEALLLEVELS>
+          <ISLEDGERWISE>Yes</ISLEDGERWISE>
+          <DSPSHOWOPENING>Yes</DSPSHOWOPENING>
+          <DSPSHOWTRANS>Yes</DSPSHOWTRANS>
+          <DSPSHOWCLOSING>Yes</DSPSHOWCLOSING>
           <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
           <SVFROMDATE>${period.fromDate}</SVFROMDATE>
           <SVTODATE>${period.toDate}</SVTODATE>
@@ -36578,71 +36872,155 @@ async function startBackgroundSync(config) {
   </BODY>
 </ENVELOPE>`;
 
+        // 2. Fetch Day Book for Transaction-Level Granularity
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const formatTdlDate = (yyyymmdd) => {
+            const d = String(yyyymmdd);
+            const year = d.substring(0,4);
+            const month = parseInt(d.substring(4,6), 10) - 1;
+            const day = parseInt(d.substring(6,8), 10);
+            return `${day}-${monthNames[month]}-${year}`;
+        };
+        const tdlFrom = formatTdlDate(period.fromDate);
+
+        const dayBookXmlPayload = `<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>FinVoucherCollection</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>${period.fromDate}</SVFROMDATE>
+        <SVTODATE>${period.toDate}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="FinVoucherCollection" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>Voucher</TYPE>
+            <FETCH>*, AllLedgerEntries.*</FETCH>
+            <FILTER>PeriodFilter</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE="Formulae" NAME="PeriodFilter">
+            $Date &gt;= $$Date:"${tdlFrom}" AND $Date &lt;= $$MonthEnd:$$Date:"${tdlFrom}"
+          </SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+
         try {
-            const tallyResponse = await axios.post("http://localhost:9000", xmlPayload, {
-                headers: { "Content-Type": "text/xml" },
-                timeout: 5000 
-            });
+            // -- Trial Balance & Day Book Requests Concurrently --
+            const [tbResponse, dbResponse] = await Promise.all([
+                axios.post("http://localhost:9000", tbXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 60000 }).catch(() => null),
+                axios.post("http://localhost:9000", dayBookXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 90000 }).catch(() => null)
+            ]);
 
-            const parsedData = await parser.parseStringPromise(tallyResponse.data);
-
-            const rawLedgers = extractAllLedgers(parsedData);
-            
-            // Re-implement the original keyword extraction using the rawLedgers
-            let rawRevenue = 0, rawCOGS = 0, rawOpEx = 0;
-            for (const [name, amt] of Object.entries(rawLedgers)) {
-                const lowerName = name.toLowerCase();
-                if (["sales accounts", "direct incomes", "revenue"].some(kw => lowerName.includes(kw))) {
-                    rawRevenue += amt;
-                } else if (["purchase accounts", "direct expenses", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) {
-                    rawCOGS += amt;
-                } else if (["indirect expenses", "operating expenses"].some(kw => lowerName.includes(kw))) {
-                    rawOpEx += amt;
+            if (tbResponse && tbResponse.data) {
+                const parsedTb = await parser.parseStringPromise(tbResponse.data);
+                const rawLedgers = extractAllLedgers(parsedTb);
+                
+                let rawRevenue = 0, rawCOGS = 0, rawOpEx = 0;
+                for (const [name, amt] of Object.entries(rawLedgers)) {
+                    const lowerName = name.toLowerCase();
+                    if (["sales", "income", "revenue"].some(kw => lowerName.includes(kw))) rawRevenue += amt;
+                    else if (["purchase", "direct expenses", "cost of goods", "opening stock"].some(kw => lowerName.includes(kw))) rawCOGS += amt;
+                    else if (["indirect expenses", "operating expenses", "admin", "office"].some(kw => lowerName.includes(kw))) rawOpEx += amt;
                 }
+                const rawCash = extractTrialBalance(parsedTb, ["Cash-in-hand", "Bank Accounts"]);
+                const rawCurrentAssets = extractTrialBalance(parsedTb, ["Current Assets"]);
+                const rawCurrentLiab = extractTrialBalance(parsedTb, ["Current Liabilities"]);
+                const rawAR = extractTrialBalance(parsedTb, ["Sundry Debtors", "Accounts Receivable"]);
+                const rawAP = extractTrialBalance(parsedTb, ["Sundry Creditors", "Accounts Payable"]);
+                const rawInventory = extractTrialBalance(parsedTb, ["Closing Stock", "Stock-in-hand", "Inventory"]);
+
+                const finalRevenue = rawRevenue > 0 ? rawRevenue : 0;
+                const finalCOGS = rawCOGS > 0 ? rawCOGS : 0;
+                const finalOpEx = rawOpEx > 0 ? rawOpEx : 0;
+                const netIncome = finalRevenue - finalCOGS - finalOpEx;
+
+                allFinancialPayloads.push({
+                    period: period.periodKey,
+                    source: "Tally Prime Agent",
+                    revenue: finalRevenue,
+                    cogs: finalCOGS,
+                    operatingExpenses: finalOpEx,
+                    netIncome: netIncome,
+                    totalAssets: rawCurrentAssets,
+                    currentAssets: rawCurrentAssets,
+                    currentLiabilities: rawCurrentLiab,
+                    totalEquity: rawCurrentAssets - rawCurrentLiab,
+                    operatingCashFlow: netIncome * 0.8,
+                    cashBalance: rawCash,
+                    burnRate: finalOpEx * 1.2,
+                    accountsReceivable: rawAR,
+                    accountsPayable: rawAP,
+                    inventory: rawInventory,
+                    ledgers: rawLedgers
+                });
             }
-            const rawCash = extractTrialBalance(parsedData, ["Cash-in-hand", "Bank Accounts"]);
-            const rawCurrentAssets = extractTrialBalance(parsedData, ["Current Assets"]);
-            const rawCurrentLiab = extractTrialBalance(parsedData, ["Current Liabilities"]);
-            const rawAR = extractTrialBalance(parsedData, ["Sundry Debtors", "Accounts Receivable"]);
-            const rawAP = extractTrialBalance(parsedData, ["Sundry Creditors", "Accounts Payable"]);
-            const rawInventory = extractTrialBalance(parsedData, ["Closing Stock", "Stock-in-hand", "Inventory"]);
 
-            const finalRevenue = rawRevenue > 0 ? rawRevenue : 0;
-            const finalCOGS = rawCOGS > 0 ? rawCOGS : 0;
-            const finalOpEx = rawOpEx > 0 ? rawOpEx : 0;
-            
-            const netIncome = finalRevenue - finalCOGS - finalOpEx;
+            if (dbResponse && dbResponse.data) {
+                const parsedDb = await parser.parseStringPromise(dbResponse.data);
+                const stats = { outOfBounds: 0 };
+                const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
+                
+                if (periodVouchers.length >= 0) {
+                   console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}...`);
+                   try {
+                        await axios.post(`${getVercelApi()}/ingest/vouchers`, 
+                           { 
+                                vouchers: periodVouchers,
+                                syncTaskId: options.syncTaskId,
+                                forceFull: options.forceFull,
+                                companyGuid: activeCo?.guid || null,
+                                fromDate: period.fromDate,
+                                toDate: period.toDate,
+                                periodKey: period.periodKey
+                           },
+                           {
+                               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${companyConfig.apiKey}` },
+                               timeout: 60000
+                           }
+                       );
+                   } catch(pushErr) {
+                       console.error(`    -> Backend timeout/error pushing ${period.periodKey}: ${pushErr.message}`);
+                   }
+                }
+                
+                console.log(`    -> Fetched ${period.periodKey} | Vouchers: ${periodVouchers.length}`);
+            }
 
-            allFinancialPayloads.push({
-                period: period.periodKey,
-                source: "Tally Prime Agent",
-                revenue: finalRevenue,
-                cogs: finalCOGS,
-                operatingExpenses: finalOpEx,
-                netIncome: netIncome,
-                totalAssets: rawCurrentAssets,
-                currentAssets: rawCurrentAssets,
-                currentLiabilities: rawCurrentLiab,
-                totalEquity: rawCurrentAssets - rawCurrentLiab,
-                operatingCashFlow: netIncome * 0.8,
-                cashBalance: rawCash,
-                burnRate: finalOpEx * 1.2,
-                accountsReceivable: rawAR,
-                accountsPayable: rawAP,
-                inventory: rawInventory,
-                ledgers: rawLedgers
-            });
-
-            console.log(`    -> Fetched ${period.periodKey} - Rev: ${finalRevenue}`);
         } catch (e) {
             console.error(`    -> Error fetching ${period.periodKey}: Tally not running or unreachable.`);
         }
-    }
+    });
 
     if (allFinancialPayloads.length > 0) {
         try {
-            await axios.post(`${VERCEL_API}/ingest`, 
-                allFinancialPayloads,
+            // 1. Fetch Explicit Master Ledgers
+            const masterLedgers = await extractChartOfAccounts();
+            masterLedgers.forEach(ledger => {
+                if (ledger && ledger.name) {
+                    const lower = ledger.name.toLowerCase();
+                    if (!allUniqueLedgersMap.has(lower)) allUniqueLedgersMap.set(lower, ledger);
+                }
+            });
+            const finalLedgers = Array.from(allUniqueLedgersMap.values());
+            
+            // 2. Push Trial Balance summary (High level metrics)
+            await axios.post(`${getVercelApi()}/ingest`, 
+                { 
+                    records: allFinancialPayloads, 
+                    chartOfAccounts: finalLedgers,
+                    syncTaskId: options.syncTaskId,
+                    forceFull: options.forceFull,
+                    companyGuid: activeCo?.guid || null
+                },
                 {
                     headers: {
                         'Content-Type': 'application/json',
@@ -36650,7 +37028,7 @@ async function startBackgroundSync(config) {
                     }
                 }
             );
-            console.log(`[AGENT] Pushed ${allFinancialPayloads.length} records to Vercel.`);
+            console.log(`[AGENT] Pushed ${allFinancialPayloads.length} summary records and ${finalLedgers.length} ledgers to Vercel.`);
         } catch (err) {
             console.error(`[AGENT] Error pushing to Vercel: ${err.message}`);
             if (err.response?.status === 401) {
@@ -36681,6 +37059,15 @@ async function startBackgroundSync(config) {
     }
     } finally {
       isSyncing = false;
+      syncStartTime = 0;
+      if (pendingForceSyncOptions) {
+        const nextOpts = pendingForceSyncOptions;
+        pendingForceSyncOptions = null;
+        console.log(`\n[AGENT] Executing queued Force Sync task ${nextOpts.syncTaskId} now...`);
+        setTimeout(() => {
+          performSync(nextOpts).catch(err => console.error("[AGENT] Error running queued Force Sync:", err.message));
+        }, 0);
+      }
     }
   }
 
@@ -36692,23 +37079,21 @@ async function startBackgroundSync(config) {
       const currentConfig = loadConfig();
       let companyConfig = currentConfig && currentConfig.companies && currentConfig.companies[activeCompany];
       
-      // Fallback: If not paired by active Tally company name, but exactly one company is paired, use it!
-      if (!companyConfig && currentConfig && currentConfig.companies) {
-        const keys = Object.keys(currentConfig.companies);
-        if (keys.length === 1) {
-          companyConfig = currentConfig.companies[keys[0]];
-        }
-      }
+      // Fallback removed for security
       
       if (companyConfig && companyConfig.apiKey) {
-        const res = await axios.post(`${VERCEL_API}/connector/heartbeat`, {
+        const res = await axios.post(`${getVercelApi()}/connector/heartbeat`, {
           apiKey: companyConfig.apiKey,
           status: 'ONLINE'
         }, { timeout: 15000 });
 
         if (res.data && res.data.pendingSync) {
-           console.log("\n[AGENT] ⚡ Cloud requested an immediate Force Sync! Starting now...");
-           performSync(); // trigger immediately
+           const pTask = res.data.pendingTask || {};
+           console.log(`\n[AGENT] ⚡ Cloud requested sync (Force Full: ${pTask.forceFull || false})! Starting now...`);
+           performSync({ 
+             forceFull: pTask.forceFull || false, 
+             syncTaskId: pTask.id || null 
+           });
         }
       }
     } catch (err) {
@@ -36753,7 +37138,7 @@ function startLocalGUI() {
 
     try {
       // Exchange 6-digit code for API Key via Vercel Cloud Handshake
-      const response = await axios.put(`${VERCEL_API}/handshake`, { code });
+       const response = await axios.put(`${getVercelApi()}/handshake`, { code });
       
       const { apiKey, clientName } = response.data;
 
@@ -36806,6 +37191,41 @@ async function init() {
   console.log("Starting Tally Multi-Company Sync Connector (Live Engine)");
   console.log("=======================================================\n");
 
+  if (process.argv.includes('--reset')) {
+    console.log("[AGENT] Reset command received. Disconnecting from cloud...");
+    const currentConfig = loadConfig();
+    if (currentConfig && currentConfig.companies) {
+      for (const [companyName, companyConfig] of Object.entries(currentConfig.companies)) {
+        if (companyConfig.apiKey) {
+          try {
+             await axios.post(`${getVercelApi()}/connector/heartbeat`, {
+              apiKey: companyConfig.apiKey,
+              status: 'OFFLINE'
+            }, { timeout: 10000 });
+            console.log(`[AGENT] Successfully marked "${companyName}" as OFFLINE in the cloud.`);
+          } catch (err) {
+            console.error(`[AGENT] Failed to reach cloud for "${companyName}":`, err.message);
+          }
+        }
+      }
+    }
+    
+    // Delete local config
+    if (fs.existsSync(configPath)) {
+      try {
+        fs.unlinkSync(configPath);
+        console.log(`[AGENT] Local credentials deleted successfully.`);
+      } catch (err) {
+        console.error(`[AGENT] Failed to delete local config:`, err.message);
+      }
+    } else {
+      console.log(`[AGENT] Local credentials already deleted.`);
+    }
+    
+    console.log("\n[AGENT] Reset complete. You can close this window.");
+    return;
+  }
+
   const activeCompany = await getActiveTallyCompanyName();
   tallyActiveCompanyName = activeCompany;
 
@@ -36816,13 +37236,7 @@ async function init() {
     
     let companyConfig = currentConfig.companies && currentConfig.companies[activeCompany];
     
-    // Fallback: If not paired by active Tally company name, but exactly one company is paired, use it!
-    if (!companyConfig && currentConfig.companies) {
-      const keys = Object.keys(currentConfig.companies);
-      if (keys.length === 1) {
-        companyConfig = currentConfig.companies[keys[0]];
-      }
-    }
+    // Fallback removed for security
 
     if (companyConfig && companyConfig.apiKey) {
       console.log(`[AGENT] Found paired credentials for "${activeCompany}" (Client: "${companyConfig.clientName}").`);
@@ -36855,7 +37269,32 @@ async function init() {
   }
 }
 
-init().catch(console.error);
+const readline = __nccwpck_require__(3785);
+function preventExit(msg = "Press Enter to exit...") {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  rl.question(`\n${msg}`, () => {
+    rl.close();
+    process.exit(1);
+  });
+}
+
+process.on('uncaughtException', (err) => {
+  console.error('\n[FATAL ERROR]', err.message);
+  preventExit();
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('\n[FATAL ERROR]', err);
+  preventExit();
+});
+
+init().catch(err => {
+  console.error("\n[INIT ERROR]", err);
+  preventExit();
+});
 
 module.exports = __webpack_exports__;
 /******/ })()
