@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       records = [body];
     }
 
-    if (records.length === 0) {
+    if (records.length === 0 && (!body.chartOfAccounts || body.chartOfAccounts.length === 0)) {
       return NextResponse.json({ message: "Payload empty" }, { status: 400 });
     }
 
@@ -209,6 +209,7 @@ export async function POST(req: Request) {
 
     // 4c. Update Unique Ledgers for the Mapping UI & Save Closing Balances
     if (client.software === 'TALLY') {
+      console.log(`[SYNC] [COA_RECONCILIATION_START] syncRunId=${syncTaskId || 'N/A'} companyId=${client.id}`);
       // Read balances from Trial Balance records (latest one has current values)
       const ledgerBalances: Record<string, number> = {};
       for (const record of records) {
@@ -445,60 +446,82 @@ export async function POST(req: Request) {
       }
 
       // Check for DELETED / REMOVED ledgers
+      const parsedLedgerCount = body.chartOfAccounts ? body.chartOfAccounts.length : 0;
+      const existingActiveCount = dbLedgers.filter(x => x.isActive).length;
+
+      // Safety checks for deactivation
+      let runDeactivation = true;
+      if (!body.chartOfAccounts || !Array.isArray(body.chartOfAccounts)) {
+        runDeactivation = false;
+      } else if (parsedLedgerCount === 0) {
+        runDeactivation = false;
+      } else if (parsedLedgerCount < existingActiveCount * 0.5 && existingActiveCount > 0) {
+        console.error(`[SYNC] [COA_RECONCILIATION_FAILED] syncRunId=${syncTaskId || 'N/A'} companyId=${client.id} parsed count (${parsedLedgerCount}) dropped significantly compared to existing active count (${existingActiveCount}). Skipping deactivation to protect data integrity.`);
+        throw new Error(`Tally sync aborted: incoming ledger count (${parsedLedgerCount}) dropped by more than 50% compared to existing database active ledger count (${existingActiveCount}). This indicates a partial or failed sync response.`);
+      }
+
       const deletedLedgerIds: string[] = [];
       const deletedLedgerNames: string[] = [];
       const deletedTraces: any[] = [];
 
-      for (const dbL of dbLedgers) {
-        if (dbL.sourceStatus === "deleted") continue;
+      if (runDeactivation) {
+        for (const dbL of dbLedgers) {
+          if (dbL.sourceStatus === "deleted") continue;
 
-        let isPresent = false;
-        if (dbL.sourceLedgerId) {
-          isPresent = activeSourceIds.has(dbL.sourceLedgerId);
-        } else {
-          isPresent = activeNames.has(dbL.name.toLowerCase());
-        }
-
-        if (!isPresent) {
-          deletedCount++;
-          deletedLedgerIds.push(dbL.id);
-          deletedLedgerNames.push(dbL.name);
-
-          deletedTraces.push({
-            sourceId: dbL.sourceLedgerId || dbL.sourceGuid || dbL.name,
-            previousName: dbL.name,
-            currentName: null,
-            previousGroup: dbL.groupName,
-            currentGroup: null,
-            previousStatus: dbL.sourceStatus,
-            currentStatus: "deleted",
-            mappingStatus: "inactive_source_deleted",
-            syncAction: "DELETED",
-            reason: `Ledger no longer exists in Tally`
-          });
-        }
-      }
-
-      if (deletedLedgerIds.length > 0) {
-        await prisma.normalizedLedger.updateMany({
-          where: { id: { in: deletedLedgerIds } },
-          data: {
-            sourceStatus: "deleted",
-            isActive: false,
-            deletedAt: new Date(),
-            mappingStatus: "inactive_source_deleted",
-            closingBalance: 0,
-            openingBalance: 0
+          let isPresent = false;
+          if (dbL.sourceLedgerId) {
+            isPresent = activeSourceIds.has(dbL.sourceLedgerId);
+          } else {
+            isPresent = activeNames.has(dbL.name.toLowerCase());
           }
-        });
 
-        await prisma.unifiedLedgerMapping.updateMany({
-          where: { clientId: client.id, softwareLedgerName: { in: deletedLedgerNames } },
-          data: { source: "DELETED_SOURCE" }
-        });
+          if (!isPresent) {
+            deletedCount++;
+            deletedLedgerIds.push(dbL.id);
+            deletedLedgerNames.push(dbL.name);
 
-        traceLog.push(...deletedTraces);
+            deletedTraces.push({
+              sourceId: dbL.sourceLedgerId || dbL.sourceGuid || dbL.name,
+              previousName: dbL.name,
+              currentName: null,
+              previousGroup: dbL.groupName,
+              currentGroup: null,
+              previousStatus: dbL.sourceStatus,
+              currentStatus: "deleted",
+              mappingStatus: "inactive_source_deleted",
+              syncAction: "DELETED",
+              reason: `Ledger no longer exists in Tally`
+            });
+          }
+        }
+
+        if (deletedLedgerIds.length > 0) {
+          await prisma.normalizedLedger.updateMany({
+            where: { id: { in: deletedLedgerIds } },
+            data: {
+              sourceStatus: "deleted",
+              isActive: false,
+              deletedAt: new Date(),
+              mappingStatus: "inactive_source_deleted",
+              closingBalance: 0,
+              openingBalance: 0
+            }
+          });
+
+          await prisma.unifiedLedgerMapping.updateMany({
+            where: { clientId: client.id, softwareLedgerName: { in: deletedLedgerNames } },
+            data: { source: "DELETED_SOURCE" }
+          });
+
+          traceLog.push(...deletedTraces);
+        }
       }
+
+      const unmappedCount = await prisma.normalizedLedger.count({
+        where: { clientId: client.id, isActive: true, mappingStatus: "review_required" }
+      });
+
+      console.log(`[SYNC] [COA_RECONCILIATION_COMPLETE] syncRunId=${syncTaskId || 'N/A'} companyId=${client.id} sourceLedgerCount=${body.chartOfAccounts ? body.chartOfAccounts.length : 0} parsedLedgerCount=${chartOfAccounts.length} existingAppLedgerCount=${dbLedgers.length} insertedCount=${addedCount} updatedCount=${updatedCount} renamedCount=${renamedCount} deactivatedCount=${deletedCount} reactivatedCount=${reactivatedCount} unmappedCount=${unmappedCount} errorCount=0`);
 
       console.log(`[SYNC] [LEDGER_WRITE_DONE] syncRunId=${syncTaskId || 'N/A'} client=${client.name} count=${chartOfAccounts.length} durationMs=${Date.now() - startTime}ms`);
 

@@ -37000,62 +37000,72 @@ async function startBackgroundSync(config) {
         }
     });
 
-    if (allFinancialPayloads.length > 0) {
-        try {
-            // 1. Fetch Explicit Master Ledgers
-            const masterLedgers = await extractChartOfAccounts();
-            masterLedgers.forEach(ledger => {
-                if (ledger && ledger.name) {
-                    const lower = ledger.name.toLowerCase();
-                    if (!allUniqueLedgersMap.has(lower)) allUniqueLedgersMap.set(lower, ledger);
-                }
-            });
-            const finalLedgers = Array.from(allUniqueLedgersMap.values());
-            
-            // 2. Push Trial Balance summary (High level metrics)
-            await axios.post(`${getVercelApi()}/ingest`, 
-                { 
-                    records: allFinancialPayloads, 
-                    chartOfAccounts: finalLedgers,
-                    syncTaskId: options.syncTaskId,
-                    forceFull: options.forceFull,
-                    companyGuid: activeCo?.guid || null
-                },
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${companyConfig.apiKey}`
-                    }
-                }
-            );
-            console.log(`[AGENT] Pushed ${allFinancialPayloads.length} summary records and ${finalLedgers.length} ledgers to Vercel.`);
-        } catch (err) {
-            console.error(`[AGENT] Error pushing to Vercel: ${err.message}`);
-            if (err.response?.status === 401) {
-                console.log(`\n[AGENT] ⚠️  UNAUTHORIZED ACCESS (401)`);
-                console.log(`[AGENT] The local sync credentials for "${companyConfig.clientName}" are invalid or belong to a different organization.`);
-                console.log(`[AGENT] Removing paired credentials for "${activeCompany}" and launching pairing wizard...\n`);
-                try {
-                    let current = loadConfig();
-                    if (current && current.companies) {
-                        delete current.companies[activeCompany];
-                        delete current.companies[companyConfig.clientName];
-                        fs.writeFileSync(configPath, JSON.stringify(current, null, 2));
-                    }
-                } catch (e) {
-                    console.error("[AGENT] Error updating config file:", e.message);
-                }
-                if (syncInterval) {
-                    clearInterval(syncInterval);
-                    syncInterval = null;
-                }
-                if (heartbeatInterval) {
-                    clearInterval(heartbeatInterval);
-                    heartbeatInterval = null;
-                }
-                startLocalGUI();
-            }
+    // Fetch Chart of Accounts & Sync unconditionally
+    let finalLedgers = [];
+    try {
+        console.log("[AGENT] [TALLY_COA_FETCH_START] Fetching complete Tally Chart of Accounts...");
+        const masterLedgers = await extractChartOfAccounts();
+        if (!masterLedgers || masterLedgers.length === 0) {
+            throw new Error("Chart of Accounts extraction returned 0 ledgers. Aborting sync to prevent database ledger loss.");
         }
+        console.log(`[AGENT] [TALLY_COA_FETCH_COMPLETE] Successfully fetched ${masterLedgers.length} master ledgers from Tally.`);
+        masterLedgers.forEach(ledger => {
+            if (ledger && ledger.name) {
+                const lower = ledger.name.toLowerCase();
+                if (!allUniqueLedgersMap.has(lower)) allUniqueLedgersMap.set(lower, ledger);
+            }
+        });
+        finalLedgers = Array.from(allUniqueLedgersMap.values());
+    } catch (coaErr) {
+        console.error(`[AGENT] Failed to extract complete Chart of Accounts: ${coaErr.message}`);
+        throw coaErr; // Re-throw to prevent proceeding with empty/failed COA
+    }
+
+    try {
+        // Push Trial Balance summary and complete Chart of Accounts
+        await axios.post(`${getVercelApi()}/ingest`, 
+            { 
+                records: allFinancialPayloads, 
+                chartOfAccounts: finalLedgers,
+                syncTaskId: options.syncTaskId,
+                forceFull: options.forceFull,
+                companyGuid: activeCo?.guid || null
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${companyConfig.apiKey}`
+                }
+            }
+        );
+        console.log(`[AGENT] Pushed ${allFinancialPayloads.length} summary records and ${finalLedgers.length} ledgers to Vercel.`);
+    } catch (err) {
+        console.error(`[AGENT] Error pushing to Vercel: ${err.message}`);
+        if (err.response?.status === 401) {
+            console.log(`\n[AGENT] ⚠️  UNAUTHORIZED ACCESS (401)`);
+            console.log(`[AGENT] The local sync credentials for "${companyConfig.clientName}" are invalid or belong to a different organization.`);
+            console.log(`[AGENT] Removing paired credentials for "${activeCompany}" and launching pairing wizard...\n`);
+            try {
+                let current = loadConfig();
+                if (current && current.companies) {
+                    delete current.companies[activeCompany];
+                    delete current.companies[companyConfig.clientName];
+                    fs.writeFileSync(configPath, JSON.stringify(current, null, 2));
+                }
+            } catch (e) {
+                console.error("[AGENT] Error updating config file:", e.message);
+            }
+            if (syncInterval) {
+                clearInterval(syncInterval);
+                syncInterval = null;
+            }
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+            startLocalGUI();
+        }
+        throw err;
     }
     } finally {
       isSyncing = false;
