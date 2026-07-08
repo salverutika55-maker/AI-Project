@@ -34,52 +34,189 @@ let pendingForceSyncOptions = null;
 let syncStartTime = 0;
 const MAX_SYNC_DURATION = 15 * 60 * 1000; // 15 minutes
 
-async function getActiveTallyCompanyDetails() {
+const TALLY_URL = 'http://127.0.0.1:9000';
+
+const TALLY_STATUS = {
+  TALLY_UNREACHABLE: 'TALLY_UNREACHABLE',
+  TALLY_HTTP_ERROR: 'TALLY_HTTP_ERROR',
+  TALLY_RESPONSE_INVALID: 'TALLY_RESPONSE_INVALID',
+  TALLY_XML_PARSE_ERROR: 'TALLY_XML_PARSE_ERROR',
+  TALLY_REACHABLE_NO_COMPANY: 'TALLY_REACHABLE_NO_COMPANY',
+  TALLY_COMPANY_MISMATCH: 'TALLY_COMPANY_MISMATCH',
+  TALLY_READY: 'TALLY_READY'
+};
+
+async function checkTallyStatus(targetCompanyName = null) {
+  const url = TALLY_URL;
+  const timeout = 15000;
+  
+  let tcpConnected = false;
+  let httpReachable = false;
+  let httpStatus = null;
+  let responseContentType = null;
+  let responseLength = 0;
+  let xmlParseSuccess = false;
+  let companyDetectionSuccess = false;
+  let detectedCompanies = [];
+  let exactErrorCode = null;
+  let exactErrorMessage = null;
+  let exactErrorStack = null;
+  
   const xmlPayload = `
 <ENVELOPE>
   <HEADER>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>CustomCompanyCollection</ID>
   </HEADER>
   <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>List of Accounts</REPORTNAME>
-        <STATICVARIABLES>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-    </EXPORTDATA>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="CustomCompanyCollection" ISMODIFY="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>Company</TYPE>
+            <NATIVEMETHOD>Name</NATIVEMETHOD>
+            <NATIVEMETHOD>GUID</NATIVEMETHOD>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
   </BODY>
-</ENVELOPE>
-  `.trim();
+</ENVELOPE>`.trim();
 
   try {
-    const res = await axios.post("http://localhost:9000", xmlPayload, {
+    const res = await axios.post(url, xmlPayload, {
       headers: { "Content-Type": "text/xml" },
-      timeout: 15000
+      timeout: timeout
     });
     
-    const coMatch = res.data.match(/<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/i);
-    const guidMatch = res.data.match(/<COMPANYGUID>([^<]+)<\/COMPANYGUID>/i) || res.data.match(/<GUID>([^<]+)<\/GUID>/i);
+    tcpConnected = true;
+    httpReachable = true;
+    httpStatus = res.status;
+    responseContentType = res.headers['content-type'] || 'text/xml';
+    responseLength = res.data ? String(res.data).length : 0;
     
-    if (coMatch && coMatch[1]) {
-      return {
-        name: coMatch[1].trim(),
-        guid: guidMatch ? guidMatch[1].trim() : null
-      };
+    let parsed;
+    try {
+      parsed = await parser.parseStringPromise(res.data);
+      xmlParseSuccess = true;
+    } catch (parseErr) {
+      exactErrorCode = parseErr.code || 'XML_PARSE_ERR';
+      exactErrorMessage = parseErr.message;
+      exactErrorStack = parseErr.stack;
+      
+      logDiag();
+      return { status: TALLY_STATUS.TALLY_XML_PARSE_ERROR, company: null };
     }
-  } catch (err) {
-    // Tally not running or unreachable
+    
+    const coNode = parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY;
+    if (!coNode) {
+      logDiag();
+      return { status: TALLY_STATUS.TALLY_REACHABLE_NO_COMPANY, company: null };
+    }
+    
+function extractNodeValue(node) {
+  if (!node) return null;
+  if (Array.isArray(node)) {
+    for (const val of node) {
+      if (typeof val === 'string') return val;
+      if (val && typeof val === 'object' && val._) return val._;
+    }
+    return extractNodeValue(node[0]);
   }
-  return null;
+  if (typeof node === 'object') {
+    return node._ || null;
+  }
+  return node;
+}
+
+    const coArr = Array.isArray(coNode) ? coNode : [coNode];
+    for (const co of coArr) {
+      const name = extractNodeValue(co.NAME);
+      const guid = extractNodeValue(co.GUID);
+      if (name) {
+        detectedCompanies.push({ name: String(name).trim(), guid: guid ? String(guid).trim() : null });
+      }
+    }
+    
+    if (detectedCompanies.length === 0) {
+      logDiag();
+      return { status: TALLY_STATUS.TALLY_REACHABLE_NO_COMPANY, company: null };
+    }
+    
+    companyDetectionSuccess = true;
+    
+    let selectedCo = detectedCompanies[0];
+    if (targetCompanyName) {
+      const matched = detectedCompanies.find(c => c.name.toLowerCase() === targetCompanyName.toLowerCase());
+      if (matched) {
+        selectedCo = matched;
+      } else {
+        logDiag(selectedCo);
+        return { status: TALLY_STATUS.TALLY_COMPANY_MISMATCH, company: selectedCo, allCompanies: detectedCompanies };
+      }
+    }
+    
+    logDiag(selectedCo);
+    return { status: TALLY_STATUS.TALLY_READY, company: selectedCo, allCompanies: detectedCompanies };
+    
+  } catch (err) {
+    exactErrorCode = err.code || 'UNKNOWN_ERR';
+    exactErrorMessage = err.message;
+    exactErrorStack = err.stack;
+    
+    if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+      logDiag();
+      return { status: TALLY_STATUS.TALLY_UNREACHABLE, company: null };
+    } else {
+      tcpConnected = true;
+      httpStatus = err.response ? err.response.status : null;
+      logDiag();
+      return { status: TALLY_STATUS.TALLY_HTTP_ERROR, company: null };
+    }
+  }
+
+  function logDiag(selectedCo = null) {
+    let hostname = '127.0.0.1';
+    let port = '9000';
+    try {
+      const parsedUrl = new URL(url);
+      hostname = parsedUrl.hostname;
+      port = parsedUrl.port;
+    } catch (e) {}
+
+    console.log(`[TALLY_DIAG] configuredHost=${hostname}`);
+    console.log(`[TALLY_DIAG] configuredPort=${port}`);
+    console.log(`[TALLY_DIAG] resolvedUrl=${url}`);
+    console.log(`[TALLY_DIAG] requestMethod=POST`);
+    console.log(`[TALLY_DIAG] timeoutMs=${timeout}`);
+    console.log(`[TALLY_DIAG] tcpConnected=${tcpConnected}`);
+    console.log(`[TALLY_DIAG] httpReachable=${httpReachable}`);
+    console.log(`[TALLY_DIAG] httpStatus=${httpStatus || 'null'}`);
+    console.log(`[TALLY_DIAG] responseContentType=${responseContentType || 'null'}`);
+    console.log(`[TALLY_DIAG] responseLength=${responseLength}`);
+    console.log(`[TALLY_DIAG] xmlParseSuccess=${xmlParseSuccess}`);
+    console.log(`[TALLY_DIAG] companyDetectionSuccess=${companyDetectionSuccess}`);
+    console.log(`[TALLY_DIAG] detectedCompanies=${JSON.stringify(detectedCompanies.map(c => c.name))}`);
+    console.log(`[TALLY_DIAG] selectedCompany=${selectedCo ? selectedCo.name : 'null'}`);
+    console.log(`[TALLY_DIAG] exactErrorCode=${exactErrorCode || 'null'}`);
+    console.log(`[TALLY_DIAG] exactErrorMessage=${exactErrorMessage || 'null'}`);
+    console.log(`[TALLY_DIAG] exactErrorStack=${exactErrorStack ? 'present' : 'null'}`);
+  }
+}
+
+async function getActiveTallyCompanyDetails() {
+  const check = await checkTallyStatus();
+  return check.company;
 }
 
 async function getActiveTallyCompanyName() {
   const details = await getActiveTallyCompanyDetails();
-  if (details) {
-    return details.name;
-  }
-  return null;
+  return details ? details.name : null;
 }
 
 function loadConfig() {
@@ -277,7 +414,7 @@ async function startBackgroundSync(config) {
   </BODY>
 </ENVELOPE>`;
       
-      const response = await axios.post("http://localhost:9000", coaXml, {
+      const response = await axios.post(TALLY_URL, coaXml, {
         headers: { "Content-Type": "text/xml" },
         timeout: 60000 
       });
@@ -475,18 +612,29 @@ async function startBackgroundSync(config) {
     isSyncing = true;
     syncStartTime = Date.now();
     try {
-      let activeCo = await getActiveTallyCompanyDetails();
+      const check = await checkTallyStatus(tallyActiveCompanyName);
+      let activeCo = check.company;
       let activeCompany = activeCo ? activeCo.name : null;
 
-      // If the live check timed out but we know the company from a previous successful check,
-      // use the cached name rather than aborting the entire sync.
+      if (check.status === TALLY_STATUS.TALLY_COMPANY_MISMATCH) {
+        console.log(`[AGENT] Executing Sync: Active Tally company "${check.company?.name}" does not match target company "${tallyActiveCompanyName}".`);
+        isSyncing = false;
+        return;
+      }
+
       if (!activeCompany) {
         if (tallyActiveCompanyName) {
-          console.log(`[AGENT] Tally check timed out — using last known company: "${tallyActiveCompanyName}". Retrying sync...`);
+          console.log(`[AGENT] Tally check failed with status "${check.status}" — using last known company: "${tallyActiveCompanyName}". Retrying sync...`);
           activeCompany = tallyActiveCompanyName;
           activeCo = { name: tallyActiveCompanyName, guid: null };
         } else {
-          console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
+          if (check.status === TALLY_STATUS.TALLY_UNREACHABLE) {
+            console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
+          } else if (check.status === TALLY_STATUS.TALLY_REACHABLE_NO_COMPANY) {
+            console.log(`[AGENT] Executing Sync: Tally is online but no company is loaded. Please load a company in Tally.`);
+          } else {
+            console.log(`[AGENT] Executing Sync: Tally connection check failed with status "${check.status}".`);
+          }
           isSyncing = false;
           return;
         }
@@ -617,8 +765,8 @@ async function startBackgroundSync(config) {
         try {
             // -- Trial Balance & Day Book Requests Concurrently --
             const [tbResponse, dbResponse] = await Promise.all([
-                axios.post("http://localhost:9000", tbXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 60000 }).catch(() => null),
-                axios.post("http://localhost:9000", dayBookXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 90000 }).catch(() => null)
+                axios.post(TALLY_URL, tbXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 60000 }).catch(() => null),
+                axios.post(TALLY_URL, dayBookXmlPayload, { headers: { "Content-Type": "text/xml" }, timeout: 90000 }).catch(() => null)
             ]);
 
             if (tbResponse && tbResponse.data) {
@@ -937,7 +1085,8 @@ async function init() {
     return;
   }
 
-  const activeCompany = await getActiveTallyCompanyName();
+  const check = await checkTallyStatus();
+  const activeCompany = check.company ? check.company.name : null;
   tallyActiveCompanyName = activeCompany;
 
   const currentConfig = loadConfig() || { companies: {} };
@@ -962,9 +1111,16 @@ async function init() {
     }
   }
 
-  // Tally is offline/unreachable
-  console.log("[AGENT] ⚠️  Tally Prime is offline or unreachable.");
-  console.log("[AGENT] Please ensure Tally Prime is running on port 9000 and a company is open.");
+  // Tally is offline/unreachable/no company loaded
+  if (check.status === TALLY_STATUS.TALLY_UNREACHABLE) {
+    console.log("[AGENT] ⚠️  Tally Prime is offline or unreachable.");
+    console.log("[AGENT] Please ensure Tally Prime is running on port 9000 and a company is open.");
+  } else if (check.status === TALLY_STATUS.TALLY_REACHABLE_NO_COMPANY) {
+    console.log("[AGENT] ⚠️  Tally is online, but no company is loaded in Tally Prime.");
+    console.log("[AGENT] Please open your company in Tally Prime.");
+  } else {
+    console.log(`[AGENT] ⚠️  Tally connection check failed with status: ${check.status}`);
+  }
   
   // Check if we have any paired companies in registry
   const keys = currentConfig.companies ? Object.keys(currentConfig.companies) : [];
