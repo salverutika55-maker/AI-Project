@@ -8,6 +8,11 @@ export async function POST(req: Request) {
   let currentStage = "START";
   try {
     requestId = crypto.randomUUID();
+    console.log(`[DB_RUNTIME_DIAG] DATABASE_URL_present=${!!process.env.DATABASE_URL}`);
+    console.log(`[DB_RUNTIME_DIAG] DATABASE_URL_length=${process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0}`);
+    console.log(`[DB_RUNTIME_DIAG] runtime=vercel`);
+    console.log(`[DB_RUNTIME_DIAG] nodeEnv=${process.env.NODE_ENV}`);
+    console.log(`[DB_RUNTIME_DIAG] prismaInit=starting`);
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ message: "Missing or invalid Authorization header" }, { status: 401 });
@@ -418,11 +423,7 @@ export async function POST(req: Request) {
       message: "Internal Error during API Ingestion",
       error: {
         requestId,
-        stage: currentStage,
-        name: error.name,
-        code: error.code,
-        message: error.message,
-        stack: error.stack
+        stage: currentStage
       }
     }, { status: 500 });
   }
