@@ -36324,15 +36324,45 @@ const configPath = path.join(configDir, 'config.json');
 const DEFAULT_VERCEL_API = 'https://finanalyzer-app.vercel.app/api';
 
 function getVercelApi() {
+  let source = "default";
+  let rawConfiguredValue = null;
+  let resolvedBaseUrl = DEFAULT_VERCEL_API;
+
   try {
     if (fs.existsSync(configPath)) {
       const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       if (parsed && parsed.apiUrl) {
-        return parsed.apiUrl;
+        rawConfiguredValue = parsed.apiUrl;
+        source = "config.json";
+        resolvedBaseUrl = parsed.apiUrl;
       }
     }
-  } catch (e) {}
-  return DEFAULT_VERCEL_API;
+  } catch (e) {
+    source = "error_reading_config";
+  }
+
+  // Enforce dev vs production checks
+  const isLocalHost = resolvedBaseUrl.includes('localhost') || resolvedBaseUrl.includes('127.0.0.1') || resolvedBaseUrl.includes('[::1]');
+  const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+
+  console.log(`[AGENT_RUNTIME] pid=${process.pid}`);
+  console.log(`[AGENT_RUNTIME] cwd=${process.cwd()}`);
+  console.log(`[AGENT_RUNTIME] execPath=${process.execPath}`);
+  console.log(`[AGENT_RUNTIME] scriptPath=${__filename}`);
+  console.log(`[AGENT_RUNTIME] buildVersion=2026-07-08T16:00:00Z`);
+  console.log(`[AGENT_RUNTIME] nodeEnv=${process.env.NODE_ENV || 'undefined'}`);
+
+  console.log(`[BACKEND_CONFIG] source=${source}`);
+  console.log(`[BACKEND_CONFIG] rawConfiguredValue=${rawConfiguredValue || 'null'}`);
+  console.log(`[BACKEND_CONFIG] resolvedBaseUrl=${resolvedBaseUrl}`);
+  console.log(`[BACKEND_CONFIG] voucherEndpoint=${resolvedBaseUrl}/ingest/vouchers`);
+
+  if (isLocalHost && !isDevMode) {
+    console.error(`[BACKEND_CONFIG_ERROR] Production backend URL is missing or set to localhost: "${resolvedBaseUrl}". Refusing localhost fallback in production mode.`);
+    throw new Error(`[BACKEND_CONFIG_ERROR] Production backend URL cannot be localhost: "${resolvedBaseUrl}".`);
+  }
+
+  return resolvedBaseUrl;
 }
 let syncInterval;
 let heartbeatInterval;
@@ -37040,6 +37070,47 @@ async function startBackgroundSync(config) {
     }
     
     console.log(`[AGENT] Executing Sync for client: "${companyConfig.clientName}" (Active Tally: "${activeCompany}")`);
+
+    // Pre-sync Backend Reachability Check
+    try {
+      const backendUrl = getVercelApi();
+      console.log(`[AGENT] Pre-sync reachability check starting for backend: ${backendUrl}`);
+      await axios.post(`${backendUrl}/connector/heartbeat`, {
+        apiKey: companyConfig.apiKey,
+        clientName: companyConfig.clientName,
+        status: "probing",
+        companyGuid: activeCo?.guid || null
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${companyConfig.apiKey}`
+        },
+        timeout: 10000
+      });
+      console.log(`[AGENT] Pre-sync reachability check SUCCESS.`);
+    } catch (probeErr) {
+      let errorClass = "BACKEND_CONNECTION_FAILED";
+      if (probeErr.code === 'ECONNREFUSED') errorClass = "BACKEND_CONNECTION_REFUSED";
+      else if (probeErr.code === 'ETIMEDOUT') errorClass = "BACKEND_CONNECTION_TIMEOUT";
+      else if (probeErr.response) {
+        const status = probeErr.response.status;
+        if (status === 500) errorClass = "BACKEND_INTERNAL_SERVER_ERROR";
+        else if (status === 401) errorClass = "BACKEND_UNAUTHORIZED";
+        else if (status === 403) errorClass = "BACKEND_FORBIDDEN";
+        else if (status === 404) errorClass = "BACKEND_ROUTE_NOT_FOUND";
+      }
+      
+      console.log(`[AGENT] Pre-sync reachability check result: ${probeErr.message} (Class: ${errorClass})`);
+
+      const isReachable = !!probeErr.response;
+      if (!isReachable) {
+        console.error(`[AGENT] Refusing to sync while backend is unreachable (${errorClass}). Stopping sync cleanly.`);
+        isSyncing = false;
+        return;
+      } else {
+        console.log(`[AGENT] Pre-sync reachability check passed (received response status ${probeErr.response.status}). Proceeding with sync.`);
+      }
+    }
     
     // Calculate last 36 months (3 years) to ensure full fiscal years are captured
     const periodsToSync = [];
@@ -37060,6 +37131,7 @@ async function startBackgroundSync(config) {
 
     const allFinancialPayloads = [];
     const allUniqueLedgersMap = new Map();
+    let hasPushFailure = false;
 
     const concurrencyLimit = 1; // Serialized to prevent concurrent DB write conflicts
     
@@ -37223,7 +37295,18 @@ async function startBackgroundSync(config) {
                          console.log(`[MONTH_PUSH_END] month=${period.periodKey} requestId=${options.syncTaskId || 'N/A'}`);
                     } catch(pushErr) {
                         const res = pushErr.response;
-                        console.error(`    -> Backend timeout/error pushing ${period.periodKey}: ${pushErr.message}`);
+                        let errorClass = "BACKEND_CONNECTION_FAILED";
+                        if (pushErr.code === 'ECONNREFUSED') errorClass = "BACKEND_CONNECTION_REFUSED";
+                        else if (pushErr.code === 'ETIMEDOUT') errorClass = "BACKEND_CONNECTION_TIMEOUT";
+                        else if (res) {
+                          const status = res.status;
+                          if (status === 500) errorClass = "BACKEND_INTERNAL_SERVER_ERROR";
+                          else if (status === 401) errorClass = "BACKEND_UNAUTHORIZED";
+                          else if (status === 403) errorClass = "BACKEND_FORBIDDEN";
+                          else if (status === 404) errorClass = "BACKEND_ROUTE_NOT_FOUND";
+                        }
+
+                        console.error(`    -> Backend timeout/error pushing ${period.periodKey}: ${pushErr.message} (Class: ${errorClass})`);
                         
                         console.log(`[MONTH_PUSH_FAILED] month=${period.periodKey}`);
                         console.log(`[MONTH_PUSH_FAILED] url=${pushErr.config?.url}`);
@@ -37234,6 +37317,8 @@ async function startBackgroundSync(config) {
                         console.log(`[MONTH_PUSH_FAILED] responseBody=${res ? (typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data).substring(0, 500)) : 'N/A'}`);
                         console.log(`[MONTH_PUSH_FAILED] errorCode=${pushErr.code || 'N/A'}`);
                         console.log(`[MONTH_PUSH_FAILED] errorMessage=${pushErr.message || 'N/A'}`);
+                        console.log(`[MONTH_PUSH_FAILED] errorClass=${errorClass}`);
+                        hasPushFailure = true;
                     }
                 }
                 
@@ -37264,6 +37349,10 @@ async function startBackgroundSync(config) {
     } catch (coaErr) {
         console.error(`[AGENT] Failed to extract complete Chart of Accounts: ${coaErr.message}`);
         throw coaErr; // Re-throw to prevent proceeding with empty/failed COA
+    }
+
+    if (hasPushFailure) {
+        throw new Error("One or more monthly voucher pushes failed. Aborting final summary and Chart of Accounts sync to prevent partial sync states.");
     }
 
     try {
