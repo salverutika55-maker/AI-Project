@@ -36313,6 +36313,7 @@ const os = __nccwpck_require__(857);
 const axios = __nccwpck_require__(7269);
 const xml2js = __nccwpck_require__(758);
 const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
+const net = __nccwpck_require__(9278);
 
 const PORT = 4500;
 // Config path: %APPDATA%/FinAnalyzer/config.json
@@ -36342,23 +36343,103 @@ let pendingForceSyncOptions = null;
 let syncStartTime = 0;
 const MAX_SYNC_DURATION = 15 * 60 * 1000; // 15 minutes
 
-const TALLY_URL = 'http://127.0.0.1:9000';
-
 const TALLY_STATUS = {
-  TALLY_UNREACHABLE: 'TALLY_UNREACHABLE',
-  TALLY_HTTP_ERROR: 'TALLY_HTTP_ERROR',
-  TALLY_RESPONSE_INVALID: 'TALLY_RESPONSE_INVALID',
-  TALLY_XML_PARSE_ERROR: 'TALLY_XML_PARSE_ERROR',
-  TALLY_REACHABLE_NO_COMPANY: 'TALLY_REACHABLE_NO_COMPANY',
-  TALLY_COMPANY_MISMATCH: 'TALLY_COMPANY_MISMATCH',
-  TALLY_READY: 'TALLY_READY'
+  TCP_UNREACHABLE: 'TCP_UNREACHABLE',
+  HTTP_UNREACHABLE: 'HTTP_UNREACHABLE',
+  HTTP_RESPONDED: 'HTTP_RESPONDED',
+  XML_INVALID: 'XML_INVALID',
+  COMPANY_NOT_LOADED: 'COMPANY_NOT_LOADED',
+  COMPANY_MISMATCH: 'COMPANY_MISMATCH',
+  READY: 'READY'
 };
 
+function probeTcpPort(host, port, timeout = 2000) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let isResolved = false;
+
+    socket.setTimeout(timeout);
+
+    socket.on('connect', () => {
+      if (!isResolved) {
+        isResolved = true;
+        socket.destroy();
+        resolve({ success: true, errorCode: null, errorMessage: null });
+      }
+    });
+
+    socket.on('timeout', () => {
+      if (!isResolved) {
+        isResolved = true;
+        socket.destroy();
+        resolve({ success: false, errorCode: 'ETIMEDOUT', errorMessage: 'Connection timed out' });
+      }
+    });
+
+    socket.on('error', (err) => {
+      if (!isResolved) {
+        isResolved = true;
+        socket.destroy();
+        resolve({ success: false, errorCode: err.code || 'ERR_CONN', errorMessage: err.message });
+      }
+    });
+
+    socket.connect(port, host);
+  });
+}
+
+function extractNodeValue(node) {
+  if (!node) return null;
+  if (Array.isArray(node)) {
+    for (const val of node) {
+      if (typeof val === 'string') return val;
+      if (val && typeof val === 'object' && val._) return val._;
+    }
+    return extractNodeValue(node[0]);
+  }
+  if (typeof node === 'object') {
+    return node._ || null;
+  }
+  return node;
+}
+
+let TALLY_URL = 'http://127.0.0.1:9000';
+
 async function checkTallyStatus(targetCompanyName = null) {
-  const url = TALLY_URL;
   const timeout = 15000;
   
-  let tcpConnected = false;
+  // 1. Run TCP probes sequentially
+  const tcp127 = await probeTcpPort('127.0.0.1', 9000);
+  const tcpLocal = await probeTcpPort('localhost', 9000);
+  const tcpIPv6 = await probeTcpPort('::1', 9000);
+
+  console.log(`[TALLY_TCP_PROBE] host=127.0.0.1 port=9000 success=${tcp127.success}`);
+  console.log(`[TALLY_TCP_PROBE] host=localhost port=9000 success=${tcpLocal.success}`);
+  console.log(`[TALLY_TCP_PROBE] host=::1 port=9000 success=${tcpIPv6.success}`);
+
+  let activeHost = null;
+  let exactErrorCode = null;
+  let exactErrorMessage = null;
+  
+  if (tcp127.success) {
+    activeHost = '127.0.0.1';
+  } else if (tcpLocal.success) {
+    activeHost = 'localhost';
+  } else if (tcpIPv6.success) {
+    activeHost = '::1';
+  } else {
+    exactErrorCode = tcp127.errorCode || tcpLocal.errorCode || tcpIPv6.errorCode || 'TCP_UNREACHABLE';
+    exactErrorMessage = tcp127.errorMessage || tcpLocal.errorMessage || tcpIPv6.errorMessage || 'All TCP probes failed';
+    console.log(`[TALLY_TCP_PROBE] errorCode=${exactErrorCode}`);
+    console.log(`[TALLY_TCP_PROBE] errorMessage=${exactErrorMessage}`);
+    
+    logDiag('TCP_UNREACHABLE', null, 0);
+    return { status: TALLY_STATUS.TCP_UNREACHABLE, company: null };
+  }
+
+  const url = `http://${activeHost}:9000`;
+  TALLY_URL = url; // Update TALLY_URL contextually
+  let tcpConnected = true;
   let httpReachable = false;
   let httpStatus = null;
   let responseContentType = null;
@@ -36366,8 +36447,6 @@ async function checkTallyStatus(targetCompanyName = null) {
   let xmlParseSuccess = false;
   let companyDetectionSuccess = false;
   let detectedCompanies = [];
-  let exactErrorCode = null;
-  let exactErrorMessage = null;
   let exactErrorStack = null;
   
   const xmlPayload = `
@@ -36402,46 +36481,43 @@ async function checkTallyStatus(targetCompanyName = null) {
       timeout: timeout
     });
     
-    tcpConnected = true;
     httpReachable = true;
     httpStatus = res.status;
     responseContentType = res.headers['content-type'] || 'text/xml';
     responseLength = res.data ? String(res.data).length : 0;
     
+    console.log(`[TALLY_XML_PROBE] url=${url}`);
+    console.log(`[TALLY_XML_PROBE] status=${httpStatus}`);
+    console.log(`[TALLY_XML_PROBE] responseLength=${responseLength}`);
+    console.log(`[TALLY_XML_PROBE] responsePreview=${String(res.data).substring(0, 150).replace(/\s+/g, ' ')}`);
+    
     let parsed;
     try {
       parsed = await parser.parseStringPromise(res.data);
       xmlParseSuccess = true;
+      console.log(`[TALLY_XML_PROBE] parseSuccess=true`);
+      console.log(`[TALLY_XML_PROBE] errorCode=null`);
+      console.log(`[TALLY_XML_PROBE] errorMessage=null`);
     } catch (parseErr) {
+      xmlParseSuccess = false;
       exactErrorCode = parseErr.code || 'XML_PARSE_ERR';
       exactErrorMessage = parseErr.message;
       exactErrorStack = parseErr.stack;
       
-      logDiag();
-      return { status: TALLY_STATUS.TALLY_XML_PARSE_ERROR, company: null };
+      console.log(`[TALLY_XML_PROBE] parseSuccess=false`);
+      console.log(`[TALLY_XML_PROBE] errorCode=${exactErrorCode}`);
+      console.log(`[TALLY_XML_PROBE] errorMessage=${exactErrorMessage}`);
+      
+      logDiag('XML_INVALID', null, responseLength);
+      return { status: TALLY_STATUS.XML_INVALID, company: null };
     }
     
     const coNode = parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION?.COMPANY;
     if (!coNode) {
-      logDiag();
-      return { status: TALLY_STATUS.TALLY_REACHABLE_NO_COMPANY, company: null };
+      logDiag('COMPANY_NOT_LOADED', null, responseLength);
+      return { status: TALLY_STATUS.COMPANY_NOT_LOADED, company: null };
     }
     
-function extractNodeValue(node) {
-  if (!node) return null;
-  if (Array.isArray(node)) {
-    for (const val of node) {
-      if (typeof val === 'string') return val;
-      if (val && typeof val === 'object' && val._) return val._;
-    }
-    return extractNodeValue(node[0]);
-  }
-  if (typeof node === 'object') {
-    return node._ || null;
-  }
-  return node;
-}
-
     const coArr = Array.isArray(coNode) ? coNode : [coNode];
     for (const co of coArr) {
       const name = extractNodeValue(co.NAME);
@@ -36452,8 +36528,8 @@ function extractNodeValue(node) {
     }
     
     if (detectedCompanies.length === 0) {
-      logDiag();
-      return { status: TALLY_STATUS.TALLY_REACHABLE_NO_COMPANY, company: null };
+      logDiag('COMPANY_NOT_LOADED', null, responseLength);
+      return { status: TALLY_STATUS.COMPANY_NOT_LOADED, company: null };
     }
     
     companyDetectionSuccess = true;
@@ -36464,49 +36540,49 @@ function extractNodeValue(node) {
       if (matched) {
         selectedCo = matched;
       } else {
-        logDiag(selectedCo);
-        return { status: TALLY_STATUS.TALLY_COMPANY_MISMATCH, company: selectedCo, allCompanies: detectedCompanies };
+        logDiag('COMPANY_MISMATCH', selectedCo, responseLength);
+        return { status: TALLY_STATUS.COMPANY_MISMATCH, company: selectedCo, allCompanies: detectedCompanies };
       }
     }
     
-    logDiag(selectedCo);
-    return { status: TALLY_STATUS.TALLY_READY, company: selectedCo, allCompanies: detectedCompanies };
+    logDiag('READY', selectedCo, responseLength);
+    return { status: TALLY_STATUS.READY, company: selectedCo, allCompanies: detectedCompanies };
     
   } catch (err) {
     exactErrorCode = err.code || 'UNKNOWN_ERR';
     exactErrorMessage = err.message;
     exactErrorStack = err.stack;
     
-    if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-      logDiag();
-      return { status: TALLY_STATUS.TALLY_UNREACHABLE, company: null };
-    } else {
-      tcpConnected = true;
-      httpStatus = err.response ? err.response.status : null;
-      logDiag();
-      return { status: TALLY_STATUS.TALLY_HTTP_ERROR, company: null };
-    }
+    console.log(`[TALLY_XML_PROBE] url=${url}`);
+    console.log(`[TALLY_XML_PROBE] status=null`);
+    console.log(`[TALLY_XML_PROBE] responseLength=0`);
+    console.log(`[TALLY_XML_PROBE] parseSuccess=false`);
+    console.log(`[TALLY_XML_PROBE] errorCode=${exactErrorCode}`);
+    console.log(`[TALLY_XML_PROBE] errorMessage=${exactErrorMessage}`);
+    
+    logDiag('HTTP_UNREACHABLE', null, 0);
+    return { status: TALLY_STATUS.HTTP_UNREACHABLE, company: null };
   }
 
-  function logDiag(selectedCo = null) {
-    let hostname = '127.0.0.1';
+  function logDiag(state, selectedCo = null, len = 0) {
+    console.log(`[TALLY_STATE] ${state}`);
+    if (selectedCo) {
+      console.log(`[TALLY_COMPANY] ${selectedCo.name}`);
+    }
+    
+    let hostname = activeHost || '127.0.0.1';
     let port = '9000';
-    try {
-      const parsedUrl = new URL(url);
-      hostname = parsedUrl.hostname;
-      port = parsedUrl.port;
-    } catch (e) {}
 
     console.log(`[TALLY_DIAG] configuredHost=${hostname}`);
     console.log(`[TALLY_DIAG] configuredPort=${port}`);
-    console.log(`[TALLY_DIAG] resolvedUrl=${url}`);
+    console.log(`[TALLY_DIAG] resolvedUrl=${url || 'http://127.0.0.1:9000'}`);
     console.log(`[TALLY_DIAG] requestMethod=POST`);
     console.log(`[TALLY_DIAG] timeoutMs=${timeout}`);
     console.log(`[TALLY_DIAG] tcpConnected=${tcpConnected}`);
     console.log(`[TALLY_DIAG] httpReachable=${httpReachable}`);
     console.log(`[TALLY_DIAG] httpStatus=${httpStatus || 'null'}`);
     console.log(`[TALLY_DIAG] responseContentType=${responseContentType || 'null'}`);
-    console.log(`[TALLY_DIAG] responseLength=${responseLength}`);
+    console.log(`[TALLY_DIAG] responseLength=${len}`);
     console.log(`[TALLY_DIAG] xmlParseSuccess=${xmlParseSuccess}`);
     console.log(`[TALLY_DIAG] companyDetectionSuccess=${companyDetectionSuccess}`);
     console.log(`[TALLY_DIAG] detectedCompanies=${JSON.stringify(detectedCompanies.map(c => c.name))}`);
@@ -36924,7 +37000,7 @@ async function startBackgroundSync(config) {
       let activeCo = check.company;
       let activeCompany = activeCo ? activeCo.name : null;
 
-      if (check.status === TALLY_STATUS.TALLY_COMPANY_MISMATCH) {
+      if (check.status === TALLY_STATUS.COMPANY_MISMATCH) {
         console.log(`[AGENT] Executing Sync: Active Tally company "${check.company?.name}" does not match target company "${tallyActiveCompanyName}".`);
         isSyncing = false;
         return;
@@ -36936,9 +37012,9 @@ async function startBackgroundSync(config) {
           activeCompany = tallyActiveCompanyName;
           activeCo = { name: tallyActiveCompanyName, guid: null };
         } else {
-          if (check.status === TALLY_STATUS.TALLY_UNREACHABLE) {
+          if (check.status === TALLY_STATUS.TCP_UNREACHABLE) {
             console.log(`[AGENT] Executing Sync: Tally Prime is offline or unreachable. Please open Tally Prime and load a company.`);
-          } else if (check.status === TALLY_STATUS.TALLY_REACHABLE_NO_COMPANY) {
+          } else if (check.status === TALLY_STATUS.COMPANY_NOT_LOADED) {
             console.log(`[AGENT] Executing Sync: Tally is online but no company is loaded. Please load a company in Tally.`);
           } else {
             console.log(`[AGENT] Executing Sync: Tally connection check failed with status "${check.status}".`);
@@ -37393,6 +37469,13 @@ async function init() {
     return;
   }
 
+  console.log(`[TALLY_RUNTIME_PROBE] build=2026-07-08T10:30:00Z`);
+  console.log(`[TALLY_RUNTIME_PROBE] file=${__filename}`);
+  console.log(`[TALLY_RUNTIME_PROBE] pid=${process.pid}`);
+  console.log(`[TALLY_RUNTIME_PROBE] cwd=${process.cwd()}`);
+  console.log(`[TALLY_RUNTIME_PROBE] execPath=${process.execPath}`);
+  console.log(`[TALLY_RUNTIME_PROBE] node=${process.version}`);
+
   const check = await checkTallyStatus();
   const activeCompany = check.company ? check.company.name : null;
   tallyActiveCompanyName = activeCompany;
@@ -37420,10 +37503,10 @@ async function init() {
   }
 
   // Tally is offline/unreachable/no company loaded
-  if (check.status === TALLY_STATUS.TALLY_UNREACHABLE) {
+  if (check.status === TALLY_STATUS.TCP_UNREACHABLE) {
     console.log("[AGENT] ⚠️  Tally Prime is offline or unreachable.");
     console.log("[AGENT] Please ensure Tally Prime is running on port 9000 and a company is open.");
-  } else if (check.status === TALLY_STATUS.TALLY_REACHABLE_NO_COMPANY) {
+  } else if (check.status === TALLY_STATUS.COMPANY_NOT_LOADED) {
     console.log("[AGENT] ⚠️  Tally is online, but no company is loaded in Tally Prime.");
     console.log("[AGENT] Please open your company in Tally Prime.");
   } else {
