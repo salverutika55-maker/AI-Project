@@ -4,7 +4,10 @@ import { encrypt } from "@/lib/encryption";
 import crypto from "crypto";
 
 export async function POST(req: Request) {
+  let requestId = "UNKNOWN";
+  let currentStage = "START";
   try {
+    requestId = crypto.randomUUID();
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ message: "Missing or invalid Authorization header" }, { status: 401 });
@@ -20,16 +23,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid API Key" }, { status: 401 });
     }
 
+    currentStage = "AUTH_OK";
+    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=AUTH_OK`);
+
     const body = await req.json();
     const vouchers = body.vouchers || [];
     const syncTaskId = body.syncTaskId;
     const forceFull = body.forceFull === true;
+    const companyGuid = body.companyGuid;
+    const periodKey = body.periodKey || "N/A";
+
+    currentStage = "BODY_PARSED";
+    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=BODY_PARSED`);
+    console.log(`[VOUCHER_PUSH_START] requestId=${requestId}`);
+    console.log(`[VOUCHER_PUSH_START] companyGuid=${companyGuid || 'null'}`);
+    console.log(`[VOUCHER_PUSH_START] month=${periodKey}`);
+    console.log(`[VOUCHER_PUSH_START] voucherCount=${vouchers.length}`);
 
     const startTime = Date.now();
     console.log(`[SYNC] [SYNC_REQUEST_RECEIVED] syncRunId=${syncTaskId || 'N/A'} client=${client.name} payloadBytes=${req.headers.get('content-length') || 'N/A'} vouchersCount=${vouchers.length}`);
 
     // Validate Tally Company GUID (if provided)
-    const companyGuid = body.companyGuid;
     if (companyGuid && client.software === 'TALLY') {
       if (!client.sourceCompanyId) {
         // Pair on first sync
@@ -37,16 +51,31 @@ export async function POST(req: Request) {
           where: { id: client.id },
           data: { sourceCompanyId: companyGuid }
         });
-      } else if (client.sourceCompanyId !== companyGuid) {
-        return NextResponse.json({ 
-          message: `Sync rejected: Tally Company GUID mismatch! The currently loaded company in Tally does not match this client's paired company.` 
-        }, { status: 400 });
+      } else {
+        const cleanDbId = client.sourceCompanyId.split('-')[0].toLowerCase();
+        const cleanIncomingId = companyGuid.split('-')[0].toLowerCase();
+        if (cleanDbId !== cleanIncomingId) {
+          return NextResponse.json({ 
+            message: `Sync rejected: Tally Company GUID mismatch! The currently loaded company in Tally does not match this client's paired company.` 
+          }, { status: 400 });
+        }
       }
     }
 
-    if (vouchers.length === 0) {
-      return NextResponse.json({ message: "No vouchers to process" }, { status: 400 });
+    currentStage = "COMPANY_FOUND";
+    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=COMPANY_FOUND`);
+
+    const fromDate = body.fromDate;
+    const toDate = body.toDate;
+    if (!fromDate || !toDate) {
+      return NextResponse.json({ message: "Missing fromDate or toDate metadata" }, { status: 400 });
     }
+
+    currentStage = "MONTH_VALIDATED";
+    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=MONTH_VALIDATED`);
+
+    currentStage = "DELETE_OR_REPLACE_STARTED";
+    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=DELETE_OR_REPLACE_STARTED`);
 
     // Force Full Sync: Purge existing records once per sync task session
     if (syncTaskId) {
@@ -142,8 +171,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const fromDate = body.fromDate;
-    const toDate = body.toDate;
+    // using fromDate and toDate from outer scope
     if (fromDate && toDate) {
       const startYear = parseInt(fromDate.substring(0, 4), 10);
       const startMonth = parseInt(fromDate.substring(4, 6), 10) - 1;
@@ -254,12 +282,14 @@ export async function POST(req: Request) {
       await prisma.normalizedVoucher.createMany({
         data: vouchersToCreate
       });
+      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=VOUCHERS_PERSISTED`);
     }
 
     if (linesToCreate.length > 0) {
       await prisma.normalizedVoucherLine.createMany({
         data: linesToCreate
       });
+      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=LINES_PERSISTED`);
     }
 
     // --- PNLValue Aggregation from Vouchers ---
@@ -267,7 +297,25 @@ export async function POST(req: Request) {
       where: { clientId: client.id, statementType: "PNL" }
     });
 
-    if (pnlMappings.length > 0) {
+    if (vouchers.length === 0 && pnlMappings.length > 0 && fromDate) {
+      currentStage = "RECALCULATION_STARTED";
+      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=RECALCULATION_STARTED`);
+      const year = parseInt(fromDate.substring(0, 4), 10);
+      const monthNum = parseInt(fromDate.substring(4, 6), 10) - 1;
+      const MONTH_SHORT_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const mShort = MONTH_SHORT_NAMES[monthNum];
+      const syncYearToSave = monthNum < 3 ? year - 1 : year;
+      
+      await prisma.pNLValue.deleteMany({
+        where: { clientId: client.id, month: mShort, year: syncYearToSave }
+      });
+      currentStage = "RECALCULATION_DONE";
+      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=RECALCULATION_DONE`);
+    }
+
+    if (pnlMappings.length > 0 && vouchers.length > 0) {
+      currentStage = "RECALCULATION_STARTED";
+      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=RECALCULATION_STARTED`);
       const monthBalances: Record<string, Record<string, number>> = {}; // { '2026-Apr': { 'Sales': 1000 } }
 
       // 1. Group vouchers by period
@@ -330,6 +378,8 @@ export async function POST(req: Request) {
           await prisma.pNLValue.createMany({ data: finalEntries });
         }
       }
+      currentStage = "RECALCULATION_DONE";
+      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=RECALCULATION_DONE`);
     }
 
     if (syncTaskId) {
@@ -348,14 +398,32 @@ export async function POST(req: Request) {
     }
 
     console.log(`[SYNC] [VOUCHER_WRITE_DONE] syncRunId=${syncTaskId || 'N/A'} client=${client.name} count=${processedCount} durationMs=${Date.now() - startTime}ms`);
+    console.log(`[VOUCHER_PUSH_SUCCESS] requestId=${requestId}`);
 
     return NextResponse.json({ 
       message: `Successfully processed ${processedCount} vouchers.`,
       recordsProcessed: processedCount
     }, { status: 200 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Voucher Ingestion API Error:", error);
-    return NextResponse.json({ message: "Internal Error during API Ingestion" }, { status: 500 });
+    console.log(`[VOUCHER_PUSH_ERROR] requestId=${requestId}`);
+    console.log(`[VOUCHER_PUSH_ERROR] stage=${currentStage}`);
+    console.log(`[VOUCHER_PUSH_ERROR] errorName=${error.name || 'Error'}`);
+    console.log(`[VOUCHER_PUSH_ERROR] errorCode=${error.code || 'UNKNOWN'}`);
+    console.log(`[VOUCHER_PUSH_ERROR] errorMessage=${error.message || String(error)}`);
+    console.log(`[VOUCHER_PUSH_ERROR] stack=${error.stack || 'N/A'}`);
+
+    return NextResponse.json({ 
+      message: "Internal Error during API Ingestion",
+      error: {
+        requestId,
+        stage: currentStage,
+        name: error.name,
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      }
+    }, { status: 500 });
   }
 }

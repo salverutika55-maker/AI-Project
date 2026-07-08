@@ -58,10 +58,14 @@ export async function POST(req: Request) {
           where: { id: client.id },
           data: { sourceCompanyId: companyGuid }
         });
-      } else if (client.sourceCompanyId !== companyGuid) {
-        return NextResponse.json({ 
-          message: `Sync rejected: Tally Company GUID mismatch! The currently loaded company in Tally does not match this client's paired company.` 
-        }, { status: 400 });
+      } else {
+        const cleanDbId = client.sourceCompanyId.split('-')[0].toLowerCase();
+        const cleanIncomingId = companyGuid.split('-')[0].toLowerCase();
+        if (cleanDbId !== cleanIncomingId) {
+          return NextResponse.json({ 
+            message: `Sync rejected: Tally Company GUID mismatch! The currently loaded company in Tally does not match this client's paired company.` 
+          }, { status: 400 });
+        }
       }
     }
     

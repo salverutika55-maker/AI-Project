@@ -753,8 +753,7 @@ async function startBackgroundSync(config) {
     const allFinancialPayloads = [];
     const allUniqueLedgersMap = new Map();
 
-    // Process periods concurrently to reduce sync time from minutes to seconds
-    const concurrencyLimit = 12; // Tally and Vercel can easily handle 12 concurrent requests
+    const concurrencyLimit = 1; // Serialized to prevent concurrent DB write conflicts
     
     // Helper for concurrency
     async function processConcurrently(items, limit, asyncFn) {
@@ -895,26 +894,39 @@ async function startBackgroundSync(config) {
                 const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
                 
                 if (periodVouchers.length >= 0) {
-                   console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}...`);
+                   console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}.`);
                    try {
-                        await axios.post(`${getVercelApi()}/ingest/vouchers`, 
-                           { 
-                                vouchers: periodVouchers,
-                                syncTaskId: options.syncTaskId,
-                                forceFull: options.forceFull,
-                                companyGuid: activeCo?.guid || null,
-                                fromDate: period.fromDate,
-                                toDate: period.toDate,
-                                periodKey: period.periodKey
-                           },
-                           {
-                               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${companyConfig.apiKey}` },
-                               timeout: 60000
-                           }
-                       );
-                   } catch(pushErr) {
-                       console.error(`    -> Backend timeout/error pushing ${period.periodKey}: ${pushErr.message}`);
-                   }
+                         console.log(`[MONTH_PUSH_START] month=${period.periodKey} requestId=${options.syncTaskId || 'N/A'}`);
+                         await axios.post(`${getVercelApi()}/ingest/vouchers`, 
+                            { 
+                                 vouchers: periodVouchers,
+                                 syncTaskId: options.syncTaskId,
+                                 forceFull: options.forceFull,
+                                 companyGuid: activeCo?.guid || null,
+                                 fromDate: period.fromDate,
+                                 toDate: period.toDate,
+                                 periodKey: period.periodKey
+                            },
+                            {
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${companyConfig.apiKey}` },
+                                timeout: 60000
+                            }
+                         );
+                         console.log(`[MONTH_PUSH_END] month=${period.periodKey} requestId=${options.syncTaskId || 'N/A'}`);
+                    } catch(pushErr) {
+                        const res = pushErr.response;
+                        console.error(`    -> Backend timeout/error pushing ${period.periodKey}: ${pushErr.message}`);
+                        
+                        console.log(`[MONTH_PUSH_FAILED] month=${period.periodKey}`);
+                        console.log(`[MONTH_PUSH_FAILED] url=${pushErr.config?.url}`);
+                        console.log(`[MONTH_PUSH_FAILED] method=${pushErr.config?.method}`);
+                        console.log(`[MONTH_PUSH_FAILED] voucherCount=${periodVouchers.length}`);
+                        console.log(`[MONTH_PUSH_FAILED] payloadBytes=${pushErr.config?.data ? Buffer.byteLength(String(pushErr.config.data)) : 0}`);
+                        console.log(`[MONTH_PUSH_FAILED] status=${res ? res.status : 'N/A'}`);
+                        console.log(`[MONTH_PUSH_FAILED] responseBody=${res ? (typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data).substring(0, 500)) : 'N/A'}`);
+                        console.log(`[MONTH_PUSH_FAILED] errorCode=${pushErr.code || 'N/A'}`);
+                        console.log(`[MONTH_PUSH_FAILED] errorMessage=${pushErr.message || 'N/A'}`);
+                    }
                 }
                 
                 console.log(`    -> Fetched ${period.periodKey} | Vouchers: ${periodVouchers.length}`);
