@@ -22,11 +22,39 @@ function getVercelApi() {
 
   try {
     if (fs.existsSync(configPath)) {
-      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const content = fs.readFileSync(configPath, 'utf8');
+      const parsed = JSON.parse(content);
       if (parsed && parsed.apiUrl) {
         rawConfiguredValue = parsed.apiUrl;
         source = "config.json";
         resolvedBaseUrl = parsed.apiUrl;
+
+        // Perform safe config migration if we detect a stale localhost backend URL in production mode
+        const isStaleLocalUrl = resolvedBaseUrl.includes('localhost') || resolvedBaseUrl.includes('127.0.0.1') || resolvedBaseUrl.includes('[::1]');
+        const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+
+        if (isStaleLocalUrl && !isDevMode) {
+          console.log(`[CONFIG_MIGRATION] staleBackendUrlDetected=true`);
+          console.log(`[CONFIG_MIGRATION] source=config.json`);
+
+          // Create backup of old config
+          try {
+            const backupPath = configPath + '.bak';
+            fs.writeFileSync(backupPath, content, 'utf8');
+          } catch (backupErr) {
+            console.error(`[CONFIG_MIGRATION] Failed to create backup: ${backupErr.message}`);
+          }
+
+          // Migrate backend URL atomically
+          parsed.apiUrl = DEFAULT_VERCEL_API;
+          fs.writeFileSync(configPath, JSON.stringify(parsed, null, 2), 'utf8');
+
+          rawConfiguredValue = DEFAULT_VERCEL_API;
+          resolvedBaseUrl = DEFAULT_VERCEL_API;
+
+          console.log(`[CONFIG_MIGRATION] migrated=true`);
+          console.log(`[CONFIG_MIGRATION] preservedPairing=true`);
+        }
       }
     }
   } catch (e) {
