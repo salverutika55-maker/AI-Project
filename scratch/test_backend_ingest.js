@@ -1,106 +1,60 @@
-const { PrismaClient } = require('@prisma/client');
-const crypto = require('crypto');
+const apiKey = 'cmprtm96f0001ju049crqkyre';
+const url = 'http://localhost:3000/api/ingest/vouchers';
 
-// Copy of encrypt function from src/lib/encryption.ts
-const IV_LENGTH = 12;
-function getEncryptionKey() {
-  const encryptionKey = process.env.ENCRYPTION_KEY;
-  if (!encryptionKey) {
-    throw new Error('ENCRYPTION_KEY environment variable is required and must be 32 characters');
+async function testCase(name, payload) {
+  console.log(`\n=== Testing CASE: ${name} ===`);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    console.log(`Status: ${res.status}`);
+    const text = await res.text();
+    try {
+      console.log(`Body:`, JSON.parse(text));
+    } catch {
+      console.log(`Body:`, text);
+    }
+  } catch (err) {
+    console.log(`Error:`, err.message);
   }
-  return Buffer.from(encryptionKey);
 }
-
-function encrypt(text) {
-  if (!text) return text;
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
-}
-
-const prisma = new PrismaClient();
 
 async function run() {
-  const clientId = "cmprtm96f0001ju049crqkyre";
-  
-  const client = await prisma.client.findUnique({
-    where: { id: clientId },
-    include: { pnlMappings: true }
-  });
-  
-  if (!client) {
-    console.error("Client not found!");
-    return;
-  }
-  
-  // Group all vouchers by year and month
-  const vouchersFromDb = await prisma.normalizedVoucher.findMany({
-    where: { clientId },
-    include: {
-      lines: {
-        include: {
-          ledger: true
-        }
-      }
-    }
+  // CASE A: 0 vouchers
+  await testCase('CASE A: 0 Vouchers', {
+    vouchers: [],
+    fromDate: '20231101',
+    toDate: '20231130',
+    periodKey: '2023-11',
+    companyGuid: 'edbc2cdb-28fd-4130-8df1-e96923584225-0000001d'
   });
 
-  const vouchersByMonth = {};
-  for (const v of vouchersFromDb) {
-    const d = new Date(v.date);
-    const mShort = d.toLocaleString('en-US', { month: 'short' });
-    const year = d.getFullYear();
-    const syncYearToSave = d.getMonth() < 3 ? year - 1 : year;
-    const periodKey = `${syncYearToSave}-${mShort}`;
-    
-    if (!vouchersByMonth[periodKey]) {
-      vouchersByMonth[periodKey] = [];
-    }
-    vouchersByMonth[periodKey].push(v);
-  }
-
-  console.log("Analyzing all months...");
-  for (const [periodKey, vouchers] of Object.entries(vouchersByMonth)) {
-    const monthBalances = {};
-    for (const v of vouchers) {
-      for (const line of v.lines) {
-        if (!line.ledgerName) continue;
-        const ledgerNameLower = line.ledgerName.trim().toLowerCase();
-        const amt = line.isDebit ? -line.amount : line.amount;
-        monthBalances[ledgerNameLower] = (monthBalances[ledgerNameLower] || 0) + amt;
+  // CASE B: 1 voucher
+  await testCase('CASE B: 1 Voucher', {
+    vouchers: [
+      {
+        guid: 'test-guid-1',
+        voucherNumber: 'TEST-01',
+        date: '2024-04-15T00:00:00.000Z',
+        voucherType: 'Payment',
+        narration: 'Test payment',
+        totalAmount: 100,
+        lines: [
+          { ledgerName: 'Cash', amount: 100, isDebit: true },
+          { ledgerName: 'Rent', amount: 100, isDebit: false }
+        ]
       }
-    }
-
-    const headBalances = {};
-    for (const m of client.pnlMappings) {
-      const aliases = (m.softwareLedgerName || "").split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
-      let balance = 0;
-      
-      for (const alias of aliases) {
-        const exactMatchKey = Object.keys(monthBalances).find(k => k === alias);
-        if (exactMatchKey) {
-          balance += monthBalances[exactMatchKey];
-        }
-      }
-
-      if (balance !== 0) {
-        headBalances[m.sectorHead] = (headBalances[m.sectorHead] || 0) + balance;
-      }
-    }
-
-    const finalEntries = Object.entries(headBalances).map(([headName, balance]) => ({
-      clientId: client.id,
-      headName,
-      amount: Math.abs(balance)
-    }));
-
-    console.log(`  - Period ${periodKey}: Vouchers=${vouchers.length}, PNL Entries to save=${finalEntries.length}`);
-  }
+    ],
+    fromDate: '20240401',
+    toDate: '20240430',
+    periodKey: '2024-04',
+    companyGuid: 'edbc2cdb-28fd-4130-8df1-e96923584225-0000001d'
+  });
 }
-
-// Load env variables from root .env file
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
-run().catch(console.error).finally(() => prisma.$disconnect());
+run();
