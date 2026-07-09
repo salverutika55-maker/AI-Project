@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 import crypto from "crypto";
 
+export const maxDuration = 60; // Extend to 60s for voucher ingestion with PNL aggregation
+
 export async function POST(req: Request) {
   let requestId = "UNKNOWN";
   let currentStage = "START";

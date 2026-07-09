@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 
+export const maxDuration = 60; // Extend to 60s for ledger ingestion
+
 function determineLedgerNature(groupName: string, opVal: number, closingVal: number): "DEBIT" | "CREDIT" {
   if (opVal !== 0) {
     // For opening balance in Tally XML: negative is DEBIT, positive is CREDIT
