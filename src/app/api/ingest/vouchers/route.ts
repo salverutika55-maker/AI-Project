@@ -8,11 +8,13 @@ export async function POST(req: Request) {
   let currentStage = "START";
   try {
     requestId = crypto.randomUUID();
+    console.log(`[INGEST_RECEIVED] requestId=${requestId} route=/api/ingest/vouchers timestamp=${new Date().toISOString()}`);
     console.log(`[DB_RUNTIME_DIAG] DATABASE_URL_present=${!!process.env.DATABASE_URL}`);
     console.log(`[DB_RUNTIME_DIAG] DATABASE_URL_length=${process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0}`);
     console.log(`[DB_RUNTIME_DIAG] runtime=vercel`);
     console.log(`[DB_RUNTIME_DIAG] nodeEnv=${process.env.NODE_ENV}`);
     console.log(`[DB_RUNTIME_DIAG] prismaInit=starting`);
+    console.log(`[INGEST_PRISMA_READY] requestId=${requestId}`);
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.log(`[AUTH_SERVER_DIAG] requestId=${requestId}`);
@@ -21,6 +23,7 @@ export async function POST(req: Request) {
       console.log(`[AUTH_SERVER_DIAG] expectedCredentialConfigured=true`);
       console.log(`[AUTH_SERVER_DIAG] authResult=failure`);
       console.log(`[AUTH_SERVER_DIAG] reason=MISSING_HEADER`);
+      console.log(`[INGEST_RESPONSE_SENT] requestId=${requestId} status=401 totalDurationMs=0ms`);
       return NextResponse.json({ message: "Missing or invalid Authorization header" }, { status: 401 });
     }
 
@@ -30,6 +33,8 @@ export async function POST(req: Request) {
       include: { pnlMappings: true }
     });
 
+    console.log(`[INGEST_CLIENT_FOUND] requestId=${requestId} clientFound=${!!client}`);
+
     if (!client) {
       console.log(`[AUTH_SERVER_DIAG] requestId=${requestId}`);
       console.log(`[AUTH_SERVER_DIAG] route=/api/ingest/vouchers`);
@@ -37,6 +42,7 @@ export async function POST(req: Request) {
       console.log(`[AUTH_SERVER_DIAG] expectedCredentialConfigured=true`);
       console.log(`[AUTH_SERVER_DIAG] authResult=failure`);
       console.log(`[AUTH_SERVER_DIAG] reason=INVALID_KEY`);
+      console.log(`[INGEST_RESPONSE_SENT] requestId=${requestId} status=401 totalDurationMs=0ms`);
       return NextResponse.json({ message: "Invalid API Key" }, { status: 401 });
     }
 
@@ -46,6 +52,7 @@ export async function POST(req: Request) {
     console.log(`[AUTH_SERVER_DIAG] expectedCredentialConfigured=true`);
     console.log(`[AUTH_SERVER_DIAG] authResult=success`);
     console.log(`[AUTH_SERVER_DIAG] reason=OTHER`);
+    console.log(`[INGEST_AUTH_OK] requestId=${requestId}`);
 
     currentStage = "AUTH_OK";
     console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=AUTH_OK`);
@@ -59,6 +66,7 @@ export async function POST(req: Request) {
 
     currentStage = "BODY_PARSED";
     console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=BODY_PARSED`);
+    console.log(`[INGEST_BODY_PARSED] requestId=${requestId} month=${periodKey} voucherCount=${vouchers.length}`);
     console.log(`[VOUCHER_PUSH_START] requestId=${requestId}`);
     console.log(`[VOUCHER_PUSH_START] companyGuid=${companyGuid || 'null'}`);
     console.log(`[VOUCHER_PUSH_START] month=${periodKey}`);
@@ -144,6 +152,7 @@ export async function POST(req: Request) {
     }
 
     console.log(`[INGEST-VOUCHERS] Received ${vouchers.length} vouchers for client ${client.name}`);
+    console.log(`[INGEST_DB_WRITE_START] requestId=${requestId}`);
 
     // Fetch all existing ledgers for this client to map them case-insensitively
     const existingLedgers = await prisma.normalizedLedger.findMany({
@@ -423,6 +432,8 @@ export async function POST(req: Request) {
 
     console.log(`[SYNC] [VOUCHER_WRITE_DONE] syncRunId=${syncTaskId || 'N/A'} client=${client.name} count=${processedCount} durationMs=${Date.now() - startTime}ms`);
     console.log(`[VOUCHER_PUSH_SUCCESS] requestId=${requestId}`);
+    console.log(`[INGEST_DB_WRITE_DONE] requestId=${requestId} durationMs=${Date.now() - startTime}ms`);
+    console.log(`[INGEST_RESPONSE_SENT] requestId=${requestId} status=200 totalDurationMs=${Date.now() - startTime}ms`);
 
     return NextResponse.json({ 
       message: `Successfully processed ${processedCount} vouchers.`,
@@ -437,6 +448,7 @@ export async function POST(req: Request) {
     console.log(`[VOUCHER_PUSH_ERROR] errorCode=${error.code || 'UNKNOWN'}`);
     console.log(`[VOUCHER_PUSH_ERROR] errorMessage=${error.message || String(error)}`);
     console.log(`[VOUCHER_PUSH_ERROR] stack=${error.stack || 'N/A'}`);
+    console.log(`[INGEST_RESPONSE_SENT] requestId=${requestId} status=500 totalDurationMs=0ms`);
 
     return NextResponse.json({ 
       message: "Internal Error during API Ingestion",
