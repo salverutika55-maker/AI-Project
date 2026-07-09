@@ -65,17 +65,19 @@ function getVercelApi() {
   const isLocalHost = resolvedBaseUrl.includes('localhost') || resolvedBaseUrl.includes('127.0.0.1') || resolvedBaseUrl.includes('[::1]');
   const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
 
-  console.log(`[AGENT_RUNTIME] pid=${process.pid}`);
-  console.log(`[AGENT_RUNTIME] cwd=${process.cwd()}`);
-  console.log(`[AGENT_RUNTIME] execPath=${process.execPath}`);
-  console.log(`[AGENT_RUNTIME] scriptPath=${__filename}`);
-  console.log(`[AGENT_RUNTIME] buildVersion=2026-07-08T16:00:00Z`);
-  console.log(`[AGENT_RUNTIME] nodeEnv=${process.env.NODE_ENV || 'undefined'}`);
+  if (isDevMode) {
+    console.log(`[AGENT_RUNTIME] pid=${process.pid}`);
+    console.log(`[AGENT_RUNTIME] cwd=${process.cwd()}`);
+    console.log(`[AGENT_RUNTIME] execPath=${process.execPath}`);
+    console.log(`[AGENT_RUNTIME] scriptPath=${__filename}`);
+    console.log(`[AGENT_RUNTIME] buildVersion=2026-07-08T16:00:00Z`);
+    console.log(`[AGENT_RUNTIME] nodeEnv=${process.env.NODE_ENV || 'undefined'}`);
 
-  console.log(`[BACKEND_CONFIG] source=${source}`);
-  console.log(`[BACKEND_CONFIG] rawConfiguredValue=${rawConfiguredValue || 'null'}`);
-  console.log(`[BACKEND_CONFIG] resolvedBaseUrl=${resolvedBaseUrl}`);
-  console.log(`[BACKEND_CONFIG] voucherEndpoint=${resolvedBaseUrl}/ingest/vouchers`);
+    console.log(`[BACKEND_CONFIG] source=${source}`);
+    console.log(`[BACKEND_CONFIG] rawConfiguredValue=${rawConfiguredValue || 'null'}`);
+    console.log(`[BACKEND_CONFIG] resolvedBaseUrl=${resolvedBaseUrl}`);
+    console.log(`[BACKEND_CONFIG] voucherEndpoint=${resolvedBaseUrl}/ingest/vouchers`);
+  }
 
   if (isLocalHost && !isDevMode) {
     console.error(`[BACKEND_CONFIG_ERROR] Production backend URL is missing or set to localhost: "${resolvedBaseUrl}". Refusing localhost fallback in production mode.`);
@@ -792,26 +794,33 @@ async function startBackgroundSync(config) {
     console.log(`[AGENT] Executing Sync for client: "${companyConfig.clientName}" (Active Tally: "${activeCompany}")`);
     const overallSyncStartTime = Date.now();
 
-    // Pre-sync Backend Reachability & Authentication Check
-    try {
-      const backendUrl = getVercelApi();
-      console.log(`[AGENT] Pre-sync check starting for backend: ${backendUrl}`);
+     // Pre-sync Backend Reachability & Authentication Check
+     try {
+       const backendUrl = getVercelApi();
+       const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+       if (isDevMode) {
+         console.log(`[AGENT] Pre-sync check starting for backend: ${backendUrl}`);
+       }
 
-      const apiKey = companyConfig.apiKey;
-      console.log(`[AUTH_DIAG] authScheme=Bearer`);
-      console.log(`[AUTH_DIAG] credentialPresent=${!!apiKey}`);
-      console.log(`[AUTH_DIAG] credentialLength=${apiKey ? apiKey.length : 0}`);
-      console.log(`[AUTH_DIAG] credentialSource=config.json`);
-      console.log(`[AUTH_DIAG] authorizationHeaderPresent=true`);
-      console.log(`[AUTH_DIAG] xApiKeyHeaderPresent=false`);
-      await axios.get(`${backendUrl}/connector/health`, {
-        headers: {
-          'Authorization': `Bearer ${companyConfig.apiKey}`
-        },
-        timeout: 15000
-      });
-      console.log(`[AGENT] Pre-sync reachability check SUCCESS. status=BACKEND_READY`);
-    } catch (probeErr) {
+       const apiKey = companyConfig.apiKey;
+       if (isDevMode) {
+         console.log(`[AUTH_DIAG] authScheme=Bearer`);
+         console.log(`[AUTH_DIAG] credentialPresent=${!!apiKey}`);
+         console.log(`[AUTH_DIAG] credentialLength=${apiKey ? apiKey.length : 0}`);
+         console.log(`[AUTH_DIAG] credentialSource=config.json`);
+         console.log(`[AUTH_DIAG] authorizationHeaderPresent=true`);
+         console.log(`[AUTH_DIAG] xApiKeyHeaderPresent=false`);
+       }
+       await axios.get(`${backendUrl}/connector/health`, {
+         headers: {
+           'Authorization': `Bearer ${companyConfig.apiKey}`
+         },
+         timeout: 15000
+       });
+       if (isDevMode) {
+         console.log(`[AGENT] Pre-sync reachability check SUCCESS. status=BACKEND_READY`);
+       }
+     } catch (probeErr) {
       let errorClass = "BACKEND_CONNECTION_FAILED";
       if (probeErr.code === 'ECONNREFUSED') errorClass = "BACKEND_CONNECTION_REFUSED";
       else if (probeErr.code === 'ETIMEDOUT') errorClass = "BACKEND_CONNECTION_TIMEOUT";
@@ -867,6 +876,7 @@ async function startBackgroundSync(config) {
     let monthsSucceeded = 0;
     let monthsSkipped = 0;
     let monthsFailed = 0;
+    let totalVouchersSynced = 0;
 
     const concurrencyLimit = 1; // Serialized to prevent concurrent DB write conflicts
     
@@ -1009,7 +1019,12 @@ async function startBackgroundSync(config) {
                 const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
                 
                 if (periodVouchers.length >= 0) {
-                    console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}.`);
+                    const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+                    if (isDevMode) {
+                        console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}.`);
+                    } else {
+                        process.stdout.write(`[SYNC] Period ${period.periodKey}: Syncing ${periodVouchers.length} vouchers... `);
+                    }
                     
                     const pushRequestId = require('crypto').randomUUID();
                     const url = `${getVercelApi()}/ingest/vouchers`;
@@ -1025,20 +1040,24 @@ async function startBackgroundSync(config) {
                     };
                     const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
 
-                    console.log(`[MONTH_PUSH_START]`);
-                    console.log(`requestId=${pushRequestId}`);
-                    console.log(`month=${period.periodKey}`);
-                    console.log(`voucherCount=${periodVouchers.length}`);
-                    console.log(`payloadBytes=${payloadBytes}`);
-                    console.log(`url=${url}`);
-                    console.log(`timeoutMs=${timeoutMs}`);
+                    if (isDevMode) {
+                        console.log(`[MONTH_PUSH_START]`);
+                        console.log(`requestId=${pushRequestId}`);
+                        console.log(`month=${period.periodKey}`);
+                        console.log(`voucherCount=${periodVouchers.length}`);
+                        console.log(`payloadBytes=${payloadBytes}`);
+                        console.log(`url=${url}`);
+                        console.log(`timeoutMs=${timeoutMs}`);
+                    }
                     monthsAttempted++;
 
-                    console.log(`[MONTH_PUSH_AUTH_DIAG]`);
-                    console.log(`requestId=${pushRequestId}`);
-                    console.log(`authorizationHeaderPresent=true`);
-                    console.log(`authScheme=Bearer`);
-                    console.log(`credentialLength=${companyConfig.apiKey ? companyConfig.apiKey.length : 0}`);
+                    if (isDevMode) {
+                        console.log(`[MONTH_PUSH_AUTH_DIAG]`);
+                        console.log(`requestId=${pushRequestId}`);
+                        console.log(`authorizationHeaderPresent=true`);
+                        console.log(`authScheme=Bearer`);
+                        console.log(`credentialLength=${companyConfig.apiKey ? companyConfig.apiKey.length : 0}`);
+                    }
 
                     const pushStartTime = Date.now();
                     try {
@@ -1050,19 +1069,24 @@ async function startBackgroundSync(config) {
                           );
                           const durationMs = Date.now() - pushStartTime;
                           monthsSucceeded++;
+                          totalVouchersSynced += periodVouchers.length;
 
-                          console.log(`[MONTH_PUSH_RESPONSE]`);
-                          console.log(`requestId=${pushRequestId}`);
-                          console.log(`month=${period.periodKey}`);
-                          console.log(`status=200`);
-                          console.log(`durationMs=${durationMs}`);
-                          console.log(`responseReceived=true`);
+                          if (isDevMode) {
+                              console.log(`[MONTH_PUSH_RESPONSE]`);
+                              console.log(`requestId=${pushRequestId}`);
+                              console.log(`month=${period.periodKey}`);
+                              console.log(`status=200`);
+                              console.log(`durationMs=${durationMs}`);
+                              console.log(`responseReceived=true`);
 
-                          console.log(`[MONTH_PUSH_SUCCESS]`);
-                          console.log(`requestId=${pushRequestId}`);
-                          console.log(`month=${period.periodKey}`);
-                          console.log(`status=200`);
-                          console.log(`durationMs=${durationMs}`);
+                              console.log(`[MONTH_PUSH_SUCCESS]`);
+                              console.log(`requestId=${pushRequestId}`);
+                              console.log(`month=${period.periodKey}`);
+                              console.log(`status=200`);
+                              console.log(`durationMs=${durationMs}`);
+                          } else {
+                              console.log(`Success.`);
+                          }
                      } catch(pushErr) {
                           const durationMs = Date.now() - pushStartTime;
                           const res = pushErr.response;
@@ -1083,27 +1107,34 @@ async function startBackgroundSync(config) {
                           }
                           monthsFailed++;
 
-                          console.log(`[MONTH_PUSH_RESPONSE]`);
-                          console.log(`requestId=${pushRequestId}`);
-                          console.log(`month=${period.periodKey}`);
-                          console.log(`status=${res ? res.status : 'N/A'}`);
-                          console.log(`durationMs=${durationMs}`);
-                          console.log(`responseReceived=${!!res}`);
+                          if (isDevMode) {
+                              console.log(`[MONTH_PUSH_RESPONSE]`);
+                              console.log(`requestId=${pushRequestId}`);
+                              console.log(`month=${period.periodKey}`);
+                              console.log(`status=${res ? res.status : 'N/A'}`);
+                              console.log(`durationMs=${durationMs}`);
+                              console.log(`responseReceived=${!!res}`);
 
-                          console.log(`[MONTH_PUSH_FAILED]`);
-                          console.log(`requestId=${pushRequestId}`);
-                          console.log(`month=${period.periodKey}`);
-                          console.log(`failureClass=${errorClass}`);
-                          console.log(`httpStatus=${res ? res.status : 'N/A'}`);
-                          console.log(`errorCode=${pushErr.code || 'N/A'}`);
-                          console.log(`errorMessage=${pushErr.message || 'N/A'}`);
-                          console.log(`durationMs=${durationMs}`);
+                              console.log(`[MONTH_PUSH_FAILED]`);
+                              console.log(`requestId=${pushRequestId}`);
+                              console.log(`month=${period.periodKey}`);
+                              console.log(`failureClass=${errorClass}`);
+                              console.log(`httpStatus=${res ? res.status : 'N/A'}`);
+                              console.log(`errorCode=${pushErr.code || 'N/A'}`);
+                              console.log(`errorMessage=${pushErr.message || 'N/A'}`);
+                              console.log(`durationMs=${durationMs}`);
+                          } else {
+                              console.log(`Failed (Class: ${errorClass}).`);
+                          }
 
                           hasPushFailure = true;
                      }
                 }
                 
-                console.log(`    -> Fetched ${period.periodKey} | Vouchers: ${periodVouchers.length}`);
+                const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+                if (isDevMode) {
+                    console.log(`    -> Fetched ${period.periodKey} | Vouchers: ${periodVouchers.length}`);
+                }
             }
 
         } catch (e) {
@@ -1114,12 +1145,24 @@ async function startBackgroundSync(config) {
     // Fetch Chart of Accounts & Sync unconditionally
     let finalLedgers = [];
     try {
-        console.log("[AGENT] [TALLY_COA_FETCH_START] Fetching complete Tally Chart of Accounts...");
+        const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+        if (isDevMode) {
+            console.log("[AGENT] [TALLY_COA_FETCH_START] Fetching complete Tally Chart of Accounts...");
+        } else {
+            process.stdout.write("[SYNC] Fetching Tally Chart of Accounts... ");
+        }
+
         const masterLedgers = await extractChartOfAccounts();
         if (!masterLedgers || masterLedgers.length === 0) {
             throw new Error("Chart of Accounts extraction returned 0 ledgers. Aborting sync to prevent database ledger loss.");
         }
-        console.log(`[AGENT] [TALLY_COA_FETCH_COMPLETE] Successfully fetched ${masterLedgers.length} master ledgers from Tally.`);
+        
+        if (isDevMode) {
+            console.log(`[AGENT] [TALLY_COA_FETCH_COMPLETE] Successfully fetched ${masterLedgers.length} master ledgers from Tally.`);
+        } else {
+            console.log(`Success (${masterLedgers.length} ledgers).`);
+        }
+
         masterLedgers.forEach(ledger => {
             if (ledger && ledger.name) {
                 const lower = ledger.name.toLowerCase();
@@ -1137,6 +1180,11 @@ async function startBackgroundSync(config) {
     }
 
     try {
+        const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+        if (!isDevMode) {
+            process.stdout.write("[SYNC] Pushing financial summaries and ledgers to cloud... ");
+        }
+
         // Push Trial Balance summary and complete Chart of Accounts
         await axios.post(`${getVercelApi()}/ingest`, 
             { 
@@ -1153,9 +1201,27 @@ async function startBackgroundSync(config) {
                 }
             }
         );
-        console.log(`[AGENT] Pushed ${allFinancialPayloads.length} summary records and ${finalLedgers.length} ledgers to Vercel.`);
+        
+        if (isDevMode) {
+            console.log(`[AGENT] Pushed ${allFinancialPayloads.length} summary records and ${finalLedgers.length} ledgers to Vercel.`);
+        } else {
+            console.log("Success.");
+        }
 
         if (monthsFailed === 0) {
+            const elapsedSec = ((Date.now() - overallSyncStartTime) / 1000).toFixed(1);
+            const durationString = elapsedSec > 60 ? `${(elapsedSec / 60).toFixed(1)}m` : `${elapsedSec}s`;
+
+            console.log(`\n==========================================`);
+            console.log(`   Sync Successful!`);
+            console.log(`==========================================`);
+            console.log(` - Client:   ${companyConfig.clientName}`);
+            console.log(` - Company:  ${activeCompany}`);
+            console.log(` - Ledgers:  ${finalLedgers.length}`);
+            console.log(` - Vouchers: ${totalVouchersSynced}`);
+            console.log(` - Duration: ${durationString}`);
+            console.log(`==========================================\n`);
+
             console.log(`[SYNC_SUCCESS]`);
             console.log(`client=${companyConfig.clientName}`);
             console.log(`company=${activeCompany}`);
