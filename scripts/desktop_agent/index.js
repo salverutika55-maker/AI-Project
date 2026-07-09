@@ -1448,12 +1448,15 @@ async function init() {
     return;
   }
 
-  console.log(`[TALLY_RUNTIME_PROBE] build=2026-07-08T10:30:00Z`);
-  console.log(`[TALLY_RUNTIME_PROBE] file=${__filename}`);
-  console.log(`[TALLY_RUNTIME_PROBE] pid=${process.pid}`);
-  console.log(`[TALLY_RUNTIME_PROBE] cwd=${process.cwd()}`);
-  console.log(`[TALLY_RUNTIME_PROBE] execPath=${process.execPath}`);
-  console.log(`[TALLY_RUNTIME_PROBE] node=${process.version}`);
+  const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+  if (isDevMode) {
+    console.log(`[TALLY_RUNTIME_PROBE] build=2026-07-08T10:30:00Z`);
+    console.log(`[TALLY_RUNTIME_PROBE] file=${__filename}`);
+    console.log(`[TALLY_RUNTIME_PROBE] pid=${process.pid}`);
+    console.log(`[TALLY_RUNTIME_PROBE] cwd=${process.cwd()}`);
+    console.log(`[TALLY_RUNTIME_PROBE] execPath=${process.execPath}`);
+    console.log(`[TALLY_RUNTIME_PROBE] node=${process.version}`);
+  }
 
   const check = await checkTallyStatus();
   const activeCompany = check.company ? check.company.name : null;
