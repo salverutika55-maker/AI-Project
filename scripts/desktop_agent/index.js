@@ -790,6 +790,7 @@ async function startBackgroundSync(config) {
     }
     
     console.log(`[AGENT] Executing Sync for client: "${companyConfig.clientName}" (Active Tally: "${activeCompany}")`);
+    const overallSyncStartTime = Date.now();
 
     // Pre-sync Backend Reachability & Authentication Check
     try {
@@ -861,6 +862,11 @@ async function startBackgroundSync(config) {
     const allFinancialPayloads = [];
     const allUniqueLedgersMap = new Map();
     let hasPushFailure = false;
+
+    let monthsAttempted = 0;
+    let monthsSucceeded = 0;
+    let monthsSkipped = 0;
+    let monthsFailed = 0;
 
     const concurrencyLimit = 1; // Serialized to prevent concurrent DB write conflicts
     
@@ -1003,52 +1009,98 @@ async function startBackgroundSync(config) {
                 const periodVouchers = extractDayBookVouchers(parsedDb, period.fromDate, period.toDate, stats);
                 
                 if (periodVouchers.length >= 0) {
-                   console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}.`);
-                   try {
-                         console.log(`[MONTH_PUSH_START] month=${period.periodKey} requestId=${options.syncTaskId || 'N/A'}`);
-                         await axios.post(`${getVercelApi()}/ingest/vouchers`, 
-                            { 
-                                 vouchers: periodVouchers,
-                                 syncTaskId: options.syncTaskId,
-                                 forceFull: options.forceFull,
-                                 companyGuid: activeCo?.guid || null,
-                                 fromDate: period.fromDate,
-                                 toDate: period.toDate,
-                                 periodKey: period.periodKey
-                            },
-                            {
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${companyConfig.apiKey}` },
-                                timeout: 60000
-                            }
-                         );
-                         console.log(`[MONTH_PUSH_END] month=${period.periodKey} requestId=${options.syncTaskId || 'N/A'}`);
-                    } catch(pushErr) {
-                        const res = pushErr.response;
-                        let errorClass = "BACKEND_CONNECTION_FAILED";
-                        if (pushErr.code === 'ECONNREFUSED') errorClass = "BACKEND_CONNECTION_REFUSED";
-                        else if (pushErr.code === 'ETIMEDOUT') errorClass = "BACKEND_CONNECTION_TIMEOUT";
-                        else if (res) {
-                          const status = res.status;
-                          if (status === 500) errorClass = "BACKEND_INTERNAL_SERVER_ERROR";
-                          else if (status === 401) errorClass = "BACKEND_UNAUTHORIZED";
-                          else if (status === 403) errorClass = "BACKEND_FORBIDDEN";
-                          else if (status === 404) errorClass = "BACKEND_ROUTE_NOT_FOUND";
-                        }
+                    console.log(`    -> Pushing ${periodVouchers.length} vouchers for ${period.periodKey}.`);
+                    
+                    const pushRequestId = require('crypto').randomUUID();
+                    const url = `${getVercelApi()}/ingest/vouchers`;
+                    const timeoutMs = 60000;
+                    const payload = { 
+                         vouchers: periodVouchers,
+                         syncTaskId: options.syncTaskId,
+                         forceFull: options.forceFull,
+                         companyGuid: activeCo?.guid || null,
+                         fromDate: period.fromDate,
+                         toDate: period.toDate,
+                         periodKey: period.periodKey
+                    };
+                    const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
 
-                        console.error(`    -> Backend timeout/error pushing ${period.periodKey}: ${pushErr.message} (Class: ${errorClass})`);
-                        
-                        console.log(`[MONTH_PUSH_FAILED] month=${period.periodKey}`);
-                        console.log(`[MONTH_PUSH_FAILED] url=${pushErr.config?.url}`);
-                        console.log(`[MONTH_PUSH_FAILED] method=${pushErr.config?.method}`);
-                        console.log(`[MONTH_PUSH_FAILED] voucherCount=${periodVouchers.length}`);
-                        console.log(`[MONTH_PUSH_FAILED] payloadBytes=${pushErr.config?.data ? Buffer.byteLength(String(pushErr.config.data)) : 0}`);
-                        console.log(`[MONTH_PUSH_FAILED] status=${res ? res.status : 'N/A'}`);
-                        console.log(`[MONTH_PUSH_FAILED] responseBody=${res ? (typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data).substring(0, 500)) : 'N/A'}`);
-                        console.log(`[MONTH_PUSH_FAILED] errorCode=${pushErr.code || 'N/A'}`);
-                        console.log(`[MONTH_PUSH_FAILED] errorMessage=${pushErr.message || 'N/A'}`);
-                        console.log(`[MONTH_PUSH_FAILED] errorClass=${errorClass}`);
-                        hasPushFailure = true;
-                    }
+                    console.log(`[MONTH_PUSH_START]`);
+                    console.log(`requestId=${pushRequestId}`);
+                    console.log(`month=${period.periodKey}`);
+                    console.log(`voucherCount=${periodVouchers.length}`);
+                    console.log(`payloadBytes=${payloadBytes}`);
+                    console.log(`url=${url}`);
+                    console.log(`timeoutMs=${timeoutMs}`);
+                    monthsAttempted++;
+
+                    console.log(`[MONTH_PUSH_AUTH_DIAG]`);
+                    console.log(`requestId=${pushRequestId}`);
+                    console.log(`authorizationHeaderPresent=true`);
+                    console.log(`authScheme=Bearer`);
+                    console.log(`credentialLength=${companyConfig.apiKey ? companyConfig.apiKey.length : 0}`);
+
+                    const pushStartTime = Date.now();
+                    try {
+                          await axios.post(url, payload,
+                             { 
+                                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${companyConfig.apiKey}` },
+                                 timeout: timeoutMs
+                             }
+                          );
+                          const durationMs = Date.now() - pushStartTime;
+                          monthsSucceeded++;
+
+                          console.log(`[MONTH_PUSH_RESPONSE]`);
+                          console.log(`requestId=${pushRequestId}`);
+                          console.log(`month=${period.periodKey}`);
+                          console.log(`status=200`);
+                          console.log(`durationMs=${durationMs}`);
+                          console.log(`responseReceived=true`);
+
+                          console.log(`[MONTH_PUSH_SUCCESS]`);
+                          console.log(`requestId=${pushRequestId}`);
+                          console.log(`month=${period.periodKey}`);
+                          console.log(`status=200`);
+                          console.log(`durationMs=${durationMs}`);
+                     } catch(pushErr) {
+                          const durationMs = Date.now() - pushStartTime;
+                          const res = pushErr.response;
+                          let errorClass = "BACKEND_CONNECTION_FAILED";
+                          if (pushErr.code === 'ECONNREFUSED') errorClass = "BACKEND_CONNECTION_REFUSED";
+                          else if (pushErr.code === 'ETIMEDOUT') errorClass = "BACKEND_CONNECTION_TIMEOUT";
+                          else if (res) {
+                            const status = res.status;
+                            if (status === 500) errorClass = "BACKEND_INTERNAL_SERVER_ERROR";
+                            else if (status === 401) errorClass = "BACKEND_UNAUTHORIZED";
+                            else if (status === 403) errorClass = "BACKEND_FORBIDDEN";
+                            else if (status === 404) errorClass = "BACKEND_ROUTE_NOT_FOUND";
+                            else if (status === 413) errorClass = "HTTP_413";
+                            else if (status === 429) errorClass = "HTTP_429";
+                            else if (status === 502) errorClass = "HTTP_502";
+                            else if (status === 503) errorClass = "HTTP_503";
+                            else if (status === 504) errorClass = "HTTP_504";
+                          }
+                          monthsFailed++;
+
+                          console.log(`[MONTH_PUSH_RESPONSE]`);
+                          console.log(`requestId=${pushRequestId}`);
+                          console.log(`month=${period.periodKey}`);
+                          console.log(`status=${res ? res.status : 'N/A'}`);
+                          console.log(`durationMs=${durationMs}`);
+                          console.log(`responseReceived=${!!res}`);
+
+                          console.log(`[MONTH_PUSH_FAILED]`);
+                          console.log(`requestId=${pushRequestId}`);
+                          console.log(`month=${period.periodKey}`);
+                          console.log(`failureClass=${errorClass}`);
+                          console.log(`httpStatus=${res ? res.status : 'N/A'}`);
+                          console.log(`errorCode=${pushErr.code || 'N/A'}`);
+                          console.log(`errorMessage=${pushErr.message || 'N/A'}`);
+                          console.log(`durationMs=${durationMs}`);
+
+                          hasPushFailure = true;
+                     }
                 }
                 
                 console.log(`    -> Fetched ${period.periodKey} | Vouchers: ${periodVouchers.length}`);
@@ -1102,6 +1154,19 @@ async function startBackgroundSync(config) {
             }
         );
         console.log(`[AGENT] Pushed ${allFinancialPayloads.length} summary records and ${finalLedgers.length} ledgers to Vercel.`);
+
+        if (monthsFailed === 0) {
+            console.log(`[SYNC_SUCCESS]`);
+            console.log(`client=${companyConfig.clientName}`);
+            console.log(`company=${activeCompany}`);
+            console.log(`monthsAttempted=${monthsAttempted}`);
+            console.log(`monthsSucceeded=${monthsSucceeded}`);
+            console.log(`monthsSkipped=${monthsSkipped}`);
+            console.log(`monthsFailed=0`);
+            console.log(`ledgersFetched=${finalLedgers.length}`);
+            console.log(`ledgersSynced=${finalLedgers.length}`);
+            console.log(`durationMs=${Date.now() - overallSyncStartTime}`);
+        }
     } catch (err) {
         console.error(`[AGENT] Error pushing to Vercel: ${err.message}`);
         if (err.response?.status === 401) {
