@@ -791,23 +791,25 @@ async function startBackgroundSync(config) {
     
     console.log(`[AGENT] Executing Sync for client: "${companyConfig.clientName}" (Active Tally: "${activeCompany}")`);
 
-    // Pre-sync Backend Reachability Check
+    // Pre-sync Backend Reachability & Authentication Check
     try {
       const backendUrl = getVercelApi();
-      console.log(`[AGENT] Pre-sync reachability check starting for backend: ${backendUrl}`);
-      await axios.post(`${backendUrl}/connector/heartbeat`, {
-        apiKey: companyConfig.apiKey,
-        clientName: companyConfig.clientName,
-        status: "probing",
-        companyGuid: activeCo?.guid || null
-      }, {
+      console.log(`[AGENT] Pre-sync check starting for backend: ${backendUrl}`);
+
+      const apiKey = companyConfig.apiKey;
+      console.log(`[AUTH_DIAG] authScheme=Bearer`);
+      console.log(`[AUTH_DIAG] credentialPresent=${!!apiKey}`);
+      console.log(`[AUTH_DIAG] credentialLength=${apiKey ? apiKey.length : 0}`);
+      console.log(`[AUTH_DIAG] credentialSource=config.json`);
+      console.log(`[AUTH_DIAG] authorizationHeaderPresent=true`);
+      console.log(`[AUTH_DIAG] xApiKeyHeaderPresent=false`);
+      await axios.get(`${backendUrl}/connector/health`, {
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${companyConfig.apiKey}`
         },
-        timeout: 10000
+        timeout: 15000
       });
-      console.log(`[AGENT] Pre-sync reachability check SUCCESS.`);
+      console.log(`[AGENT] Pre-sync reachability check SUCCESS. status=BACKEND_READY`);
     } catch (probeErr) {
       let errorClass = "BACKEND_CONNECTION_FAILED";
       if (probeErr.code === 'ECONNREFUSED') errorClass = "BACKEND_CONNECTION_REFUSED";
@@ -819,17 +821,24 @@ async function startBackgroundSync(config) {
         else if (status === 403) errorClass = "BACKEND_FORBIDDEN";
         else if (status === 404) errorClass = "BACKEND_ROUTE_NOT_FOUND";
       }
-      
-      console.log(`[AGENT] Pre-sync reachability check result: ${probeErr.message} (Class: ${errorClass})`);
 
-      const isReachable = !!probeErr.response;
-      if (!isReachable) {
-        console.error(`[AGENT] Refusing to sync while backend is unreachable (${errorClass}). Stopping sync cleanly.`);
-        isSyncing = false;
-        return;
+      console.error(`[AGENT] Pre-sync check failed: ${probeErr.message} (Class: ${errorClass})`);
+
+      if (probeErr.response) {
+        const status = probeErr.response.status;
+        if (status === 401 || status === 403) {
+          console.error(`[AGENT] Pre-sync authentication check failed: HTTP ${status}`);
+          console.error(`[AGENT] Sync aborted before voucher upload.`);
+          console.error(`[AGENT] Reason: ${errorClass}`);
+        } else {
+          console.error(`[AGENT] Pre-sync check failed with server status ${status}. Sync aborted.`);
+        }
       } else {
-        console.log(`[AGENT] Pre-sync reachability check passed (received response status ${probeErr.response.status}). Proceeding with sync.`);
+        console.error(`[AGENT] Refusing to sync while backend is unreachable (${errorClass}). Stopping sync cleanly.`);
       }
+
+      isSyncing = false;
+      return;
     }
     
     // Calculate last 36 months (3 years) to ensure full fiscal years are captured

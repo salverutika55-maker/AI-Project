@@ -15,6 +15,12 @@ export async function POST(req: Request) {
     console.log(`[DB_RUNTIME_DIAG] prismaInit=starting`);
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log(`[AUTH_SERVER_DIAG] requestId=${requestId}`);
+      console.log(`[AUTH_SERVER_DIAG] route=/api/ingest/vouchers`);
+      console.log(`[AUTH_SERVER_DIAG] credentialPresent=false`);
+      console.log(`[AUTH_SERVER_DIAG] expectedCredentialConfigured=true`);
+      console.log(`[AUTH_SERVER_DIAG] authResult=failure`);
+      console.log(`[AUTH_SERVER_DIAG] reason=MISSING_HEADER`);
       return NextResponse.json({ message: "Missing or invalid Authorization header" }, { status: 401 });
     }
 
@@ -25,8 +31,21 @@ export async function POST(req: Request) {
     });
 
     if (!client) {
+      console.log(`[AUTH_SERVER_DIAG] requestId=${requestId}`);
+      console.log(`[AUTH_SERVER_DIAG] route=/api/ingest/vouchers`);
+      console.log(`[AUTH_SERVER_DIAG] credentialPresent=true`);
+      console.log(`[AUTH_SERVER_DIAG] expectedCredentialConfigured=true`);
+      console.log(`[AUTH_SERVER_DIAG] authResult=failure`);
+      console.log(`[AUTH_SERVER_DIAG] reason=INVALID_KEY`);
       return NextResponse.json({ message: "Invalid API Key" }, { status: 401 });
     }
+
+    console.log(`[AUTH_SERVER_DIAG] requestId=${requestId}`);
+    console.log(`[AUTH_SERVER_DIAG] route=/api/ingest/vouchers`);
+    console.log(`[AUTH_SERVER_DIAG] credentialPresent=true`);
+    console.log(`[AUTH_SERVER_DIAG] expectedCredentialConfigured=true`);
+    console.log(`[AUTH_SERVER_DIAG] authResult=success`);
+    console.log(`[AUTH_SERVER_DIAG] reason=OTHER`);
 
     currentStage = "AUTH_OK";
     console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=AUTH_OK`);
