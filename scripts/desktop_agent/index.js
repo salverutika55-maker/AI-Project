@@ -165,9 +165,12 @@ async function checkTallyStatus(targetCompanyName = null) {
   const tcpLocal = await probeTcpPort('localhost', 9000);
   const tcpIPv6 = await probeTcpPort('::1', 9000);
 
-  console.log(`[TALLY_TCP_PROBE] host=127.0.0.1 port=9000 success=${tcp127.success}`);
-  console.log(`[TALLY_TCP_PROBE] host=localhost port=9000 success=${tcpLocal.success}`);
-  console.log(`[TALLY_TCP_PROBE] host=::1 port=9000 success=${tcpIPv6.success}`);
+  const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+  if (isDevMode) {
+    console.log(`[TALLY_TCP_PROBE] host=127.0.0.1 port=9000 success=${tcp127.success}`);
+    console.log(`[TALLY_TCP_PROBE] host=localhost port=9000 success=${tcpLocal.success}`);
+    console.log(`[TALLY_TCP_PROBE] host=::1 port=9000 success=${tcpIPv6.success}`);
+  }
 
   let activeHost = null;
   let exactErrorCode = null;
@@ -182,8 +185,10 @@ async function checkTallyStatus(targetCompanyName = null) {
   } else {
     exactErrorCode = tcp127.errorCode || tcpLocal.errorCode || tcpIPv6.errorCode || 'TCP_UNREACHABLE';
     exactErrorMessage = tcp127.errorMessage || tcpLocal.errorMessage || tcpIPv6.errorMessage || 'All TCP probes failed';
-    console.log(`[TALLY_TCP_PROBE] errorCode=${exactErrorCode}`);
-    console.log(`[TALLY_TCP_PROBE] errorMessage=${exactErrorMessage}`);
+    if (isDevMode) {
+      console.log(`[TALLY_TCP_PROBE] errorCode=${exactErrorCode}`);
+      console.log(`[TALLY_TCP_PROBE] errorMessage=${exactErrorMessage}`);
+    }
     
     logDiag('TCP_UNREACHABLE', null, 0);
     return { status: TALLY_STATUS.TCP_UNREACHABLE, company: null };
@@ -238,27 +243,34 @@ async function checkTallyStatus(targetCompanyName = null) {
     responseContentType = res.headers['content-type'] || 'text/xml';
     responseLength = res.data ? String(res.data).length : 0;
     
-    console.log(`[TALLY_XML_PROBE] url=${url}`);
-    console.log(`[TALLY_XML_PROBE] status=${httpStatus}`);
-    console.log(`[TALLY_XML_PROBE] responseLength=${responseLength}`);
-    console.log(`[TALLY_XML_PROBE] responsePreview=${String(res.data).substring(0, 150).replace(/\s+/g, ' ')}`);
+    const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+    if (isDevMode) {
+      console.log(`[TALLY_XML_PROBE] url=${url}`);
+      console.log(`[TALLY_XML_PROBE] status=${httpStatus}`);
+      console.log(`[TALLY_XML_PROBE] responseLength=${responseLength}`);
+      console.log(`[TALLY_XML_PROBE] responsePreview=${String(res.data).substring(0, 150).replace(/\s+/g, ' ')}`);
+    }
     
     let parsed;
     try {
       parsed = await parser.parseStringPromise(res.data);
       xmlParseSuccess = true;
-      console.log(`[TALLY_XML_PROBE] parseSuccess=true`);
-      console.log(`[TALLY_XML_PROBE] errorCode=null`);
-      console.log(`[TALLY_XML_PROBE] errorMessage=null`);
+      if (isDevMode) {
+        console.log(`[TALLY_XML_PROBE] parseSuccess=true`);
+        console.log(`[TALLY_XML_PROBE] errorCode=null`);
+        console.log(`[TALLY_XML_PROBE] errorMessage=null`);
+      }
     } catch (parseErr) {
       xmlParseSuccess = false;
       exactErrorCode = parseErr.code || 'XML_PARSE_ERR';
       exactErrorMessage = parseErr.message;
       exactErrorStack = parseErr.stack;
       
-      console.log(`[TALLY_XML_PROBE] parseSuccess=false`);
-      console.log(`[TALLY_XML_PROBE] errorCode=${exactErrorCode}`);
-      console.log(`[TALLY_XML_PROBE] errorMessage=${exactErrorMessage}`);
+      if (isDevMode) {
+        console.log(`[TALLY_XML_PROBE] parseSuccess=false`);
+        console.log(`[TALLY_XML_PROBE] errorCode=${exactErrorCode}`);
+        console.log(`[TALLY_XML_PROBE] errorMessage=${exactErrorMessage}`);
+      }
       
       logDiag('XML_INVALID', null, responseLength);
       return { status: TALLY_STATUS.XML_INVALID, company: null };
@@ -305,43 +317,49 @@ async function checkTallyStatus(targetCompanyName = null) {
     exactErrorMessage = err.message;
     exactErrorStack = err.stack;
     
-    console.log(`[TALLY_XML_PROBE] url=${url}`);
-    console.log(`[TALLY_XML_PROBE] status=null`);
-    console.log(`[TALLY_XML_PROBE] responseLength=0`);
-    console.log(`[TALLY_XML_PROBE] parseSuccess=false`);
-    console.log(`[TALLY_XML_PROBE] errorCode=${exactErrorCode}`);
-    console.log(`[TALLY_XML_PROBE] errorMessage=${exactErrorMessage}`);
+    const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+    if (isDevMode) {
+      console.log(`[TALLY_XML_PROBE] url=${url}`);
+      console.log(`[TALLY_XML_PROBE] status=null`);
+      console.log(`[TALLY_XML_PROBE] responseLength=0`);
+      console.log(`[TALLY_XML_PROBE] parseSuccess=false`);
+      console.log(`[TALLY_XML_PROBE] errorCode=${exactErrorCode}`);
+      console.log(`[TALLY_XML_PROBE] errorMessage=${exactErrorMessage}`);
+    }
     
     logDiag('HTTP_UNREACHABLE', null, 0);
     return { status: TALLY_STATUS.HTTP_UNREACHABLE, company: null };
   }
 
   function logDiag(state, selectedCo = null, len = 0) {
-    console.log(`[TALLY_STATE] ${state}`);
-    if (selectedCo) {
-      console.log(`[TALLY_COMPANY] ${selectedCo.name}`);
-    }
-    
-    let hostname = activeHost || '127.0.0.1';
-    let port = '9000';
+    const isDevMode = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+    if (isDevMode) {
+      console.log(`[TALLY_STATE] ${state}`);
+      if (selectedCo) {
+        console.log(`[TALLY_COMPANY] ${selectedCo.name}`);
+      }
+      
+      let hostname = activeHost || '127.0.0.1';
+      let port = '9000';
 
-    console.log(`[TALLY_DIAG] configuredHost=${hostname}`);
-    console.log(`[TALLY_DIAG] configuredPort=${port}`);
-    console.log(`[TALLY_DIAG] resolvedUrl=${url || 'http://127.0.0.1:9000'}`);
-    console.log(`[TALLY_DIAG] requestMethod=POST`);
-    console.log(`[TALLY_DIAG] timeoutMs=${timeout}`);
-    console.log(`[TALLY_DIAG] tcpConnected=${tcpConnected}`);
-    console.log(`[TALLY_DIAG] httpReachable=${httpReachable}`);
-    console.log(`[TALLY_DIAG] httpStatus=${httpStatus || 'null'}`);
-    console.log(`[TALLY_DIAG] responseContentType=${responseContentType || 'null'}`);
-    console.log(`[TALLY_DIAG] responseLength=${len}`);
-    console.log(`[TALLY_DIAG] xmlParseSuccess=${xmlParseSuccess}`);
-    console.log(`[TALLY_DIAG] companyDetectionSuccess=${companyDetectionSuccess}`);
-    console.log(`[TALLY_DIAG] detectedCompanies=${JSON.stringify(detectedCompanies.map(c => c.name))}`);
-    console.log(`[TALLY_DIAG] selectedCompany=${selectedCo ? selectedCo.name : 'null'}`);
-    console.log(`[TALLY_DIAG] exactErrorCode=${exactErrorCode || 'null'}`);
-    console.log(`[TALLY_DIAG] exactErrorMessage=${exactErrorMessage || 'null'}`);
-    console.log(`[TALLY_DIAG] exactErrorStack=${exactErrorStack ? 'present' : 'null'}`);
+      console.log(`[TALLY_DIAG] configuredHost=${hostname}`);
+      console.log(`[TALLY_DIAG] configuredPort=${port}`);
+      console.log(`[TALLY_DIAG] resolvedUrl=${url || 'http://127.0.0.1:9000'}`);
+      console.log(`[TALLY_DIAG] requestMethod=POST`);
+      console.log(`[TALLY_DIAG] timeoutMs=${timeout}`);
+      console.log(`[TALLY_DIAG] tcpConnected=${tcpConnected}`);
+      console.log(`[TALLY_DIAG] httpReachable=${httpReachable}`);
+      console.log(`[TALLY_DIAG] httpStatus=${httpStatus || 'null'}`);
+      console.log(`[TALLY_DIAG] responseContentType=${responseContentType || 'null'}`);
+      console.log(`[TALLY_DIAG] responseLength=${len}`);
+      console.log(`[TALLY_DIAG] xmlParseSuccess=${xmlParseSuccess}`);
+      console.log(`[TALLY_DIAG] companyDetectionSuccess=${companyDetectionSuccess}`);
+      console.log(`[TALLY_DIAG] detectedCompanies=${JSON.stringify(detectedCompanies.map(c => c.name))}`);
+      console.log(`[TALLY_DIAG] selectedCompany=${selectedCo ? selectedCo.name : 'null'}`);
+      console.log(`[TALLY_DIAG] exactErrorCode=${exactErrorCode || 'null'}`);
+      console.log(`[TALLY_DIAG] exactErrorMessage=${exactErrorMessage || 'null'}`);
+      console.log(`[TALLY_DIAG] exactErrorStack=${exactErrorStack ? 'present' : 'null'}`);
+    }
   }
 }
 
