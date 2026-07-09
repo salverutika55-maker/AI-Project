@@ -440,39 +440,26 @@ export async function buildBalanceSheetTrace(clientId: string, year: number) {
       }
       diffOpeningVal = -openingSum;
     } else {
+      // For year > earliestYear, reuse the same opening-balance sum as the earliestYear path.
+      // ledgerTraces already has each ledger's opening correctly derived from DB openingBalance
+      // rolled forward from earliestYear. We simply sum those same Opening values.
       let earliestOpeningSum = 0;
-      for (const ledger of ledgers) {
-        if (
-          ledger.name.toLowerCase().includes("difference in opening balances") ||
-          ledger.name.toLowerCase().includes("difference in opening bal")
-        ) {
-          continue;
-        }
-        const mapping = mappingByLedger.get(mappingKey(ledger.name));
-        if (!mapping) continue;
-
-        const groupName = cleanLabel(mapping.groupName, cleanLabel(ledger.groupName, "Unclassified"));
-        const mainGroup = resolveMainGroup(groupName, ledger.nature);
-
-        let running = normalizeOpeningForFormula(safeNum(ledger.closingBalance), ledger.nature, mainGroup);
-        for (let y = latestYear; y >= earliestYear; y--) {
-          const mov = movementsByLedgerYear.get(ledger.id)?.get(y) || { debit: 0, credit: 0 };
-          if (mainGroup === "Assets") {
-            running = running - mov.debit + mov.credit;
-          } else {
-            running = running - mov.credit + mov.debit;
+      for (const row of ledgerTraces) {
+        const op = row.monthTraces["Opening"]?.closing || 0;
+        if (op !== 0) {
+          let signedOp = op;
+          if (row.mainGroup === "Liabilities") {
+            signedOp = -op;
           }
+          earliestOpeningSum += signedOp;
         }
-        
-        let signedOp = running;
-        if (mainGroup === "Liabilities") {
-          signedOp = -running;
-        }
-        earliestOpeningSum += signedOp;
       }
       diffOpeningVal = -earliestOpeningSum;
     }
   }
+
+  // Round to avoid floating-point noise (e.g. 33006.999999999534 → 33007)
+  diffOpeningVal = Math.round(diffOpeningVal * 100) / 100;
 
   if (Math.abs(diffOpeningVal) > 0.01) {
     const mainGroup = diffOpeningVal < 0 ? "Liabilities" : "Assets";
