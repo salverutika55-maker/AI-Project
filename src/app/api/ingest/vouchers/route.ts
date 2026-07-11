@@ -8,24 +8,31 @@ export const maxDuration = 60; // Extend to 60s for voucher ingestion with PNL a
 export async function POST(req: Request) {
   let requestId = "UNKNOWN";
   let currentStage = "START";
+  let currentVoucherRef = "N/A";
+  let currentVoucherIdx = -1;
+  const startTime = Date.now();
+
   try {
     requestId = crypto.randomUUID();
-    console.log(`[INGEST_RECEIVED] requestId=${requestId} route=/api/ingest/vouchers timestamp=${new Date().toISOString()}`);
-    console.log(`[DB_RUNTIME_DIAG] DATABASE_URL_present=${!!process.env.DATABASE_URL}`);
-    console.log(`[DB_RUNTIME_DIAG] DATABASE_URL_length=${process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0}`);
-    console.log(`[DB_RUNTIME_DIAG] runtime=vercel`);
-    console.log(`[DB_RUNTIME_DIAG] nodeEnv=${process.env.NODE_ENV}`);
-    console.log(`[DB_RUNTIME_DIAG] prismaInit=starting`);
-    console.log(`[INGEST_PRISMA_READY] requestId=${requestId}`);
+    console.log(`[INGEST_START] requestId=${requestId} route=/api/ingest/vouchers timestamp=${new Date().toISOString()}`);
+
+    // ── Environment pre-flight ──────────────────────────────────────────────
+    currentStage = "ENV_CHECK";
+    if (!process.env.DATABASE_URL) {
+      console.error(`[INGEST_ERROR] requestId=${requestId} stage=ENV_CHECK reason=DATABASE_URL_MISSING`);
+      return NextResponse.json({ requestId, stage: currentStage, message: "Server misconfiguration: DATABASE_URL missing" }, { status: 500 });
+    }
+    if (!process.env.ENCRYPTION_KEY) {
+      console.error(`[INGEST_ERROR] requestId=${requestId} stage=ENV_CHECK reason=ENCRYPTION_KEY_MISSING`);
+      return NextResponse.json({ requestId, stage: currentStage, message: "Server misconfiguration: ENCRYPTION_KEY missing" }, { status: 500 });
+    }
+    console.log(`[ENV_CHECK_OK] requestId=${requestId} DATABASE_URL_present=true ENCRYPTION_KEY_present=true`);
+
+    // ── Auth ────────────────────────────────────────────────────────────────
+    currentStage = "AUTH";
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log(`[AUTH_SERVER_DIAG] requestId=${requestId}`);
-      console.log(`[AUTH_SERVER_DIAG] route=/api/ingest/vouchers`);
-      console.log(`[AUTH_SERVER_DIAG] credentialPresent=false`);
-      console.log(`[AUTH_SERVER_DIAG] expectedCredentialConfigured=true`);
-      console.log(`[AUTH_SERVER_DIAG] authResult=failure`);
-      console.log(`[AUTH_SERVER_DIAG] reason=MISSING_HEADER`);
-      console.log(`[INGEST_RESPONSE_SENT] requestId=${requestId} status=401 totalDurationMs=0ms`);
+      console.log(`[AUTH_FAILED] requestId=${requestId} reason=MISSING_HEADER`);
       return NextResponse.json({ message: "Missing or invalid Authorization header" }, { status: 401 });
     }
 
@@ -35,255 +42,166 @@ export async function POST(req: Request) {
       include: { pnlMappings: true }
     });
 
-    console.log(`[INGEST_CLIENT_FOUND] requestId=${requestId} clientFound=${!!client}`);
-
     if (!client) {
-      console.log(`[AUTH_SERVER_DIAG] requestId=${requestId}`);
-      console.log(`[AUTH_SERVER_DIAG] route=/api/ingest/vouchers`);
-      console.log(`[AUTH_SERVER_DIAG] credentialPresent=true`);
-      console.log(`[AUTH_SERVER_DIAG] expectedCredentialConfigured=true`);
-      console.log(`[AUTH_SERVER_DIAG] authResult=failure`);
-      console.log(`[AUTH_SERVER_DIAG] reason=INVALID_KEY`);
-      console.log(`[INGEST_RESPONSE_SENT] requestId=${requestId} status=401 totalDurationMs=0ms`);
+      console.log(`[AUTH_FAILED] requestId=${requestId} reason=INVALID_KEY`);
       return NextResponse.json({ message: "Invalid API Key" }, { status: 401 });
     }
+    console.log(`[AUTH_SUCCESS] requestId=${requestId} clientId=${client.id} clientName=${client.name}`);
 
-    console.log(`[AUTH_SERVER_DIAG] requestId=${requestId}`);
-    console.log(`[AUTH_SERVER_DIAG] route=/api/ingest/vouchers`);
-    console.log(`[AUTH_SERVER_DIAG] credentialPresent=true`);
-    console.log(`[AUTH_SERVER_DIAG] expectedCredentialConfigured=true`);
-    console.log(`[AUTH_SERVER_DIAG] authResult=success`);
-    console.log(`[AUTH_SERVER_DIAG] reason=OTHER`);
-    console.log(`[INGEST_AUTH_OK] requestId=${requestId}`);
-
-    currentStage = "AUTH_OK";
-    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=AUTH_OK`);
-
+    // ── Body parsing ────────────────────────────────────────────────────────
+    currentStage = "BODY_PARSE";
     const body = await req.json();
     const vouchers = body.vouchers || [];
     const syncTaskId = body.syncTaskId;
     const forceFull = body.forceFull === true;
     const companyGuid = body.companyGuid;
     const periodKey = body.periodKey || "N/A";
+    const fromDate = body.fromDate;
+    const toDate = body.toDate;
 
-    currentStage = "BODY_PARSED";
-    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=BODY_PARSED`);
-    console.log(`[INGEST_BODY_PARSED] requestId=${requestId} month=${periodKey} voucherCount=${vouchers.length}`);
-    console.log(`[VOUCHER_PUSH_START] requestId=${requestId}`);
-    console.log(`[VOUCHER_PUSH_START] companyGuid=${companyGuid || 'null'}`);
-    console.log(`[VOUCHER_PUSH_START] month=${periodKey}`);
-    console.log(`[VOUCHER_PUSH_START] voucherCount=${vouchers.length}`);
+    console.log(`[BODY_PARSED] requestId=${requestId} month=${periodKey} voucherCount=${vouchers.length} fromDate=${fromDate} toDate=${toDate} forceFull=${forceFull}`);
 
-    const startTime = Date.now();
-    console.log(`[SYNC] [SYNC_REQUEST_RECEIVED] syncRunId=${syncTaskId || 'N/A'} client=${client.name} payloadBytes=${req.headers.get('content-length') || 'N/A'} vouchersCount=${vouchers.length}`);
+    if (!fromDate || !toDate) {
+      return NextResponse.json({ requestId, stage: currentStage, message: "Missing fromDate or toDate" }, { status: 400 });
+    }
 
-    // Validate Tally Company GUID (if provided)
+    // ── Company GUID validation ─────────────────────────────────────────────
+    currentStage = "COMPANY_GUID_CHECK";
     if (companyGuid && client.software === 'TALLY') {
       if (!client.sourceCompanyId) {
-        // Pair on first sync
-        await prisma.client.update({
-          where: { id: client.id },
-          data: { sourceCompanyId: companyGuid }
-        });
+        await prisma.client.update({ where: { id: client.id }, data: { sourceCompanyId: companyGuid } });
       } else {
         const cleanDbId = client.sourceCompanyId.split('-')[0].toLowerCase();
         const cleanIncomingId = companyGuid.split('-')[0].toLowerCase();
         if (cleanDbId !== cleanIncomingId) {
-          return NextResponse.json({ 
-            message: `Sync rejected: Tally Company GUID mismatch! The currently loaded company in Tally does not match this client's paired company.` 
+          return NextResponse.json({
+            message: `Sync rejected: Tally Company GUID mismatch!`
           }, { status: 400 });
         }
       }
     }
+    console.log(`[COMPANY_FOUND] requestId=${requestId}`);
 
-    currentStage = "COMPANY_FOUND";
-    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=COMPANY_FOUND`);
-
-    const fromDate = body.fromDate;
-    const toDate = body.toDate;
-    if (!fromDate || !toDate) {
-      return NextResponse.json({ message: "Missing fromDate or toDate metadata" }, { status: 400 });
-    }
-
-    currentStage = "MONTH_VALIDATED";
-    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=MONTH_VALIDATED`);
-
-    currentStage = "DELETE_OR_REPLACE_STARTED";
-    console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=DELETE_OR_REPLACE_STARTED`);
-
-    // Force Full Sync: Purge existing records once per sync task session
+    // ── SyncTask state machine ──────────────────────────────────────────────
+    currentStage = "SYNC_TASK_INIT";
     if (syncTaskId) {
-      const task = await prisma.syncTask.findUnique({
-        where: { id: syncTaskId }
-      });
+      const task = await prisma.syncTask.findUnique({ where: { id: syncTaskId } });
       if (task && task.status === "PENDING") {
         let purgedCount = 0;
-        await prisma.syncTask.update({
-          where: { id: syncTaskId },
-          data: { status: "PROCESSING" }
-        });
-
+        await prisma.syncTask.update({ where: { id: syncTaskId }, data: { status: "PROCESSING" } });
         if (forceFull) {
-          console.log(`[INGEST-VOUCHERS] Force Full Sync: Purging data for client ${client.name}`);
-          
-          const deleteVouchers = await prisma.normalizedVoucher.deleteMany({
-            where: { clientId: client.id }
-          });
+          console.log(`[FORCE_FULL_SYNC] requestId=${requestId} clientName=${client.name}`);
+          const deleteVouchers = await prisma.normalizedVoucher.deleteMany({ where: { clientId: client.id } });
           purgedCount = deleteVouchers.count;
-
-          await prisma.pNLValue.deleteMany({
-            where: { clientId: client.id }
-          });
-          await prisma.financialRecord.deleteMany({
-            where: { clientId: client.id }
-          });
-          await prisma.normalizedLedger.updateMany({
-            where: { clientId: client.id },
-            data: { closingBalance: 0 }
-          });
+          await prisma.pNLValue.deleteMany({ where: { clientId: client.id } });
+          await prisma.financialRecord.deleteMany({ where: { clientId: client.id } });
+          await prisma.normalizedLedger.updateMany({ where: { clientId: client.id }, data: { closingBalance: 0 } });
         }
-
-        // Save initial status and purged count
-        await prisma.syncTask.update({
-          where: { id: syncTaskId },
-          data: {
-            payload: { forceFull, purgedCount }
-          }
-        });
+        await prisma.syncTask.update({ where: { id: syncTaskId }, data: { payload: { forceFull, purgedCount } } });
       }
     }
 
-    console.log(`[INGEST-VOUCHERS] Received ${vouchers.length} vouchers for client ${client.name}`);
-    console.log(`[INGEST_DB_WRITE_START] requestId=${requestId}`);
+    // ── Ledger map ──────────────────────────────────────────────────────────
+    currentStage = "LEDGER_MAP_BUILD";
+    console.log(`[LEDGER_LOOKUP_START] requestId=${requestId}`);
+    const existingLedgers = await prisma.normalizedLedger.findMany({ where: { clientId: client.id } });
+    const ledgerMap = new Map<string, string>();
+    for (const l of existingLedgers) ledgerMap.set(l.name.toLowerCase(), l.id);
+    console.log(`[LEDGER_LOOKUP_DONE] requestId=${requestId} count=${existingLedgers.length}`);
 
-    // Fetch all existing ledgers for this client to map them case-insensitively
-    const existingLedgers = await prisma.normalizedLedger.findMany({
-      where: { clientId: client.id }
-    });
-
-    const ledgerMap = new Map();
-    for (const l of existingLedgers) {
-      ledgerMap.set(l.name.toLowerCase(), l.id);
-    }
-
-    const uniqueLedgerNames = new Map<string, string>(); // lowercase -> original case
+    // ── Auto-create unknown ledgers ─────────────────────────────────────────
+    currentStage = "LEDGER_CREATE";
+    const uniqueLedgerNames = new Map<string, string>();
     for (const v of vouchers) {
       for (const line of v.lines) {
         if (line.ledgerName) {
-           const original = line.ledgerName.trim();
-           const lower = original.toLowerCase();
-           if (!ledgerMap.has(lower) && !uniqueLedgerNames.has(lower)) {
-             uniqueLedgerNames.set(lower, original);
-           }
+          const original = line.ledgerName.trim();
+          const lower = original.toLowerCase();
+          if (!ledgerMap.has(lower) && !uniqueLedgerNames.has(lower)) {
+            uniqueLedgerNames.set(lower, original);
+          }
         }
       }
     }
 
-    const ledgersToCreate = Array.from(uniqueLedgerNames.values()).map(name => {
-      const id = crypto.randomUUID();
-      ledgerMap.set(name.toLowerCase(), id); // Temporary ID mapping
-      return {
-        id,
-        clientId: client.id,
-        name,
-        groupName: "Uncategorized",
-        nature: "DEBIT"
-      };
+    if (uniqueLedgerNames.size > 0) {
+      console.log(`[LEDGER_CREATE_START] requestId=${requestId} newCount=${uniqueLedgerNames.size}`);
+      const ledgersToCreate = Array.from(uniqueLedgerNames.values()).map(name => {
+        const id = crypto.randomUUID();
+        ledgerMap.set(name.toLowerCase(), id);
+        return { id, clientId: client.id, name, groupName: "Uncategorized", nature: "DEBIT" };
+      });
+      await prisma.normalizedLedger.createMany({ data: ledgersToCreate, skipDuplicates: true });
+      const finalLedgers = await prisma.normalizedLedger.findMany({ where: { clientId: client.id } });
+      for (const l of finalLedgers) ledgerMap.set(l.name.toLowerCase(), l.id);
+      console.log(`[LEDGER_CREATE_DONE] requestId=${requestId}`);
+    }
+
+    // ── Stale voucher purge ─────────────────────────────────────────────────
+    currentStage = "STALE_PURGE";
+    const startYear = parseInt(fromDate.substring(0, 4), 10);
+    const startMonth = parseInt(fromDate.substring(4, 6), 10) - 1;
+    const startDay = parseInt(fromDate.substring(6, 8), 10);
+    const startUtc = new Date(Date.UTC(startYear, startMonth, startDay, 0, 0, 0, 0));
+    const endYear = parseInt(toDate.substring(0, 4), 10);
+    const endMonth = parseInt(toDate.substring(4, 6), 10) - 1;
+    const endDay = parseInt(toDate.substring(6, 8), 10);
+    const endUtc = new Date(Date.UTC(endYear, endMonth, endDay, 23, 59, 59, 999));
+    const incomingRefs = vouchers.map((v: any, idx: number) => v.guid || v.voucherNumber || `VCH-${v.date}-${idx}`);
+
+    const staleVouchers = await prisma.normalizedVoucher.findMany({
+      where: { clientId: client.id, date: { gte: startUtc, lte: endUtc }, referenceNo: { notIn: incomingRefs } },
+      select: { id: true }
     });
-
-    if (ledgersToCreate.length > 0) {
-      await prisma.normalizedLedger.createMany({
-        data: ledgersToCreate,
-        skipDuplicates: true
-      });
-
-      // Re-fetch all ledgers for this client to ensure ledgerMap has the actual database IDs (handling any skipped/concurrently-created rows)
-      const finalLedgers = await prisma.normalizedLedger.findMany({
-        where: { clientId: client.id }
-      });
-      for (const l of finalLedgers) {
-        ledgerMap.set(l.name.toLowerCase(), l.id);
-      }
-    }
-
-    // using fromDate and toDate from outer scope
-    if (fromDate && toDate) {
-      const startYear = parseInt(fromDate.substring(0, 4), 10);
-      const startMonth = parseInt(fromDate.substring(4, 6), 10) - 1;
-      const startDay = parseInt(fromDate.substring(6, 8), 10);
-      const startUtc = new Date(Date.UTC(startYear, startMonth, startDay, 0, 0, 0, 0));
-
-      const endYear = parseInt(toDate.substring(0, 4), 10);
-      const endMonth = parseInt(toDate.substring(4, 6), 10) - 1;
-      const endDay = parseInt(toDate.substring(6, 8), 10);
-      const endUtc = new Date(Date.UTC(endYear, endMonth, endDay, 23, 59, 59, 999));
-
-      const incomingRefs = vouchers.map((v: any, idx: number) => v.guid || v.voucherNumber || `VCH-${v.date}-${idx}`);
-
-      const staleVouchers = await prisma.normalizedVoucher.findMany({
-        where: {
-          clientId: client.id,
-          date: {
-            gte: startUtc,
-            lte: endUtc
-          },
-          referenceNo: {
-            notIn: incomingRefs
-          }
-        },
-        select: { id: true }
-      });
+    if (staleVouchers.length > 0) {
       const staleIds = staleVouchers.map(sv => sv.id);
-
-      if (staleIds.length > 0) {
-        console.log(`[INGEST-VOUCHERS] Purging ${staleIds.length} stale/deleted vouchers for period ${fromDate}-${toDate}`);
-        await prisma.normalizedVoucherLine.deleteMany({
-          where: { voucherId: { in: staleIds } }
-        });
-        await prisma.normalizedVoucher.deleteMany({
-          where: { id: { in: staleIds } }
-        });
-      }
+      console.log(`[STALE_PURGE] requestId=${requestId} count=${staleIds.length} period=${fromDate}-${toDate}`);
+      await prisma.normalizedVoucherLine.deleteMany({ where: { voucherId: { in: staleIds } } });
+      await prisma.normalizedVoucher.deleteMany({ where: { id: { in: staleIds } } });
     }
 
-    let processedCount = 0;
+    // ── Build voucher + line payloads ───────────────────────────────────────
+    currentStage = "VOUCHER_BUILD";
+    console.log(`[VOUCHER_PROCESSING_START] requestId=${requestId} month=${periodKey} total=${vouchers.length}`);
 
-    // Batch process Vouchers
     const referenceNos = vouchers.map((v: any, idx: number) => v.guid || v.voucherNumber || `VCH-${v.date}-${idx}`);
-    
     const existingVouchersList = await prisma.normalizedVoucher.findMany({
       where: { clientId: client.id, referenceNo: { in: referenceNos } }
     });
-    
     const existingMap = new Map(existingVouchersList.map(v => [v.referenceNo, v.id]));
-    
-    const vouchersToCreate = [];
-    const linesToCreate = [];
-    const vouchersToDeleteLines = [];
-    const seenRefsThisBatch = new Set();
+
+    const vouchersToCreate: any[] = [];
+    const linesToCreate: any[] = [];
+    const vouchersToDeleteLines: string[] = [];
+    const seenRefsThisBatch = new Set<string>();
+    let processedCount = 0;
 
     for (const v of vouchers) {
+      currentVoucherIdx = processedCount;
       const referenceNo = v.guid || v.voucherNumber || `VCH-${v.date}-${processedCount}`;
-      
-      // Prevent duplicates within the same batch payload
-      if (seenRefsThisBatch.has(referenceNo)) {
-         processedCount++;
-         continue;
-      }
+      currentVoucherRef = referenceNo;
+
+      if (seenRefsThisBatch.has(referenceNo)) { processedCount++; continue; }
       seenRefsThisBatch.add(referenceNo);
 
-      const existingId = existingMap.get(referenceNo);
+      // ── Validate date ──
+      const parsedDate = new Date(v.date);
+      if (isNaN(parsedDate.getTime())) {
+        console.error(`[INGEST_ERROR] requestId=${requestId} stage=VOUCHER_BUILD voucherIdx=${processedCount} ref="${referenceNo}" reason=INVALID_DATE value="${v.date}"`);
+        processedCount++;
+        continue; // skip bad voucher, don't fail whole batch
+      }
 
-      let voucherId = existingId;
+      const existingId = existingMap.get(referenceNo);
+      const voucherId = existingId || crypto.randomUUID();
 
       if (!existingId) {
-        voucherId = crypto.randomUUID();
         vouchersToCreate.push({
           id: voucherId,
           clientId: client.id,
           voucherNumber: v.voucherNumber || "N/A",
-          referenceNo: referenceNo,
-          date: new Date(v.date),
+          referenceNo,
+          date: parsedDate,
           type: v.voucherType || "JOURNAL",
           narration: v.narration || null,
           totalAmount: v.totalAmount || 0,
@@ -295,106 +213,85 @@ export async function POST(req: Request) {
 
       const linePayloads = v.lines.map((line: any) => {
         const ledId = ledgerMap.get((line.ledgerName || "").toLowerCase());
+        if (!ledId) return null;
+        const amount = Math.abs(line.amount || 0);
         return {
           voucherId: voucherId as string,
           ledgerId: ledId,
-          amount: Math.abs(line.amount),
+          amount,
           entryType: line.isDebit ? "DEBIT" : "CREDIT"
         };
-      }).filter((l: any) => l.ledgerId);
+      }).filter(Boolean);
 
       linesToCreate.push(...linePayloads);
       processedCount++;
     }
 
+    console.log(`[VOUCHER_BUILD_DONE] requestId=${requestId} toCreate=${vouchersToCreate.length} toUpdate=${vouchersToDeleteLines.length} lines=${linesToCreate.length}`);
+
+    // ── DB writes ───────────────────────────────────────────────────────────
+    currentStage = "VOUCHER_DELETE_LINES";
     if (vouchersToDeleteLines.length > 0) {
-      await prisma.normalizedVoucherLine.deleteMany({
-        where: { voucherId: { in: vouchersToDeleteLines } }
-      });
+      await prisma.normalizedVoucherLine.deleteMany({ where: { voucherId: { in: vouchersToDeleteLines } } });
     }
 
+    currentStage = "VOUCHER_CREATE";
     if (vouchersToCreate.length > 0) {
-      await prisma.normalizedVoucher.createMany({
-        data: vouchersToCreate
-      });
-      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=VOUCHERS_PERSISTED`);
+      await prisma.normalizedVoucher.createMany({ data: vouchersToCreate });
+      console.log(`[VOUCHER_CREATED] requestId=${requestId} count=${vouchersToCreate.length}`);
     }
 
+    currentStage = "LINES_CREATE";
     if (linesToCreate.length > 0) {
-      await prisma.normalizedVoucherLine.createMany({
-        data: linesToCreate
-      });
-      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=LINES_PERSISTED`);
+      await prisma.normalizedVoucherLine.createMany({ data: linesToCreate });
+      console.log(`[VOUCHER_LINES_CREATED] requestId=${requestId} count=${linesToCreate.length}`);
     }
 
-    // --- PNLValue Aggregation from Vouchers ---
+    // ── PNL Aggregation ─────────────────────────────────────────────────────
+    currentStage = "PNL_AGGREGATION";
     const pnlMappings = await prisma.unifiedLedgerMapping.findMany({
       where: { clientId: client.id, statementType: "PNL" }
     });
+    console.log(`[PNL_START] requestId=${requestId} mappings=${pnlMappings.length} vouchers=${vouchers.length}`);
 
-    if (vouchers.length === 0 && pnlMappings.length > 0 && fromDate) {
-      currentStage = "RECALCULATION_STARTED";
-      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=RECALCULATION_STARTED`);
+    if (vouchers.length === 0 && pnlMappings.length > 0) {
       const year = parseInt(fromDate.substring(0, 4), 10);
       const monthNum = parseInt(fromDate.substring(4, 6), 10) - 1;
-      const MONTH_SHORT_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const MONTH_SHORT_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
       const mShort = MONTH_SHORT_NAMES[monthNum];
       const syncYearToSave = monthNum < 3 ? year - 1 : year;
-      
-      await prisma.pNLValue.deleteMany({
-        where: { clientId: client.id, month: mShort, year: syncYearToSave }
-      });
-      currentStage = "RECALCULATION_DONE";
-      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=RECALCULATION_DONE`);
+      await prisma.pNLValue.deleteMany({ where: { clientId: client.id, month: mShort, year: syncYearToSave } });
     }
 
     if (pnlMappings.length > 0 && vouchers.length > 0) {
-      currentStage = "RECALCULATION_STARTED";
-      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=RECALCULATION_STARTED`);
-      const monthBalances: Record<string, Record<string, number>> = {}; // { '2026-Apr': { 'Sales': 1000 } }
+      const MONTH_SHORT_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const monthBalances: Record<string, Record<string, number>> = {};
 
-      // 1. Group vouchers by period
-      const MONTH_SHORT_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       for (const v of vouchers) {
         const d = new Date(v.date);
+        if (isNaN(d.getTime())) continue;
         const mShort = MONTH_SHORT_NAMES[d.getUTCMonth()];
         const year = d.getUTCFullYear();
-        // Adjust for fiscal year (assuming April start)
         const syncYearToSave = d.getUTCMonth() < 3 ? year - 1 : year;
-        const periodKey = `${syncYearToSave}-${mShort}`;
-
-        if (!monthBalances[periodKey]) {
-          monthBalances[periodKey] = {};
-        }
-
-        // 2. Aggregate line amounts per ledger
-        // 2. Aggregate line amounts per ledger
+        const pk = `${syncYearToSave}-${mShort}`;
+        if (!monthBalances[pk]) monthBalances[pk] = {};
         for (const line of v.lines) {
           if (!line.ledgerName) continue;
-          const ledgerNameLower = line.ledgerName.trim().toLowerCase();
-          
-          // Debits are negative, Credits are positive. Summing them yields the Net Movement.
           const amt = line.isDebit ? -line.amount : line.amount;
-          
-          monthBalances[periodKey][ledgerNameLower] = (monthBalances[periodKey][ledgerNameLower] || 0) + amt;
+          const k = line.ledgerName.trim().toLowerCase();
+          monthBalances[pk][k] = (monthBalances[pk][k] || 0) + amt;
         }
       }
 
-      // 3. Map to Sector Heads
-      for (const [periodKey, accounts] of Object.entries(monthBalances)) {
-        const [yearStr, mShort] = periodKey.split('-');
+      for (const [pk, accounts] of Object.entries(monthBalances)) {
+        const [yearStr, mShort] = pk.split('-');
         const syncYearToSave = parseInt(yearStr);
         const headBalances: Record<string, number> = {};
 
         for (const m of pnlMappings) {
-          const exactMatchKey = Object.keys(accounts).find(
-            (k) => k.trim().toLowerCase() === m.softwareLedgerName.trim().toLowerCase()
-          );
-          if (exactMatchKey) {
-            const balance = accounts[exactMatchKey];
-            if (balance !== 0) {
-              headBalances[m.subHeadName] = (headBalances[m.subHeadName] || 0) + balance;
-            }
+          const k = Object.keys(accounts).find(k2 => k2.trim().toLowerCase() === m.softwareLedgerName.trim().toLowerCase());
+          if (k && accounts[k] !== 0) {
+            headBalances[m.subHeadName] = (headBalances[m.subHeadName] || 0) + accounts[k];
           }
         }
 
@@ -407,16 +304,16 @@ export async function POST(req: Request) {
         }));
 
         if (finalEntries.length > 0) {
-          await prisma.pNLValue.deleteMany({
-            where: { clientId: client.id, month: mShort, year: syncYearToSave }
-          });
+          await prisma.pNLValue.deleteMany({ where: { clientId: client.id, month: mShort, year: syncYearToSave } });
           await prisma.pNLValue.createMany({ data: finalEntries });
+          console.log(`[PNL_WRITTEN] requestId=${requestId} period=${pk} entries=${finalEntries.length}`);
         }
       }
-      currentStage = "RECALCULATION_DONE";
-      console.log(`[VOUCHER_PUSH_STAGE] requestId=${requestId} stage=RECALCULATION_DONE`);
     }
+    console.log(`[TRANSACTION_COMMITTED] requestId=${requestId}`);
 
+    // ── SyncTask result update ──────────────────────────────────────────────
+    currentStage = "SYNC_TASK_UPDATE";
     if (syncTaskId) {
       const task = await prisma.syncTask.findUnique({ where: { id: syncTaskId } });
       if (task) {
@@ -424,40 +321,29 @@ export async function POST(req: Request) {
         currentResult.vouchersProcessed = (currentResult.vouchersProcessed || 0) + processedCount;
         currentResult.vouchersCreated = (currentResult.vouchersCreated || 0) + vouchersToCreate.length;
         currentResult.vouchersUpdated = (currentResult.vouchersUpdated || 0) + vouchersToDeleteLines.length;
-
-        await prisma.syncTask.update({
-          where: { id: syncTaskId },
-          data: { result: currentResult }
-        });
+        await prisma.syncTask.update({ where: { id: syncTaskId }, data: { result: currentResult } });
       }
     }
 
-    console.log(`[SYNC] [VOUCHER_WRITE_DONE] syncRunId=${syncTaskId || 'N/A'} client=${client.name} count=${processedCount} durationMs=${Date.now() - startTime}ms`);
-    console.log(`[VOUCHER_PUSH_SUCCESS] requestId=${requestId}`);
-    console.log(`[INGEST_DB_WRITE_DONE] requestId=${requestId} durationMs=${Date.now() - startTime}ms`);
-    console.log(`[INGEST_RESPONSE_SENT] requestId=${requestId} status=200 totalDurationMs=${Date.now() - startTime}ms`);
+    const durationMs = Date.now() - startTime;
+    console.log(`[INGEST_SUCCESS] requestId=${requestId} month=${periodKey} processed=${processedCount} durationMs=${durationMs}`);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: `Successfully processed ${processedCount} vouchers.`,
       recordsProcessed: processedCount
     }, { status: 200 });
 
   } catch (error: any) {
-    console.error("Voucher Ingestion API Error:", error);
-    console.log(`[VOUCHER_PUSH_ERROR] requestId=${requestId}`);
-    console.log(`[VOUCHER_PUSH_ERROR] stage=${currentStage}`);
-    console.log(`[VOUCHER_PUSH_ERROR] errorName=${error.name || 'Error'}`);
-    console.log(`[VOUCHER_PUSH_ERROR] errorCode=${error.code || 'UNKNOWN'}`);
-    console.log(`[VOUCHER_PUSH_ERROR] errorMessage=${error.message || String(error)}`);
-    console.log(`[VOUCHER_PUSH_ERROR] stack=${error.stack || 'N/A'}`);
-    console.log(`[INGEST_RESPONSE_SENT] requestId=${requestId} status=500 totalDurationMs=0ms`);
+    const durationMs = Date.now() - startTime;
+    console.error(`[INGEST_ERROR] requestId=${requestId} stage=${currentStage} voucherIdx=${currentVoucherIdx} voucherRef="${currentVoucherRef}" errorName=${error.name} errorCode=${error.code || 'N/A'} errorMessage=${error.message} durationMs=${durationMs}`);
+    console.error(`[INGEST_ERROR_STACK] requestId=${requestId}`, error.stack);
+    if (error.meta) console.error(`[INGEST_ERROR_PRISMA_META] requestId=${requestId}`, JSON.stringify(error.meta));
 
-    return NextResponse.json({ 
-      message: "Internal Error during API Ingestion",
-      error: {
-        requestId,
-        stage: currentStage
-      }
+    return NextResponse.json({
+      requestId,
+      stage: currentStage,
+      voucherRef: currentVoucherRef,
+      message: `Ingestion failed at stage: ${currentStage}. Error: ${error.message}`
     }, { status: 500 });
   }
 }
