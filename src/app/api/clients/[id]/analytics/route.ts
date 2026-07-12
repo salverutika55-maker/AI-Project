@@ -171,7 +171,10 @@ export async function GET(
         averageDays: Math.min(90, Math.max(10, avgDays)),
         lastTransaction: stats.lastTransactionDate || new Date(year, startMonth, 1),
         transactionCount: stats.transactionCount,
-        monthlyTrend: stats.monthlyValues.map(v => Math.round(v * 100) / 100)
+        monthlyTrend: stats.monthlyValues.map(v => Math.round(v * 100) / 100),
+        openingBalance: Math.round(stats.openingBalance * 100) / 100,
+        debits: Math.round(stats.debitsDuringYear * 100) / 100,
+        credits: Math.round(stats.creditsDuringYear * 100) / 100
       };
     })
     .filter(p => p.totalValue > 0 || p.outstanding > 0)

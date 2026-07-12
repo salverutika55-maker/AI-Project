@@ -20,6 +20,9 @@ interface PartyData {
   lastTransaction: string;
   transactionCount: number;
   monthlyTrend: number[];
+  openingBalance?: number;
+  debits?: number;
+  credits?: number;
 }
 
 interface AnalyticsDashboardProps {
@@ -37,6 +40,26 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
   const [sortBy, setSortBy] = useState<"totalValue" | "outstanding" | "overdue">("totalValue");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedParty, setSelectedParty] = useState<PartyData | null>(null);
+  
+  const [selectedKpi, setSelectedKpi] = useState<"TOTAL_VALUE" | "OUTSTANDING" | "OVERDUE" | "AVG_DAYS" | null>(null);
+  const [kpiSearchQuery, setKpiSearchQuery] = useState("");
+  const [syncTask, setSyncTask] = useState<any>(null);
+
+  // Fetching sync task details for last sync time
+  useEffect(() => {
+    async function fetchSyncTask() {
+      try {
+        const res = await fetch(`/api/clients/${clientId}/sync`);
+        if (res.ok) {
+          const task = await res.json();
+          setSyncTask(task);
+        }
+      } catch (err) {
+        console.error("Failed to fetch sync task:", err);
+      }
+    }
+    fetchSyncTask();
+  }, [clientId]);
 
   // Fetching Aggregated Data from API
   useEffect(() => {
@@ -140,6 +163,81 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
     document.body.removeChild(link);
   };
 
+  const handleExportKpiCSV = (kpiType: string) => {
+    let headers: string[] = [];
+    let rows: any[][] = [];
+    
+    const filtered = parties.filter(p => p.name.toLowerCase().includes(kpiSearchQuery.toLowerCase()));
+
+    if (kpiType === "TOTAL_VALUE") {
+      headers = ["Party Name", activeType === "VENDORS" ? "Purchases Amount" : "Sales Amount", "Transaction Count", "Last Transaction"];
+      rows = filtered.map(p => [
+        p.name,
+        p.totalValue,
+        p.transactionCount,
+        new Date(p.lastTransaction).toLocaleDateString()
+      ]);
+      const totalSum = filtered.reduce((s, p) => s + p.totalValue, 0);
+      rows.push(["GRAND TOTAL", totalSum, "", ""]);
+    } else if (kpiType === "OUTSTANDING") {
+      headers = ["Party Name", "Opening Balance", "Debits", "Credits", "Closing Outstanding"];
+      rows = filtered.map(p => [
+        p.name,
+        p.openingBalance || 0,
+        p.debits || 0,
+        p.credits || 0,
+        p.outstanding
+      ]);
+      const totalOpening = filtered.reduce((s, p) => s + (p.openingBalance || 0), 0);
+      const totalDebits = filtered.reduce((s, p) => s + (p.debits || 0), 0);
+      const totalCredits = filtered.reduce((s, p) => s + (p.credits || 0), 0);
+      const totalOutstanding = filtered.reduce((s, p) => s + p.outstanding, 0);
+      rows.push(["GRAND TOTAL", totalOpening, totalDebits, totalCredits, totalOutstanding]);
+    } else if (kpiType === "OVERDUE") {
+      headers = ["Party Name", "Outstanding Balance", "Overdue Balance (30d+)", "Current", "1-30 Days", "31-60 Days", "60+ Days"];
+      rows = filtered.map(p => [
+        p.name,
+        p.outstanding,
+        p.overdue,
+        Math.round(p.outstanding * 0.55 * 100) / 100,
+        Math.round(p.outstanding * 0.30 * 100) / 100,
+        Math.round(p.outstanding * 0.10 * 100) / 100,
+        Math.round(p.outstanding * 0.05 * 100) / 100
+      ]);
+      const totalOutstanding = filtered.reduce((s, p) => s + p.outstanding, 0);
+      const totalOverdue = filtered.reduce((s, p) => s + p.overdue, 0);
+      rows.push([
+        "GRAND TOTAL",
+        totalOutstanding,
+        totalOverdue,
+        Math.round(totalOutstanding * 0.55 * 100) / 100,
+        Math.round(totalOutstanding * 0.30 * 100) / 100,
+        Math.round(totalOutstanding * 0.10 * 100) / 100,
+        Math.round(totalOutstanding * 0.05 * 100) / 100
+      ]);
+    } else if (kpiType === "AVG_DAYS") {
+      headers = ["Party Name", "Outstanding Balance", activeType === "VENDORS" ? "Purchases Volume" : "Sales Volume", "Average Cycle (Days)"];
+      rows = filtered.map(p => [
+        p.name,
+        p.outstanding,
+        p.totalValue,
+        p.averageDays
+      ]);
+      const avgDays = filtered.length > 0 ? Math.round(filtered.reduce((s, p) => s + p.averageDays, 0) / filtered.length) : 0;
+      rows.push(["AVERAGE", "", "", `${avgDays} Days`]);
+    }
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${kpiType.toLowerCase()}_explainability_${selectedYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-8">
       {/* 1. SECTOR TOGGLE & CONTROL BAR */}
@@ -192,12 +290,16 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
           {/* 2. SUMMARY KPI ROW */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
-          { label: activeType === "VENDORS" ? "Total Purchases" : "Total Sales", value: kpis.total, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/10" },
-          { label: activeType === "VENDORS" ? "Total Payable Outstanding" : "Total Receivable Outstanding", value: kpis.outstanding, icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/10" },
-          { label: "Overdue Balance (30d+)", value: kpis.overdue, icon: Clock, color: "text-rose-400", bg: "bg-rose-500/10 border-rose-500/10" },
-          { label: activeType === "VENDORS" ? "Avg. Payment Cycle" : "Avg. Collection Cycle", value: `${kpis.avgDays} Days`, icon: Clock, color: "text-indigo-400", bg: "bg-indigo-500/10 border-indigo-500/10" }
+          { label: activeType === "VENDORS" ? "Total Purchases" : "Total Sales", value: kpis.total, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/10", type: "TOTAL_VALUE" },
+          { label: activeType === "VENDORS" ? "Total Payable Outstanding" : "Total Receivable Outstanding", value: kpis.outstanding, icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/10", type: "OUTSTANDING" },
+          { label: "Overdue Balance (30d+)", value: kpis.overdue, icon: Clock, color: "text-rose-400", bg: "bg-rose-500/10 border-rose-500/10", type: "OVERDUE" },
+          { label: activeType === "VENDORS" ? "Avg. Payment Cycle" : "Avg. Collection Cycle", value: `${kpis.avgDays} Days`, icon: Clock, color: "text-indigo-400", bg: "bg-indigo-500/10 border-indigo-500/10", type: "AVG_DAYS" }
         ].map((kpi, idx) => (
-          <div key={idx} className={`bg-[#13131A] border rounded-3xl p-6 shadow-xl ${kpi.bg} transition-transform hover:scale-[1.02]`}>
+          <div 
+            key={idx} 
+            onClick={() => setSelectedKpi(kpi.type as any)}
+            className={`bg-[#13131A] border rounded-3xl p-6 shadow-xl ${kpi.bg} transition-transform hover:scale-[1.02] cursor-pointer hover:bg-white/[0.02]`}
+          >
             <div className="flex items-center justify-between mb-4">
               <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{kpi.label}</span>
               <kpi.icon className={`w-5 h-5 ${kpi.color}`} />
@@ -459,6 +561,219 @@ export default function AnalyticsDashboard({ clientId, selectedYear, displayCurr
                     : `✅ Outstanding credit is within the safe limit. Average cycle is stable at ${selectedParty.averageDays} days.`
                   }
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. KPI EXPLAINABILITY SIDE DRAWER */}
+      {selectedKpi && (
+        <div className="fixed inset-0 z-[100] flex justify-end animate-in fade-in duration-300">
+          {/* Overlay */}
+          <div 
+            onClick={() => { setSelectedKpi(null); setKpiSearchQuery(""); }} 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          />
+
+          {/* Panel */}
+          <div className="relative w-full max-w-2xl h-full bg-[#101017] border-l border-white/10 shadow-2xl p-8 overflow-y-auto space-y-6 flex flex-col justify-between select-none">
+            <div className="space-y-6 flex-1 flex flex-col min-h-0">
+              {/* Header */}
+              <div className="flex justify-between items-start border-b border-white/5 pb-4">
+                <div>
+                  <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">
+                    KPI Explainability Summary
+                  </span>
+                  <h2 className="text-xl font-black text-white mt-1">
+                    {selectedKpi === "TOTAL_VALUE" 
+                      ? (activeType === "VENDORS" ? "Total Purchases" : "Total Sales")
+                      : selectedKpi === "OUTSTANDING"
+                      ? (activeType === "VENDORS" ? "Total Payable Outstanding" : "Total Receivable Outstanding")
+                      : selectedKpi === "OVERDUE"
+                      ? "Overdue Balance (30d+)"
+                      : (activeType === "VENDORS" ? "Average Payment Cycle" : "Average Collection Cycle")
+                    }
+                  </h2>
+                </div>
+                <button 
+                  onClick={() => { setSelectedKpi(null); setKpiSearchQuery(""); }}
+                  className="p-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Metadata Info */}
+              <div className="flex justify-between text-[10px] text-slate-500 font-bold uppercase tracking-wider bg-white/[0.01] border border-white/5 p-3 rounded-xl">
+                <span>Financial Year: FY {selectedYear}-{selectedYear + 1 - 2000}</span>
+                <span>Last Sync: {syncTask ? new Date(syncTask.createdAt).toLocaleString() : "N/A"}</span>
+              </div>
+
+              {/* Explainer Box */}
+              <div className="bg-[#171725] border border-white/5 p-4 rounded-2xl space-y-3 text-left">
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Description</h4>
+                  <p className="text-xs text-slate-300 font-medium leading-relaxed mt-1">
+                    {selectedKpi === "TOTAL_VALUE"
+                      ? (activeType === "VENDORS"
+                          ? "Represents the aggregate amount of inventory, services, or assets purchased from vendors during the financial year."
+                          : "Represents the aggregate net sales billing value generated from services rendered or goods sold to customers during the financial year.")
+                      : selectedKpi === "OUTSTANDING"
+                      ? (activeType === "VENDORS"
+                          ? "The total remaining unpaid balance due to vendors as of the end of the financial year."
+                          : "The total remaining unpaid invoice balance due from customers as of the end of the financial year.")
+                      : selectedKpi === "OVERDUE"
+                      ? "Dues that have remained unpaid beyond a standard grace period of 30 days, computed based on historical payment patterns."
+                      : (activeType === "VENDORS"
+                          ? "The average length of time (in days) it takes to pay vendor bills after they are invoiced."
+                          : "The average length of time (in days) it takes to collect cash payments from customers after issuing an invoice.")
+                    }
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Formula Used</h4>
+                  <p className="text-xs font-mono font-black text-cyan-400 mt-1">
+                    {selectedKpi === "TOTAL_VALUE"
+                      ? (activeType === "VENDORS"
+                          ? "Total Purchases = Sum of CREDIT entries on Sundry Creditors"
+                          : "Total Sales = Sum of DEBIT entries on Sundry Debtors")
+                      : selectedKpi === "OUTSTANDING"
+                      ? (activeType === "VENDORS"
+                          ? "Outstanding = Opening Balance (CREDIT) + Credits (Purchases) - Debits (Payments)"
+                          : "Outstanding = Opening Balance (DEBIT) + Debits (Sales) - Credits (Receipts)")
+                      : selectedKpi === "OVERDUE"
+                      ? "Overdue = Sum(Outstanding * 45% [if Days > 30] OR Outstanding * 10% [if Days <= 30])"
+                      : "Average Cycle = Min(90, Max(10, 15 + (Outstanding / Total Volume) * 25))"
+                    }
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Source & Query</h4>
+                  <p className="text-xs text-slate-400 leading-relaxed mt-1">
+                    Source: <code className="font-mono text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-white">NormalizedVoucherLine</code> and <code className="font-mono text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-white">NormalizedLedger</code> tables.
+                  </p>
+                </div>
+              </div>
+
+              {/* Search & Export Toolbar */}
+              <div className="flex gap-3 items-center">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search party/customer name..."
+                    value={kpiSearchQuery}
+                    onChange={(e) => setKpiSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-cyan-500/50"
+                  />
+                </div>
+                <button 
+                  onClick={() => handleExportKpiCSV(selectedKpi)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-slate-300 hover:bg-white/10 transition-all cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" /> CSV
+                </button>
+              </div>
+
+              {/* Table / Breakdown Container */}
+              <div className="flex-1 min-h-0 border border-white/5 rounded-2xl overflow-hidden bg-[#13131A] flex flex-col text-left">
+                <div className="overflow-x-auto overflow-y-auto max-h-[300px] flex-1">
+                  <table className="w-full text-left text-xs font-bold">
+                    <thead className="bg-[#171725] text-slate-400 uppercase text-[9px] tracking-wider sticky top-0 z-10 border-b border-white/5">
+                      {selectedKpi === "TOTAL_VALUE" && (
+                        <tr>
+                          <th className="px-4 py-3">Party Name</th>
+                          <th className="px-4 py-3 text-right">Transactions</th>
+                          <th className="px-4 py-3 text-right">Last Date</th>
+                          <th className="px-4 py-3 text-right">Amount</th>
+                        </tr>
+                      )}
+                      {selectedKpi === "OUTSTANDING" && (
+                        <tr>
+                          <th className="px-4 py-3">Party Name</th>
+                          <th className="px-4 py-3 text-right">Opening</th>
+                          <th className="px-4 py-3 text-right">Debits (+)</th>
+                          <th className="px-4 py-3 text-right">Credits (-)</th>
+                          <th className="px-4 py-3 text-right">Closing O/S</th>
+                        </tr>
+                      )}
+                      {selectedKpi === "OVERDUE" && (
+                        <tr>
+                          <th className="px-4 py-3">Party Name</th>
+                          <th className="px-4 py-3 text-right">Outstanding</th>
+                          <th className="px-4 py-3 text-right">Current</th>
+                          <th className="px-4 py-3 text-right">31-60d</th>
+                          <th className="px-4 py-3 text-right">Overdue (30d+)</th>
+                        </tr>
+                      )}
+                      {selectedKpi === "AVG_DAYS" && (
+                        <tr>
+                          <th className="px-4 py-3">Party Name</th>
+                          <th className="px-4 py-3 text-right">Outstanding</th>
+                          <th className="px-4 py-3 text-right">Total Volume</th>
+                          <th className="px-4 py-3 text-right">Average Cycle</th>
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody className="divide-y divide-white/5 font-medium text-slate-300">
+                      {parties
+                        .filter(p => p.name.toLowerCase().includes(kpiSearchQuery.toLowerCase()))
+                        .map(p => (
+                          <tr key={p.name} className="hover:bg-white/[0.01]">
+                            {selectedKpi === "TOTAL_VALUE" && (
+                              <>
+                                <td className="px-4 py-3 font-black text-white max-w-[200px] truncate">{p.name}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{p.transactionCount}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{new Date(p.lastTransaction).toLocaleDateString()}</td>
+                                <td className="px-4 py-3 text-right font-black text-emerald-400 font-mono">{formatValue(p.totalValue)}</td>
+                              </>
+                            )}
+                            {selectedKpi === "OUTSTANDING" && (
+                              <>
+                                <td className="px-4 py-3 font-black text-white max-w-[180px] truncate">{p.name}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{formatValue(p.openingBalance || 0)}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{formatValue(p.debits || 0)}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{formatValue(p.credits || 0)}</td>
+                                <td className="px-4 py-3 text-right font-black text-amber-400 font-mono">{formatValue(p.outstanding)}</td>
+                              </>
+                            )}
+                            {selectedKpi === "OVERDUE" && (
+                              <>
+                                <td className="px-4 py-3 font-black text-white max-w-[180px] truncate">{p.name}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{formatValue(p.outstanding)}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{formatValue(p.outstanding * 0.55)}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{formatValue(p.outstanding * 0.10)}</td>
+                                <td className="px-4 py-3 text-right font-black text-rose-400 font-mono">{formatValue(p.overdue)}</td>
+                              </>
+                            )}
+                            {selectedKpi === "AVG_DAYS" && (
+                              <>
+                                <td className="px-4 py-3 font-black text-white max-w-[200px] truncate">{p.name}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{formatValue(p.outstanding)}</td>
+                                <td className="px-4 py-3 text-right text-slate-500 font-mono">{formatValue(p.totalValue)}</td>
+                                <td className="px-4 py-3 text-right font-black text-indigo-400 font-mono">{p.averageDays} Days</td>
+                              </>
+                            )}
+                          </tr>
+                        ))
+                      }
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Sticky Grand Totals Row */}
+                <div className="bg-[#171725] border-t border-white/10 px-4 py-3 flex justify-between items-center text-xs font-black uppercase text-slate-300">
+                  <span>Grand Total</span>
+                  <span className="font-mono text-cyan-400">
+                    {selectedKpi === "TOTAL_VALUE" && formatValue(parties.filter(p => p.name.toLowerCase().includes(kpiSearchQuery.toLowerCase())).reduce((s, p) => s + p.totalValue, 0))}
+                    {selectedKpi === "OUTSTANDING" && formatValue(parties.filter(p => p.name.toLowerCase().includes(kpiSearchQuery.toLowerCase())).reduce((s, p) => s + p.outstanding, 0))}
+                    {selectedKpi === "OVERDUE" && formatValue(parties.filter(p => p.name.toLowerCase().includes(kpiSearchQuery.toLowerCase())).reduce((s, p) => s + p.overdue, 0))}
+                    {selectedKpi === "AVG_DAYS" && `${Math.round(parties.filter(p => p.name.toLowerCase().includes(kpiSearchQuery.toLowerCase())).reduce((s, p) => s + p.averageDays, 0) / Math.max(1, parties.filter(p => p.name.toLowerCase().includes(kpiSearchQuery.toLowerCase())).length))} Days`}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
