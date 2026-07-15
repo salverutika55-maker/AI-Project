@@ -284,7 +284,7 @@ export async function POST(req: Request) {
       const activeSourceIds = new Set<string>();
       const activeNames = new Set<string>();
 
-      const startTime = Date.now();
+      const coaStartTime = Date.now();
       console.log(`[SYNC] [SYNC_REQUEST_RECEIVED] syncRunId=${syncTaskId || 'N/A'} client=${client.name} payloadBytes=${req.headers.get('content-length') || 'N/A'}`);
 
       const updateQueries: any[] = [];
@@ -558,7 +558,7 @@ export async function POST(req: Request) {
 
       console.log(`[SYNC] [COA_RECONCILIATION_COMPLETE] syncRunId=${syncTaskId || 'N/A'} companyId=${client.id} sourceLedgerCount=${body.chartOfAccounts ? body.chartOfAccounts.length : 0} parsedLedgerCount=${chartOfAccounts.length} existingAppLedgerCount=${dbLedgers.length} insertedCount=${addedCount} updatedCount=${updatedCount} renamedCount=${renamedCount} deactivatedCount=${deletedCount} reactivatedCount=${reactivatedCount} unmappedCount=${unmappedCount} errorCount=0`);
 
-      console.log(`[SYNC] [LEDGER_WRITE_DONE] syncRunId=${syncTaskId || 'N/A'} client=${client.name} count=${chartOfAccounts.length} durationMs=${Date.now() - startTime}ms`);
+      console.log(`[SYNC] [LEDGER_WRITE_DONE] syncRunId=${syncTaskId || 'N/A'} client=${client.name} count=${chartOfAccounts.length} durationMs=${Date.now() - coaStartTime}ms`);
 
       // Write results to SyncTask if present
       if (syncTaskId) {
