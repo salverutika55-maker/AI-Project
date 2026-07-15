@@ -27,6 +27,8 @@ function determineLedgerNature(groupName: string, opVal: number, closingVal: num
 }
 
 export async function POST(req: Request) {
+  const startTime = Date.now();
+  console.log(`[STEP 1] Request received | elapsed: ${Date.now() - startTime}ms`);
   try {
     // 1. Authenticate via Bearer Token
     const authHeader = req.headers.get('authorization');
@@ -45,6 +47,7 @@ export async function POST(req: Request) {
     if (!client) {
       return NextResponse.json({ message: "Invalid API Key" }, { status: 401 });
     }
+    console.log(`[STEP 2] Authentication complete | elapsed: ${Date.now() - startTime}ms`);
 
     // 3. Parse JSON Body payload
     const body = await req.json();
@@ -84,6 +87,8 @@ export async function POST(req: Request) {
     if (records.length === 0 && (!body.chartOfAccounts || body.chartOfAccounts.length === 0)) {
       return NextResponse.json({ message: "Payload empty" }, { status: 400 });
     }
+    console.log(`[STEP 3] Parsed payload | elapsed: ${Date.now() - startTime}ms`);
+    console.log(`[STEP 4] Prisma connected | elapsed: ${Date.now() - startTime}ms`);
 
     // Force Full Sync: Purge existing records once per sync task session
     if (syncTaskId) {
@@ -115,6 +120,8 @@ export async function POST(req: Request) {
         }
       }
     }
+
+    console.log(`[STEP 6] Saving summaries | elapsed: ${Date.now() - startTime}ms`);
 
     let processedCount = 0;
 
@@ -215,6 +222,7 @@ export async function POST(req: Request) {
 
     // 4c. Update Unique Ledgers for the Mapping UI & Save Closing Balances
     if (client.software === 'TALLY') {
+      console.log(`[STEP 5] Saving ledgers | elapsed: ${Date.now() - startTime}ms`);
       console.log(`[SYNC] [COA_RECONCILIATION_START] syncRunId=${syncTaskId || 'N/A'} companyId=${client.id}`);
       // Read balances from Trial Balance records (latest one has current values)
       const ledgerBalances: Record<string, number> = {};
@@ -314,6 +322,11 @@ export async function POST(req: Request) {
           let isMove = matchedLedger.groupName !== srcGroup;
           let isReactivate = !matchedLedger.isActive || matchedLedger.sourceStatus === 'deleted';
           let isBalanceChange = Math.abs(matchedLedger.closingBalance - Math.abs(balanceVal)) > 0.01;
+          const opVal = Number(src.openingBalance) || 0;
+          let isOpBalanceChange = Math.abs(matchedLedger.openingBalance - Math.abs(opVal)) > 0.01;
+          let isIdChange = (srcMasterId && matchedLedger.sourceLedgerId !== srcMasterId) || (srcGuid && matchedLedger.sourceGuid !== srcGuid);
+
+          const needsUpdate = isRename || isMove || isReactivate || isBalanceChange || isOpBalanceChange || isIdChange;
 
           let action = "UNCHANGED";
           let reason = "No changes detected";
@@ -342,66 +355,72 @@ export async function POST(req: Request) {
             action = "UPDATED";
             reason = `Closing balance updated from ₹${matchedLedger.closingBalance} to ₹${Math.abs(balanceVal)}`;
           }
+          if (isOpBalanceChange && action === "UNCHANGED") {
+            action = "UPDATED";
+            reason = `Opening balance updated from ₹${matchedLedger.openingBalance} to ₹${Math.abs(opVal)}`;
+          }
 
-          const opVal = Number(src.openingBalance) || 0;
           const closingVal = balanceVal;
           const determinedNature = determineLedgerNature(srcGroup, opVal, closingVal);
 
-          // Queue update query
-          updateQueries.push(
-            prisma.normalizedLedger.update({
-              where: { id: matchedLedger.id },
-              data: {
-                name: srcName,
-                groupName: srcGroup,
-                sourceLedgerId: srcMasterId || matchedLedger.sourceLedgerId,
-                sourceGuid: srcGuid || matchedLedger.sourceGuid,
-                sourcePlatform: "TALLY",
-                sourceStatus: "active",
-                isActive: true,
-                deletedAt: null,
-                openingBalance: Math.abs(opVal),
-                closingBalance: Math.abs(closingVal),
-                nature: determinedNature,
-                mappingStatus: isMove ? "review_required" : (isReactivate ? "active" : matchedLedger.mappingStatus),
-                previousGroupName: isMove ? prevGroup : matchedLedger.previousGroupName
-              }
-            })
-          );
-
-          // Renames propagation to mapping tables
-          if (isRename) {
-            renamedCount++;
+          if (needsUpdate) {
+            // Queue update query
             updateQueries.push(
-              prisma.unifiedLedgerMapping.updateMany({
-                where: { clientId: client.id, softwareLedgerName: prevName },
-                data: { softwareLedgerName: srcName }
-              }),
-              prisma.pNLMapping.updateMany({
-                where: { clientId: client.id, softwareLedgerName: prevName },
-                data: { softwareLedgerName: srcName }
+              prisma.normalizedLedger.update({
+                where: { id: matchedLedger.id },
+                data: {
+                  name: srcName,
+                  groupName: srcGroup,
+                  sourceLedgerId: srcMasterId || matchedLedger.sourceLedgerId,
+                  sourceGuid: srcGuid || matchedLedger.sourceGuid,
+                  sourcePlatform: "TALLY",
+                  sourceStatus: "active",
+                  isActive: true,
+                  deletedAt: null,
+                  openingBalance: Math.abs(opVal),
+                  closingBalance: Math.abs(closingVal),
+                  nature: determinedNature,
+                  mappingStatus: isMove ? "review_required" : (isReactivate ? "active" : matchedLedger.mappingStatus),
+                  previousGroupName: isMove ? prevGroup : matchedLedger.previousGroupName
+                }
               })
             );
+
+            // Renames propagation to mapping tables
+            if (isRename) {
+              renamedCount++;
+              updateQueries.push(
+                prisma.unifiedLedgerMapping.updateMany({
+                  where: { clientId: client.id, softwareLedgerName: prevName },
+                  data: { softwareLedgerName: srcName }
+                }),
+                prisma.pNLMapping.updateMany({
+                  where: { clientId: client.id, softwareLedgerName: prevName },
+                  data: { softwareLedgerName: srcName }
+                })
+              );
+            }
+
+            if (isMove) movedCount++;
+            else if (isReactivate) reactivatedCount++;
+            else if (isRename) {} // Already incremented renamedCount
+            else if (isBalanceChange || isOpBalanceChange) updatedCount++;
+
+            traceLog.push({
+              sourceId: srcMasterId || srcGuid || srcName,
+              previousName: prevName,
+              currentName: srcName,
+              previousGroup: prevGroup,
+              currentGroup: srcGroup,
+              previousStatus: matchedLedger.sourceStatus,
+              currentStatus: "active",
+              mappingStatus: isMove ? "review_required" : matchedLedger.mappingStatus,
+              syncAction: action,
+              reason
+            });
+          } else {
+            unchangedCount++;
           }
-
-          if (isMove) movedCount++;
-          else if (isReactivate) reactivatedCount++;
-          else if (isRename) {} // Already incremented renamedCount
-          else if (isBalanceChange) updatedCount++;
-          else unchangedCount++;
-
-          traceLog.push({
-            sourceId: srcMasterId || srcGuid || srcName,
-            previousName: prevName,
-            currentName: srcName,
-            previousGroup: prevGroup,
-            currentGroup: srcGroup,
-            previousStatus: matchedLedger.sourceStatus,
-            currentStatus: "active",
-            mappingStatus: isMove ? "review_required" : matchedLedger.mappingStatus,
-            syncAction: action,
-            reason
-          });
 
         } else {
           // ADDED ledger
@@ -614,6 +633,9 @@ export async function POST(req: Request) {
         }
       });
     }
+
+    console.log(`[STEP 7] Recalculating analytics | elapsed: ${Date.now() - startTime}ms`);
+    console.log(`[STEP 8] Returning response | elapsed: ${Date.now() - startTime}ms`);
 
     return NextResponse.json({ 
       message: client.pnlMappings?.length > 0 ? "Data successfully ingested via API" : "Data ingested, but no PNL Mappings found.",
