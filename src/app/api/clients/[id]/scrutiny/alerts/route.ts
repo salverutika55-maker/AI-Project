@@ -70,7 +70,28 @@ export async function GET(
       });
     }
 
-    return NextResponse.json({ success: true, data: filteredAlerts });
+    // Query actual count of ledgers and vouchers for stats
+    const ledgerCount = await prisma.normalizedLedger.count({
+      where: { clientId: id, isActive: true }
+    });
+    const voucherCount = await prisma.normalizedVoucher.count({
+      where: {
+        clientId: id,
+        date: targetYear ? {
+          gte: new Date(`${targetYear}-04-01T00:00:00.000Z`),
+          lt: new Date(`${targetYear + 1}-04-01T00:00:00.000Z`)
+        } : undefined
+      }
+    });
+
+    return NextResponse.json({ 
+      success: true, 
+      data: filteredAlerts,
+      stats: {
+        ledgerCount,
+        voucherCount
+      }
+    });
   } catch (error: any) {
     console.error("Scrutiny Alerts Fetch Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

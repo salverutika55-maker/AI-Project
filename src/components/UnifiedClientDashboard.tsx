@@ -1100,6 +1100,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                   clientId={client.id} 
                   selectedYear={selectedYear} 
                   displayCurrency={displayCurrency} 
+                  client={client}
                 />
               </div>
             </ErrorBoundary>
