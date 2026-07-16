@@ -122,7 +122,7 @@ export default function ScrutinyDashboard({ clientId, selectedYear, displayCurre
   const fetchScrutinyData = async () => {
     setLoading(true);
     try {
-      const alertsRes = await fetch(`/api/clients/${clientId}/scrutiny/alerts`);
+      const alertsRes = await fetch(`/api/clients/${clientId}/scrutiny/alerts?year=${selectedYear}`);
       const alertsData = await alertsRes.json();
       if (alertsData.success) setAlerts(alertsData.data);
 
@@ -967,7 +967,7 @@ export default function ScrutinyDashboard({ clientId, selectedYear, displayCurre
           ) : filteredAlerts.length === 0 ? (
             <div className="py-16 text-center bg-black/20 rounded-2xl border border-dashed border-white/5">
               <ShieldCheck className="w-12 h-12 text-slate-700 mx-auto mb-4" />
-              <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No active ledger alerts identified</p>
+              <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No exception detected.</p>
             </div>
           ) : (
             <table className="w-full border-collapse">

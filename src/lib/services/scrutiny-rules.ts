@@ -35,8 +35,11 @@ function getNaturalBalance(groupName: string, ledgerName: string): "DEBIT" | "CR
  * Unified execution runner that triggers all ledger scrutiny and compliance engines
  */
 export async function runAllScrutinyRules(clientId: string, year: number): Promise<{ success: boolean; totalAlerts: number; details: ScrutinyExecutionResult[] }> {
+  console.log(`[SCRUTINY_START] client=${clientId} year=${year}`);
+  
   const details: ScrutinyExecutionResult[] = [];
   let alertsCount = 0;
+  let rulesCount = 0;
 
   const client = await prisma.client.findUnique({
     where: { id: clientId }
@@ -46,6 +49,20 @@ export async function runAllScrutinyRules(clientId: string, year: number): Promi
   }
   const sector = client.sector || "TRADING";
 
+  // Helper wrapper to auto-inject year into metadata
+  async function createAlert(alertData: any) {
+    const meta = {
+      ...(alertData.metadata || {}),
+      year: year
+    };
+    return await prisma.scrutinyAlert.create({
+      data: {
+        ...alertData,
+        metadata: meta
+      }
+    });
+  }
+
   // Financial Year Dates (April 1st to March 31st)
   const fyStart = new Date(`${year}-04-01T00:00:00.000Z`);
   const fyEnd = new Date(`${year + 1}-04-01T00:00:00.000Z`);
@@ -53,10 +70,13 @@ export async function runAllScrutinyRules(clientId: string, year: number): Promi
   // --------------------------------------------------
   // RULE 1: UNUSUAL BALANCE CHECK
   // --------------------------------------------------
+  console.log(`[FETCHING_LEDGERS]`);
   let rule1Count = 0;
+  rulesCount++;
   const ledgers = await prisma.normalizedLedger.findMany({
     where: { clientId, isActive: true }
   });
+  console.log(`[RUNNING_RULE: UNUSUAL_BALANCE] ledgersAnalysed=${ledgers.length}`);
 
   for (const l of ledgers) {
     if (l.closingBalance <= 10.0) continue; // Skip zero/negligible balances
@@ -79,24 +99,22 @@ The closing balance is ${actualNature} (₹${l.closingBalance.toLocaleString("en
 RECOMMENDED ACTION:
 Verify double-entry ledger postings, check adjustment journals, and inspect customer/vendor accounts for overpayments or entry errors.`;
 
-      await prisma.scrutinyAlert.create({
-        data: {
-          clientId,
-          ruleCode: "UNUSUAL_BALANCE",
-          category: "CLASSIFICATION",
-          severity: "MEDIUM",
-          title: `Natural Balance Violation: ${l.name}`,
-          description,
-          ledgerId: l.id,
-          impactAmount: l.closingBalance,
-          status: "PENDING",
-          metadata: {
-            ledgerName: l.name,
-            groupName: l.groupName,
-            expectedNature,
-            actualNature,
-            closingBalance: l.closingBalance
-          }
+      await createAlert({
+        clientId,
+        ruleCode: "UNUSUAL_BALANCE",
+        category: "CLASSIFICATION",
+        severity: "MEDIUM",
+        title: `Natural Balance Violation: ${l.name}`,
+        description,
+        ledgerId: l.id,
+        impactAmount: l.closingBalance,
+        status: "PENDING",
+        metadata: {
+          ledgerName: l.name,
+          groupName: l.groupName,
+          expectedNature,
+          actualNature,
+          closingBalance: l.closingBalance
         }
       });
       rule1Count++;
@@ -108,7 +126,9 @@ Verify double-entry ledger postings, check adjustment journals, and inspect cust
   // --------------------------------------------------
   // RULE 2: ROUND VALUE JOURNAL ENTRY CHECK
   // --------------------------------------------------
+  console.log(`[FETCHING_VOUCHERS]`);
   let rule2Count = 0;
+  rulesCount++;
   const journalVouchers = await prisma.normalizedVoucher.findMany({
     where: {
       clientId,
@@ -119,6 +139,7 @@ Verify double-entry ledger postings, check adjustment journals, and inspect cust
       lines: { include: { ledger: true } }
     }
   });
+  console.log(`[RUNNING_RULE: ROUND_JV] manualJVsAnalysed=${journalVouchers.length}`);
 
   for (const v of journalVouchers) {
     for (const line of v.lines) {
@@ -156,24 +177,22 @@ A transaction of ₹${amt.toLocaleString("en-IN")} was booked manually. Suspicio
 RECOMMENDED ACTION:
 Verify original billing details, check for executive level sign-offs, and inspect the narration for business justification.`;
 
-        await prisma.scrutinyAlert.create({
-          data: {
-            clientId,
-            ruleCode: "ROUND_VALUE_JOURNAL",
-            category: "FORENSIC",
-            severity,
-            title: `Round-Value Journal Entry: ${line.ledger.name}`,
-            description,
-            ledgerId: line.ledgerId,
-            voucherId: v.id,
-            impactAmount: amt,
-            status: "PENDING",
-            metadata: {
-              voucherNumber: v.voucherNumber,
-              date: v.date,
-              amount: amt,
-              triggers
-            }
+        await createAlert({
+          clientId,
+          ruleCode: "ROUND_VALUE_JOURNAL",
+          category: "FORENSIC",
+          severity,
+          title: `Round-Value Journal Entry: ${line.ledger.name}`,
+          description,
+          ledgerId: line.ledgerId,
+          voucherId: v.id,
+          impactAmount: amt,
+          status: "PENDING",
+          metadata: {
+            voucherNumber: v.voucherNumber,
+            date: v.date,
+            amount: amt,
+            triggers
           }
         });
         rule2Count++;
@@ -186,7 +205,9 @@ Verify original billing details, check for executive level sign-offs, and inspec
   // --------------------------------------------------
   // RULE 3: SUSPENSE / GENERIC LEDGER CHECK
   // --------------------------------------------------
+  console.log(`[RUNNING_RULE: SUSPENSE]`);
   let rule3Count = 0;
+  rulesCount++;
   let totalRevenue = 0;
   const revenueRecord = await prisma.financialRecord.findMany({
     where: { clientId, period: { startsWith: `${year}` } }
@@ -241,7 +262,7 @@ Suspense ledger "${l.name}" carries a closing balance of ₹${l.closingBalance.t
 RECOMMENDED ACTION:
 Audit payments/receipts in the suspense daybook and allocate them to the correct accounts.`;
 
-      await prisma.scrutinyAlert.create({
+      await createAlert({
         data: {
           clientId,
           ruleCode: "SUSPENSE_NON_ZERO",
@@ -286,24 +307,22 @@ A transaction of ₹${amt.toLocaleString("en-IN")} was booked in generic ledger 
 RECOMMENDED ACTION:
 Reclassify the transaction to a specific ledger head and verify the underlying invoice.`;
 
-        await prisma.scrutinyAlert.create({
-          data: {
-            clientId,
-            ruleCode: "GENERIC_LEDGER_THRESHOLD",
-            category: "FLOW",
-            severity: "HIGH",
-            title: `Generic Ledger Breach: ${l.name}`,
-            description,
-            ledgerId: l.id,
-            voucherId: line.voucherId,
-            impactAmount: amt,
-            status: "PENDING",
-            metadata: {
-              amount: amt,
-              threshold: genericThreshold,
-              voucherNumber: line.voucher.voucherNumber,
-              date: line.voucher.date
-            }
+        await createAlert({
+          clientId,
+          ruleCode: "GENERIC_LEDGER_THRESHOLD",
+          category: "FLOW",
+          severity: "HIGH",
+          title: `Generic Ledger Breach: ${l.name}`,
+          description,
+          ledgerId: l.id,
+          voucherId: line.voucherId,
+          impactAmount: amt,
+          status: "PENDING",
+          metadata: {
+            amount: amt,
+            threshold: genericThreshold,
+            voucherNumber: line.voucher.voucherNumber,
+            date: line.voucher.date
           }
         });
         rule3Count++;
@@ -318,6 +337,7 @@ Reclassify the transaction to a specific ledger head and verify the underlying i
   // --------------------------------------------------
   let industryCount = 0;
   if (sector === "MANUFACTURING") {
+    rulesCount += 3;
     // 1. Power & Fuel monthly spike check
     const powerLedgers = ledgers.filter(
       l => l.name.toLowerCase().includes("power") || l.name.toLowerCase().includes("fuel")
@@ -381,19 +401,17 @@ Power & fuel cost in ${monthName} was ₹${monthlyExpenses[i].toLocaleString("en
 RECOMMENDED ACTION:
 Audit factory sub-meter logs and utility invoices for the month.`;
 
-            await prisma.scrutinyAlert.create({
-              data: {
-                clientId,
-                ruleCode: "MANUFACTURING_POWER_SPIKE",
-                category: "FLOW",
-                severity: "MEDIUM",
-                title: `Power & Fuel Spike in ${monthName}`,
-                description,
-                ledgerId: pl.id,
-                impactAmount: monthlyExpenses[i],
-                status: "PENDING",
-                metadata: { month: monthName, expense: monthlyExpenses[i], revenue: monthlyRevenue[i] }
-              }
+            await createAlert({
+              clientId,
+              ruleCode: "MANUFACTURING_POWER_SPIKE",
+              category: "FLOW",
+              severity: "MEDIUM",
+              title: `Power & Fuel Spike in ${monthName}`,
+              description,
+              ledgerId: pl.id,
+              impactAmount: monthlyExpenses[i],
+              status: "PENDING",
+              metadata: { month: monthName, expense: monthlyExpenses[i], revenue: monthlyRevenue[i] }
             });
             industryCount++;
             alertsCount++;
@@ -437,20 +455,18 @@ A high-value repair of ₹${line.amount.toLocaleString("en-IN")} was expensed. N
 RECOMMENDED ACTION:
 Capitalize the amount under Fixed Assets and apply appropriate depreciation.`;
 
-          await prisma.scrutinyAlert.create({
-            data: {
-              clientId,
-              ruleCode: "MANUFACTURING_CAPITAL_REPAIRS",
-              category: "CLASSIFICATION",
-              severity: "HIGH",
-              title: `Potential Capital Repair: ${rl.name}`,
-              description,
-              ledgerId: rl.id,
-              voucherId: line.voucherId,
-              impactAmount: line.amount,
-              status: "PENDING",
-              metadata: { narration: line.voucher.narration, voucherNumber: line.voucher.voucherNumber }
-            }
+          await createAlert({
+            clientId,
+            ruleCode: "MANUFACTURING_CAPITAL_REPAIRS",
+            category: "CLASSIFICATION",
+            severity: "HIGH",
+            title: `Potential Capital Repair: ${rl.name}`,
+            description,
+            ledgerId: rl.id,
+            voucherId: line.voucherId,
+            impactAmount: line.amount,
+            status: "PENDING",
+            metadata: { narration: line.voucher.narration, voucherNumber: line.voucher.voucherNumber }
           });
           industryCount++;
           alertsCount++;
@@ -496,7 +512,7 @@ Scrap sales of ₹${scrapTotal.toLocaleString("en-IN")} represents ${(scrapRatio
 RECOMMENDED ACTION:
 Audit scrap disposal logs and run a raw material reconciliation.`;
 
-        await prisma.scrutinyAlert.create({
+        await createAlert({
           data: {
             clientId,
             ruleCode: "MANUFACTURING_SCRAP_YIELD",
@@ -517,6 +533,7 @@ Audit scrap disposal logs and run a raw material reconciliation.`;
   }
 
   if (sector === "TRADING") {
+    rulesCount += 3;
     // 1. Purchase Cut-off Check
     const cutOffStart = new Date(`${year + 1}-03-26T00:00:00.000Z`);
     const cutOffEnd = new Date(`${year + 1}-04-05T00:00:00.000Z`);
@@ -551,20 +568,18 @@ A high-value purchase of ₹${amt.toLocaleString("en-IN")} was booked close to y
 RECOMMENDED ACTION:
 Verify GRNs (Goods Receipt Notes) and confirm matching inventory count.`;
 
-          await prisma.scrutinyAlert.create({
-            data: {
-              clientId,
-              ruleCode: "TRADING_PURCHASE_CUTOFF",
-              category: "TIMING",
-              severity: "HIGH",
-              title: `Purchase Cut-off Exception`,
-              description,
-              ledgerId: line.ledgerId,
-              voucherId: v.id,
-              impactAmount: amt,
-              status: "PENDING",
-              metadata: { voucherNumber: v.voucherNumber, date: v.date, amount: amt }
-            }
+          await createAlert({
+            clientId,
+            ruleCode: "TRADING_PURCHASE_CUTOFF",
+            category: "TIMING",
+            severity: "HIGH",
+            title: `Purchase Cut-off Exception`,
+            description,
+            ledgerId: line.ledgerId,
+            voucherId: v.id,
+            impactAmount: amt,
+            status: "PENDING",
+            metadata: { voucherNumber: v.voucherNumber, date: v.date, amount: amt }
           });
           industryCount++;
           alertsCount++;
@@ -617,20 +632,18 @@ A large entry of ₹${amt.toLocaleString("en-IN")} was booked at year-end, but n
 RECOMMENDED ACTION:
 Verify discount agreements/letters from vendors and ensure proper margin recognition.`;
 
-            await prisma.scrutinyAlert.create({
-              data: {
-                clientId,
-                ruleCode: "TRADING_DISCOUNT_ACCRUAL",
-                category: "TIMING",
-                severity: "MEDIUM",
-                title: `Inconsistent Discount Accrual`,
-                description,
-                ledgerId: dl.id,
-                voucherId: line.voucherId,
-                impactAmount: amt,
-                status: "PENDING",
-                metadata: { voucherNumber: line.voucher.voucherNumber, date: line.voucher.date, amount: amt }
-              }
+            await createAlert({
+              clientId,
+              ruleCode: "TRADING_DISCOUNT_ACCRUAL",
+              category: "TIMING",
+              severity: "MEDIUM",
+              title: `Inconsistent Discount Accrual`,
+              description,
+              ledgerId: dl.id,
+              voucherId: line.voucherId,
+              impactAmount: amt,
+              status: "PENDING",
+              metadata: { voucherNumber: line.voucher.voucherNumber, date: line.voucher.date, amount: amt }
             });
             industryCount++;
             alertsCount++;
@@ -677,19 +690,17 @@ Total freight cost of ₹${freightTotal.toLocaleString("en-IN")} represents ${(r
 RECOMMENDED ACTION:
 Perform rate reconciliation against transporter agreements.`;
 
-        await prisma.scrutinyAlert.create({
-          data: {
-            clientId,
-            ruleCode: "TRADING_FREIGHT_RATIO",
-            category: "FLOW",
-            severity: "MEDIUM",
-            title: `High Freight cost ratio`,
-            description,
-            ledgerId: fl.id,
-            impactAmount: freightTotal,
-            status: "PENDING",
-            metadata: { freightTotal, purchaseTotal, ratio }
-          }
+        await createAlert({
+          clientId,
+          ruleCode: "TRADING_FREIGHT_RATIO",
+          category: "FLOW",
+          severity: "MEDIUM",
+          title: `High Freight cost ratio`,
+          description,
+          ledgerId: fl.id,
+          impactAmount: freightTotal,
+          status: "PENDING",
+          metadata: { freightTotal, purchaseTotal, ratio }
         });
         industryCount++;
         alertsCount++;
@@ -698,6 +709,7 @@ Perform rate reconciliation against transporter agreements.`;
   }
 
   if (sector === "SERVICE") {
+    rulesCount += 3;
     // 1. Unearned Revenue / Stale Advances check
     const advanceLedgers = ledgers.filter(
       l => l.name.toLowerCase().includes("advance") || l.name.toLowerCase().includes("unearned") || l.name.toLowerCase().includes("prepaid revenue")
@@ -733,20 +745,18 @@ Customer advance of ₹${amt.toLocaleString("en-IN")} has been sitting unreconci
 RECOMMENDED ACTION:
 Review service delivery logs and raise corresponding sales invoices.`;
 
-          await prisma.scrutinyAlert.create({
-            data: {
-              clientId,
-              ruleCode: "SERVICE_UNEARNED_REVENUE",
-              category: "TIMING",
-              severity: "MEDIUM",
-              title: `Stale Customer Advance: ${al.name}`,
-              description,
-              ledgerId: al.id,
-              voucherId: line.voucherId,
-              impactAmount: amt,
-              status: "PENDING",
-              metadata: { voucherNumber: line.voucher.voucherNumber, date: line.voucher.date, amount: amt }
-            }
+          await createAlert({
+            clientId,
+            ruleCode: "SERVICE_UNEARNED_REVENUE",
+            category: "TIMING",
+            severity: "MEDIUM",
+            title: `Stale Customer Advance: ${al.name}`,
+            description,
+            ledgerId: al.id,
+            voucherId: line.voucherId,
+            impactAmount: amt,
+            status: "PENDING",
+            metadata: { voucherNumber: line.voucher.voucherNumber, date: line.voucher.date, amount: amt }
           });
           industryCount++;
           alertsCount++;
@@ -790,20 +800,18 @@ Professional fee of ₹${line.amount.toLocaleString("en-IN")} was booked without
 RECOMMENDED ACTION:
 Deduct applicable TDS retrospectively with interest.`;
 
-          await prisma.scrutinyAlert.create({
-            data: {
-              clientId,
-              ruleCode: "SERVICE_TDS_PROFESSIONAL",
-              category: "STATUTORY",
-              severity: "HIGH",
-              title: `TDS Defaulter Section 194J`,
-              description,
-              ledgerId: pl.id,
-              voucherId: line.voucherId,
-              impactAmount: line.amount,
-              status: "PENDING",
-              metadata: { voucherNumber: line.voucher.voucherNumber, date: line.voucher.date, amount: line.amount }
-            }
+          await createAlert({
+            clientId,
+            ruleCode: "SERVICE_TDS_PROFESSIONAL",
+            category: "STATUTORY",
+            severity: "HIGH",
+            title: `TDS Defaulter Section 194J`,
+            description,
+            ledgerId: pl.id,
+            voucherId: line.voucherId,
+            impactAmount: line.amount,
+            status: "PENDING",
+            metadata: { voucherNumber: line.voucher.voucherNumber, date: line.voucher.date, amount: line.amount }
           });
           industryCount++;
           alertsCount++;
@@ -841,20 +849,18 @@ A high-value benefits entry of ₹${line.amount.toLocaleString("en-IN")} was rec
 RECOMMENDED ACTION:
 Reconcile this payout with payroll attendance books and statutory receipts.`;
 
-        await prisma.scrutinyAlert.create({
-          data: {
-            clientId,
-            ruleCode: "SERVICE_EMPLOYEE_BENEFITS",
-            category: "STATUTORY",
-            severity: "LOW",
-            title: `Employee Welfare Audit Check`,
-            description,
-            ledgerId: bl.id,
-            voucherId: line.voucherId,
-            impactAmount: line.amount,
-            status: "PENDING",
-            metadata: { voucherNumber: line.voucher.voucherNumber, date: line.voucher.date, amount: line.amount }
-          }
+        await createAlert({
+          clientId,
+          ruleCode: "SERVICE_EMPLOYEE_BENEFITS",
+          category: "STATUTORY",
+          severity: "LOW",
+          title: `Employee Welfare Audit Check`,
+          description,
+          ledgerId: bl.id,
+          voucherId: line.voucherId,
+          impactAmount: line.amount,
+          status: "PENDING",
+          metadata: { voucherNumber: line.voucher.voucherNumber, date: line.voucher.date, amount: line.amount }
         });
         industryCount++;
         alertsCount++;
@@ -866,7 +872,9 @@ Reconcile this payout with payroll attendance books and statutory receipts.`;
   // --------------------------------------------------
   // STATUTORY & TAX CHECKS (UNIVERSAL)
   // --------------------------------------------------
+  console.log(`[RUNNING_RULE: GST]`);
   let statutoryCount = 0;
+  rulesCount += 2;
   // 1. GST Blocked Credit Section 17(5)
   const gstVouchers = await prisma.normalizedVoucher.findMany({
     where: {
@@ -906,7 +914,7 @@ GST Input credit of ₹${gstCreditLine.amount.toLocaleString("en-IN")} was claim
 RECOMMENDED ACTION:
 Reverse the claimed input tax credit in GSTR-3B filings.`;
 
-        await prisma.scrutinyAlert.create({
+        await createAlert({
           data: {
             clientId,
             ruleCode: "GST_ITC_BLOCKED",
@@ -966,7 +974,7 @@ RCM-prone expenditure of ₹${line.amount.toLocaleString("en-IN")} was booked un
 RECOMMENDED ACTION:
 Book RCM tax liability and pay tax via GSTR-3B cash ledger.`;
 
-        await prisma.scrutinyAlert.create({
+        await createAlert({
           data: {
             clientId,
             ruleCode: "GST_RCM_UNRECORDED",
@@ -988,6 +996,8 @@ Book RCM tax liability and pay tax via GSTR-3B cash ledger.`;
   }
 
   // 3. Related Party Transactions
+  console.log(`[RUNNING_RULE: RELATED_PARTY]`);
+  rulesCount++;
   const rpLedgers = ledgers.filter(
     l => l.name.toLowerCase().includes("director") || l.name.toLowerCase().includes("promoter") || l.name.toLowerCase().includes("sister concern") || l.name.toLowerCase().includes("subsidiary") || l.name.toLowerCase().includes("relative")
   );
@@ -1006,7 +1016,7 @@ Book RCM tax liability and pay tax via GSTR-3B cash ledger.`;
       if (amt >= 50000) {
         const description = `LEDGER: ${rpl.name}
 RULE TRIGGERED: Related Party Transaction detected (STATUTORY_RELATED_PARTY)
-EXPOSURE AMOUNT: ₹${rpLedgers.length}
+EXPOSURE AMOUNT: ₹${amt.toLocaleString("en-IN")}
 RISK LEVEL: MEDIUM
 VOUCHER REFERENCE: Voucher No. ${line.voucher.voucherNumber} dated ${line.voucher.date.toLocaleDateString("en-IN")}
 
@@ -1019,7 +1029,7 @@ A transaction of ₹${amt.toLocaleString("en-IN")} was detected in promoter/dire
 RECOMMENDED ACTION:
 Ensure proper board approvals are signed and transactions comply with transfer pricing rules.`;
 
-        await prisma.scrutinyAlert.create({
+        await createAlert({
           data: {
             clientId,
             ruleCode: "STATUTORY_RELATED_PARTY",
@@ -1049,6 +1059,9 @@ Ensure proper board approvals are signed and transactions comply with transfer p
     alertsGenerated: nlpResult.alertsGenerated
   });
   alertsCount += nlpResult.alertsGenerated;
+  rulesCount++;
+
+  console.log(`[SCRUTINY_COMPLETE] ledgersAnalysed=${ledgers.length} vouchersAnalysed=${journalVouchers.length + gstVouchers.length} rulesExecuted=${rulesCount} findingsGenerated=${alertsCount}`);
 
   return {
     success: true,
