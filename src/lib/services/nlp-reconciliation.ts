@@ -19,8 +19,8 @@ export async function analyzeNarrationNLP(clientId: string, year: number): Promi
     where: {
       clientId,
       date: {
-        gte: new Date(`${year}-01-01`),
-        lt: new Date(`${year + 1}-01-01`)
+        gte: new Date(`${year}-04-01T00:00:00.000Z`),
+        lt: new Date(`${year + 1}-04-01T00:00:00.000Z`)
       }
     },
     include: {

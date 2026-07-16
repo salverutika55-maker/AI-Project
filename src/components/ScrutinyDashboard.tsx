@@ -1081,7 +1081,7 @@ export default function ScrutinyDashboard({ clientId, selectedYear, displayCurre
               {/* Technical Description */}
               <div className="space-y-3">
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><FileCheck className="w-3.5 h-3.5 text-cyan-400" /> Auditor Investigation Details</h3>
-                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl text-xs font-medium leading-relaxed text-slate-300">
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl text-xs font-medium leading-relaxed text-slate-300 whitespace-pre-wrap">
                   {activeAlert.description}
                 </div>
               </div>
