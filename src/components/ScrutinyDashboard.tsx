@@ -32,6 +32,31 @@ interface ScrutinyAlert {
   createdAt: string;
 }
 
+interface ScrutinyCheck {
+  code: string;
+  name: string;
+  status: "Passed" | "Failed" | "Warning" | "N/A";
+  description: string;
+  alert: ScrutinyAlert | null;
+}
+
+interface ScrutinyLedger {
+  id: string;
+  name: string;
+  groupName: string;
+  openingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+  closingBalance: number;
+  nature: string;
+  voucherCount: number;
+  lastTransactionDate: string | null;
+  overallRisk: "HIGH" | "MEDIUM" | "LOW";
+  checks: ScrutinyCheck[];
+  alertsCount: number;
+  alerts: ScrutinyAlert[];
+}
+
 interface ScrutinyExecutionResult {
   ruleCode: string;
   alertsGenerated: number;
@@ -59,14 +84,32 @@ const CATEGORY_LABELS = {
 
 export default function ScrutinyDashboard({ clientId, selectedYear, displayCurrency, client }: any) {
   const [alerts, setAlerts] = useState<ScrutinyAlert[]>([]);
+  const [ledgers, setLedgers] = useState<ScrutinyLedger[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningScrutiny, setRunningScrutiny] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [selectedStatus, setSelectedStatus] = useState<string>("PENDING");
   const [activeAlert, setActiveAlert] = useState<ScrutinyAlert | null>(null);
-  const [statsData, setStatsData] = useState<{ ledgerCount: number; voucherCount: number } | null>(null);
+  const [statsData, setStatsData] = useState<{
+    ledgerCount?: number;
+    voucherCount?: number;
+    totalRulesExecuted?: number;
+    passedChecksCount?: number;
+    failedChecksCount?: number;
+    warningChecksCount?: number;
+    highRiskLedgersCount?: number;
+    mediumRiskLedgersCount?: number;
+    lowRiskLedgersCount?: number;
+  } | null>(null);
   const [expandedRule, setExpandedRule] = useState<string | null>(null);
+  const [expandedLedgerId, setExpandedLedgerId] = useState<string | null>(null);
+
+  // Scrutiny Filters
+  const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  const [filterRisk, setFilterRisk] = useState<string>("ALL");
+  const [filterGroup, setFilterGroup] = useState<string>("ALL");
+  const [filterRule, setFilterRule] = useState<string>("ALL");
   
   // Fuzzy reconciliation state
   const [reconciliationStatus, setReconciliationStatus] = useState<{
@@ -128,6 +171,9 @@ export default function ScrutinyDashboard({ clientId, selectedYear, displayCurre
       const alertsData = await alertsRes.json();
       if (alertsData.success) {
         setAlerts(alertsData.data);
+        if (alertsData.ledgers) {
+          setLedgers(alertsData.ledgers);
+        }
         if (alertsData.stats) {
           setStatsData(alertsData.stats);
         }
@@ -282,6 +328,58 @@ export default function ScrutinyDashboard({ clientId, selectedYear, displayCurre
       return matchesSearch && matchesCategory && matchesStatus;
     });
   }, [alerts, searchQuery, selectedCategory, selectedStatus]);
+
+  const ledgerGroups = useMemo(() => {
+    const groups = new Set<string>();
+    ledgers.forEach(l => {
+      if (l.groupName) groups.add(l.groupName);
+    });
+    return Array.from(groups).sort();
+  }, [ledgers]);
+
+  const filteredLedgers = useMemo(() => {
+    return ledgers.filter(l => {
+      const searchLower = searchQuery.toLowerCase().trim();
+      if (searchLower) {
+        const matchesName = l.name.toLowerCase().includes(searchLower);
+        const matchesGroup = l.groupName.toLowerCase().includes(searchLower);
+        const matchesAlerts = l.alerts.some(a => 
+          a.title.toLowerCase().includes(searchLower) ||
+          (a.voucher?.voucherNumber || "").toLowerCase().includes(searchLower) ||
+          (a.voucher?.narration || "").toLowerCase().includes(searchLower)
+        );
+        if (!matchesName && !matchesGroup && !matchesAlerts) return false;
+      }
+
+      if (filterStatus === "FAILED") {
+        const hasFailed = l.checks.some(c => c.status === "Failed");
+        if (!hasFailed) return false;
+      } else if (filterStatus === "PASSED") {
+        const allPassedOrNA = l.checks.every(c => c.status === "Passed" || c.status === "N/A");
+        if (!allPassedOrNA) return false;
+      } else if (filterStatus === "WARNING") {
+        const hasWarning = l.checks.some(c => c.status === "Warning");
+        if (!hasWarning) return false;
+      }
+
+      if (filterRisk !== "ALL" && l.overallRisk !== filterRisk) {
+        return false;
+      }
+
+      if (filterGroup !== "ALL" && l.groupName !== filterGroup) {
+        return false;
+      }
+
+      if (filterRule !== "ALL") {
+        const check = l.checks.find(c => c.code === filterRule);
+        if (!check || check.status === "Passed" || check.status === "N/A") {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [ledgers, searchQuery, filterStatus, filterRisk, filterGroup, filterRule]);
 
   // Category Concentration
   const categoryChartData = useMemo(() => {
@@ -444,53 +542,55 @@ export default function ScrutinyDashboard({ clientId, selectedYear, displayCurre
         </button>
       </div>
 
-      {/* 2. KPI OVERVIEW ROW */}
-      <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+      {/* 2. AUDIT SUMMARY ROW */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         
-        {/* Rules Executed */}
+        {/* Total Ledgers Analysed */}
         <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 shadow-xl text-center">
-          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Rules Executed</span>
-          <p className="text-xl font-black text-cyan-400 mt-1">{rulesList.length}</p>
+          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Total Ledgers Analysed</span>
+          <p className="text-xl font-black text-cyan-400 mt-1">{statsData?.ledgerCount || ledgers.length}</p>
+        </div>
+
+        {/* Total Rules Executed */}
+        <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 shadow-xl text-center">
+          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Total Rules Executed</span>
+          <p className="text-xl font-black text-slate-200 mt-1">{statsData?.totalRulesExecuted || 12}</p>
         </div>
 
         {/* Passed Checks */}
         <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 shadow-xl text-center">
           <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Passed Checks</span>
-          <p className="text-xl font-black text-emerald-400 mt-1">
-            {rulesList.filter(r => alerts.filter(r.filter).length === 0).length}
-          </p>
+          <p className="text-xl font-black text-emerald-400 mt-1">{statsData?.passedChecksCount || 0}</p>
+        </div>
+
+        {/* Failed Checks */}
+        <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 shadow-xl text-center">
+          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Failed Checks</span>
+          <p className="text-xl font-black text-rose-400 mt-1">{statsData?.failedChecksCount || 0}</p>
         </div>
 
         {/* Warnings */}
         <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 shadow-xl text-center">
           <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Warnings</span>
-          <p className="text-xl font-black text-amber-400 mt-1">{stats.medRisk + stats.lowRisk}</p>
+          <p className="text-xl font-black text-amber-400 mt-1">{statsData?.warningChecksCount || 0}</p>
         </div>
 
-        {/* Critical Exceptions */}
+        {/* High Risk Ledgers */}
         <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 shadow-xl text-center">
-          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Critical Exceptions</span>
-          <p className="text-xl font-black text-rose-400 mt-1">{stats.highRisk}</p>
+          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">High Risk Ledgers</span>
+          <p className="text-xl font-black text-rose-400 mt-1">{statsData?.highRiskLedgersCount || 0}</p>
         </div>
 
-        {/* Ledgers Analysed */}
+        {/* Medium Risk Ledgers */}
         <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 shadow-xl text-center">
-          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Ledgers Analysed</span>
-          <p className="text-xl font-black text-slate-300 mt-1">{statsData?.ledgerCount || 185}</p>
+          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Medium Risk Ledgers</span>
+          <p className="text-xl font-black text-amber-400 mt-1">{statsData?.mediumRiskLedgersCount || 0}</p>
         </div>
 
-        {/* Vouchers Analysed */}
+        {/* Low Risk Ledgers */}
         <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 shadow-xl text-center">
-          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Vouchers Analysed</span>
-          <p className="text-xl font-black text-slate-300 mt-1">{(statsData?.voucherCount || 14825).toLocaleString("en-IN")}</p>
-        </div>
-
-        {/* Risk Rating */}
-        <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 shadow-xl text-center">
-          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Risk Rating</span>
-          <p className={`text-xl font-black mt-1 ${stats.highRisk > 0 ? "text-rose-400" : stats.medRisk > 0 ? "text-amber-400" : "text-emerald-400"}`}>
-            {stats.highRisk > 0 ? "CRITICAL" : stats.medRisk > 0 ? "MEDIUM" : "LOW"}
-          </p>
+          <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Low Risk Ledgers</span>
+          <p className="text-xl font-black text-emerald-400 mt-1">{statsData?.lowRiskLedgersCount || 0}</p>
         </div>
 
       </div>
@@ -1006,207 +1106,255 @@ export default function ScrutinyDashboard({ clientId, selectedYear, displayCurre
         </div>
       </div>
 
-      {/* 5. WORKBENCH & INTERACTIVE CHECKLIST */}
+      {/* 5. WORKBENCH & INTERACTIVE LEDGER SCRUTINY WORKING PAPERS */}
       <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 shadow-xl space-y-6">
         
-        {/* Header */}
-        <div className="border-b border-white/5 pb-4">
-          <h3 className="text-base font-black text-white flex items-center gap-2">
-            <FileCheck className="w-5 h-5 text-cyan-400" /> Statutory & Forensic Audit Working Papers
-          </h3>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Checklist of accounting standards compliance and ledger verification tests</p>
+        {/* Section Header */}
+        <div className="border-b border-white/5 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h3 className="text-base font-black text-white flex items-center gap-2">
+              <FileCheck className="w-5 h-5 text-cyan-400" /> Complete Chart of Accounts Ledger Scrutiny Working Papers
+            </h3>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Audit verification matrix across all client ledger accounts</p>
+          </div>
+          <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-500/10 px-3 py-1.5 rounded-lg border border-cyan-500/20">
+            Showing {filteredLedgers.length} of {ledgers.length} Ledgers
+          </span>
         </div>
 
-        {/* Audit Summary Box */}
-        <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-4 gap-6 text-xs font-bold">
-          <div className="space-y-1 bg-black/20 p-4 rounded-xl">
-            <span className="text-slate-500 text-[10px] font-black uppercase tracking-wider block">Company & Client</span>
-            <span className="text-white text-sm">{client?.name || "Acme Corp LLP"}</span>
-            <span className="text-[10px] text-slate-500 block">Software: {client?.software || "Tally Prime"}</span>
+        {/* Filters & Search Matrix Bar */}
+        <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex flex-wrap items-center gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search ledger name, group, voucher #..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-cyan-500/50 w-full"
+            />
           </div>
-          <div className="space-y-1 bg-black/20 p-4 rounded-xl">
-            <span className="text-slate-500 text-[10px] font-black uppercase tracking-wider block">Audit Period & Date</span>
-            <span className="text-white text-sm">FY {selectedYear}-{String(selectedYear + 1).slice(-2)}</span>
-            <span className="text-[10px] text-slate-500 block">Scanned: {new Date().toLocaleDateString("en-IN")}</span>
-          </div>
-          <div className="space-y-1 bg-black/20 p-4 rounded-xl">
-            <span className="text-slate-500 text-[10px] font-black uppercase tracking-wider block">Scope Analysed</span>
-            <span className="text-white text-sm">{statsData?.ledgerCount || 185} Ledgers</span>
-            <span className="text-[10px] text-slate-500 block">{(statsData?.voucherCount || 14825).toLocaleString("en-IN")} Vouchers scanned</span>
-          </div>
-          <div className="space-y-1 bg-black/20 p-4 rounded-xl">
-            <span className="text-slate-500 text-[10px] font-black uppercase tracking-wider block">Scrutiny Execution Status</span>
-            <span className="text-emerald-400 text-sm flex items-center gap-1">✓ Completed</span>
-            <span className="text-[10px] text-slate-500 block">{alerts.length} exception(s) detected</span>
-          </div>
+
+          {/* Filter Status */}
+          <select 
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+          >
+            <option value="ALL" className="bg-[#13131A]">All Statuses</option>
+            <option value="FAILED" className="bg-[#13131A]">Failed Checks Only</option>
+            <option value="PASSED" className="bg-[#13131A]">Passed Checks Only</option>
+            <option value="WARNING" className="bg-[#13131A]">Warnings Only</option>
+          </select>
+
+          {/* Filter Risk */}
+          <select 
+            value={filterRisk}
+            onChange={(e) => setFilterRisk(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+          >
+            <option value="ALL" className="bg-[#13131A]">All Risk Levels</option>
+            <option value="HIGH" className="bg-[#13131A]">High Risk</option>
+            <option value="MEDIUM" className="bg-[#13131A]">Medium Risk</option>
+            <option value="LOW" className="bg-[#13131A]">Low Risk</option>
+          </select>
+
+          {/* Filter Group */}
+          <select 
+            value={filterGroup}
+            onChange={(e) => setFilterGroup(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-cyan-500/50 cursor-pointer max-w-[200px]"
+          >
+            <option value="ALL" className="bg-[#13131A]">All Ledger Groups</option>
+            {ledgerGroups.map(g => (
+              <option key={g} value={g} className="bg-[#13131A]">{g}</option>
+            ))}
+          </select>
+
+          {/* Filter Audit Rule */}
+          <select 
+            value={filterRule}
+            onChange={(e) => setFilterRule(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-cyan-500/50 cursor-pointer max-w-[200px]"
+          >
+            <option value="ALL" className="bg-[#13131A]">All Audit Rules</option>
+            <option value="NATURAL_BALANCE" className="bg-[#13131A]">Natural Balance Check</option>
+            <option value="OPENING_BALANCE" className="bg-[#13131A]">Opening Balance Validation</option>
+            <option value="MOVEMENT_VALIDATION" className="bg-[#13131A]">Movement Validation</option>
+            <option value="UNUSUAL_BALANCE" className="bg-[#13131A]">Unusual Balance & Threshold</option>
+            <option value="ROUND_JV" className="bg-[#13131A]">Round JV Check</option>
+            <option value="SUSPENSE_CHECK" className="bg-[#13131A]">Suspense Month-end Check</option>
+            <option value="GST_CHECK" className="bg-[#13131A]">GST ITC & RCM Check</option>
+            <option value="RELATED_PARTY" className="bg-[#13131A]">Related Party Sec 188</option>
+            <option value="SECTOR_RULES" className="bg-[#13131A]">Industry Specific Check</option>
+            <option value="NLP_SCAN" className="bg-[#13131A]">NLP Narration Scrutiny</option>
+          </select>
         </div>
 
-        {/* Checklist Accordions */}
+        {/* Ledger Scrutiny List - Displaying Every Ledger */}
         <div className="space-y-4">
-          {rulesList.map((rule) => {
-            const matchingAlerts = alerts.filter(rule.filter);
-            const isFailed = matchingAlerts.length > 0;
-            const severityHigh = matchingAlerts.some(a => a.severity === "HIGH");
-            const statusText = isFailed ? (severityHigh ? "Failed" : "Warning") : "Passed";
-            
-            const headerBorderColor = isFailed ? (severityHigh ? "border-rose-500/20 bg-rose-500/[0.01]" : "border-amber-500/20 bg-amber-500/[0.01]") : "border-white/5 bg-white/[0.01]";
-            const iconColor = isFailed ? (severityHigh ? "text-rose-400" : "text-amber-400") : "text-emerald-400";
-            
-            return (
-              <div key={rule.key} className={`border rounded-2xl overflow-hidden transition-all ${headerBorderColor}`}>
-                {/* Rule Summary Bar */}
+          {loading ? (
+            <div className="py-20 text-center text-cyan-500 animate-pulse">
+              <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-xs font-bold uppercase tracking-widest font-mono">Evaluating Double-Entry Audit Matrix...</p>
+            </div>
+          ) : filteredLedgers.length === 0 ? (
+            <div className="py-16 text-center bg-black/20 rounded-2xl border border-dashed border-white/5">
+              <ShieldCheck className="w-12 h-12 text-slate-700 mx-auto mb-4" />
+              <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No ledgers match current filter criteria.</p>
+            </div>
+          ) : (
+            filteredLedgers.map((ledger) => {
+              const isExpanded = expandedLedgerId === ledger.id;
+              const hasFailed = ledger.checks.some(c => c.status === "Failed");
+
+              return (
                 <div 
-                  onClick={() => toggleRule(rule.key)}
-                  className="p-5 flex justify-between items-center cursor-pointer hover:bg-white/[0.02] transition-colors"
+                  key={ledger.id} 
+                  className={`border rounded-2xl overflow-hidden transition-all bg-[#13131A] ${
+                    hasFailed ? "border-rose-500/20" : "border-white/5"
+                  }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className={`text-base font-black ${iconColor}`}>
-                      {isFailed ? (severityHigh ? "❌" : "⚠️") : "✓"}
-                    </span>
+                  {/* Ledger Card Header */}
+                  <div 
+                    onClick={() => setExpandedLedgerId(isExpanded ? null : ledger.id)}
+                    className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
+                  >
                     <div>
-                      <h4 className="text-sm font-black text-white">{rule.title}</h4>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">
-                        Status: {statusText} &nbsp;|&nbsp; {rule.scopeType === "ledgers" ? `${rule.getScopeCount(statsData)} Ledgers` : rule.scopeType === "vouchers" ? `${rule.getScopeCount(statsData).toLocaleString("en-IN")} Vouchers` : `${rule.getScopeCount(statsData)} Analyzed`} Checked &nbsp;|&nbsp; {matchingAlerts.length} Exceptions
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono font-black text-cyan-400">
-                    {expandedRule === rule.key ? "[-] Collapse Working Paper" : "[+] Expand Check details"}
-                  </span>
-                </div>
-
-                {/* Expanded Working Paper */}
-                {expandedRule === rule.key && (
-                  <div className="p-6 border-t border-white/5 bg-black/40 space-y-6">
-                    {/* Working Paper Metadata */}
-                    <div className="bg-[#13131A] p-4 rounded-xl border border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-medium text-slate-300">
-                      <div>
-                        <h5 className="text-[10px] font-black uppercase text-slate-500 mb-1">Audit Test & Scope</h5>
-                        <p className="leading-relaxed">{rule.description}</p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h4 className="text-base font-black text-white">{ledger.name}</h4>
+                        <span className="text-[10px] font-mono font-bold bg-white/5 text-slate-400 px-2.5 py-1 rounded-md border border-white/10">
+                          Group: {ledger.groupName}
+                        </span>
+                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border font-mono ${
+                          ledger.overallRisk === "HIGH" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
+                          ledger.overallRisk === "MEDIUM" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                          "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        }`}>
+                          Risk: {ledger.overallRisk}
+                        </span>
                       </div>
-                      <div className="space-y-2">
-                        <div>
-                          <span className="text-[10px] font-black uppercase text-slate-500 block">What is Checked</span>
-                          <span className="text-white font-mono text-[11px]">{rule.whatChecked}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-black uppercase text-slate-500 block">Why it is Checked</span>
-                          <span className="text-white font-mono text-[11px]">{rule.whyChecked}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actionable Findings / Exceptions List */}
-                    <div className="space-y-4">
-                      <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-400">Audit Exceptions List ({matchingAlerts.length})</h5>
                       
-                      {matchingAlerts.length === 0 ? (
-                        <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl text-emerald-400 text-xs font-bold flex items-center gap-2">
-                          <span>✓</span> Check completed successfully. No exceptions detected for this standard.
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {matchingAlerts.map(alert => (
-                            <div key={alert.id} className="bg-[#181821] border border-white/5 p-5 rounded-2xl space-y-4 text-xs">
-                              <div className="flex justify-between items-start border-b border-white/5 pb-3">
-                                <div>
-                                  <span className="text-[9px] font-black uppercase tracking-widest text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 font-bold">
-                                    ❌ Rule Failed: {alert.ruleCode}
-                                  </span>
-                                  <h4 className="text-sm font-black text-white mt-1.5">{alert.title}</h4>
-                                </div>
-                                <span className={`text-[9px] font-black border uppercase px-2 py-0.5 rounded ${SEVERITY_COLORS[alert.severity as keyof typeof SEVERITY_COLORS] || SEVERITY_COLORS.LOW}`}>
-                                  {alert.severity} RISK
-                                </span>
-                              </div>
+                      {/* Quick Audit Check Badges */}
+                      <div className="flex flex-wrap items-center gap-2 mt-3">
+                        {ledger.checks.map(c => (
+                          <span key={c.code} className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border ${
+                            c.status === "Passed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                            c.status === "Failed" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
+                            c.status === "Warning" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                            "bg-white/5 text-slate-500 border-white/5"
+                          }`}>
+                            {c.status === "Passed" ? "✓" : c.status === "Failed" ? "❌" : c.status === "Warning" ? "⚠️" : "—"} {c.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
 
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-black/20 p-4 rounded-xl">
-                                <div>
-                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block mb-0.5">Vulnerable Ledger</span>
-                                  <span className="text-white font-mono break-all">{alert.ledger?.name || "N/A"}</span>
-                                </div>
-                                <div>
-                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block mb-0.5">Voucher Reference</span>
-                                  <span className="text-white font-mono break-all">{alert.voucher?.voucherNumber || "N/A"}</span>
-                                </div>
-                                <div>
-                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block mb-0.5">Amount Impact</span>
-                                  <span className="text-rose-400 font-mono font-black">{alert.impactAmount > 0 ? formatCurrency(alert.impactAmount) : "N/A"}</span>
-                                </div>
-                                <div>
-                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block mb-0.5">Voucher Date</span>
-                                  <span className="text-white font-bold">{alert.voucher?.date ? new Date(alert.voucher.date).toLocaleDateString("en-IN") : "N/A"}</span>
-                                </div>
-                              </div>
-
-                              {/* Detailed Description */}
-                              <div className="space-y-1.5">
-                                <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Supporting Evidence & Reason</span>
-                                <div className="bg-black/30 border border-white/5 p-4 rounded-xl text-slate-300 font-medium whitespace-pre-wrap leading-relaxed">
-                                  {alert.description}
-                                </div>
-                              </div>
-
-                              {/* Narration */}
-                              {alert.voucher && alert.voucher.narration && (
-                                <div className="space-y-1.5">
-                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Original narration entry</span>
-                                  <div className="bg-[#13131A] p-3 rounded-xl border border-white/5 text-cyan-400 font-mono italic">
-                                    "{alert.voucher.narration}"
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Auditor Sign-off Commentary Workspace */}
-                              {alert.status === "PENDING" ? (
-                                <div className="border-t border-white/5 pt-4 space-y-3">
-                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider block">Add Auditor Sign-off / Commentary</span>
-                                  <div className="flex gap-3">
-                                    <input 
-                                      type="text"
-                                      placeholder="Add commentary (such as 'Board approved u/s 188 on June 15' or 'Reconciliation adjusted')..."
-                                      value={commentaryText}
-                                      onChange={(e) => setCommentaryText(e.target.value)}
-                                      className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500/50"
-                                    />
-                                    <button 
-                                      onClick={() => {
-                                        setActiveAlert(alert);
-                                        handleActionAlert("RESOLVED");
-                                      }}
-                                      disabled={submittingComment || !commentaryText.trim()}
-                                      className="px-4 py-2 bg-cyan-500 text-slate-950 text-xs font-black rounded-xl hover:opacity-90 transition-all disabled:opacity-30"
-                                    >
-                                      Sign-off Finding
-                                    </button>
-                                    <button 
-                                      onClick={() => {
-                                        setActiveAlert(alert);
-                                        handleActionAlert("MUTED");
-                                      }}
-                                      disabled={submittingComment || !commentaryText.trim()}
-                                      className="px-4 py-2 bg-white/5 border border-white/10 text-slate-300 text-xs font-black rounded-xl hover:bg-white/10 transition-all disabled:opacity-30"
-                                    >
-                                      Mute
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="border-t border-white/5 pt-4 flex justify-between items-center text-[10px] text-slate-500 font-black uppercase">
-                                  <span>Signed-off: {alert.resolvedBy?.email || "System"} ({alert.status})</span>
-                                  <span className="text-slate-300 italic">Commentary: "{alert.commentary}"</span>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                    {/* Closing Balance & Action */}
+                    <div className="flex items-center gap-6 self-end md:self-auto shrink-0">
+                      <div className="text-right font-mono">
+                        <span className="text-[9px] font-black text-slate-500 uppercase block">Closing Balance</span>
+                        <span className="text-sm font-black text-white">{formatCurrency(ledger.closingBalance)}</span>
+                      </div>
+                      <button className="text-xs font-mono font-black text-cyan-400 bg-cyan-500/10 px-3 py-1.5 rounded-lg border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors">
+                        {isExpanded ? "[-] Collapse" : "[+] Audit Paper"}
+                      </button>
                     </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
+
+                  {/* Expanded Working Paper */}
+                  {isExpanded && (
+                    <div className="p-6 border-t border-white/5 bg-black/40 space-y-6">
+                      {/* Financial Movement Breakdown Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 bg-[#181821] p-4 rounded-xl border border-white/5 font-mono text-xs">
+                        <div>
+                          <span className="text-slate-500 text-[9px] font-black uppercase block">Opening Balance</span>
+                          <span className="text-slate-300 font-bold">{formatCurrency(ledger.openingBalance)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 text-[9px] font-black uppercase block">Total Debit</span>
+                          <span className="text-emerald-400 font-bold">{formatCurrency(ledger.totalDebit)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 text-[9px] font-black uppercase block">Total Credit</span>
+                          <span className="text-rose-400 font-bold">{formatCurrency(ledger.totalCredit)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 text-[9px] font-black uppercase block">Closing Balance</span>
+                          <span className="text-white font-black">{formatCurrency(ledger.closingBalance)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 text-[9px] font-black uppercase block">Vouchers Scanned</span>
+                          <span className="text-cyan-400 font-bold">{ledger.voucherCount} Entries</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 text-[9px] font-black uppercase block">Last Movement</span>
+                          <span className="text-slate-300 font-bold">{ledger.lastTransactionDate ? new Date(ledger.lastTransactionDate).toLocaleDateString("en-IN") : "No Vouchers"}</span>
+                        </div>
+                      </div>
+
+                      {/* Audit Rule Execution Matrix Table */}
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                          <FileCheck className="w-4 h-4 text-cyan-400" /> Audit Rule Execution Matrix ({ledger.checks.length} Rules Applied)
+                        </h5>
+
+                        <div className="overflow-x-auto border border-white/5 rounded-xl">
+                          <table className="w-full border-collapse text-xs">
+                            <thead>
+                              <tr className="bg-black/40 border-b border-white/5 text-left text-slate-500 font-mono text-[9px] uppercase tracking-wider">
+                                <th className="p-3">Audit Rule Standard</th>
+                                <th className="p-3">Execution Status</th>
+                                <th className="p-3">Audit Scope Rationale</th>
+                                <th className="p-3">Audit Finding / Supporting Evidence</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5 font-medium">
+                              {ledger.checks.map(chk => (
+                                <tr key={chk.code} className="hover:bg-white/[0.01]">
+                                  <td className="p-3 font-bold text-white font-mono">{chk.name}</td>
+                                  <td className="p-3">
+                                    <span className={`px-2.5 py-1 rounded text-[9px] font-mono font-black uppercase border ${
+                                      chk.status === "Passed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                                      chk.status === "Failed" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
+                                      chk.status === "Warning" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                                      "bg-white/5 text-slate-500 border-white/5"
+                                    }`}>
+                                      {chk.status === "Passed" ? "✓ PASSED" : chk.status === "Failed" ? "❌ FAILED" : chk.status === "Warning" ? "⚠️ WARNING" : "N/A NOT APPLICABLE"}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-slate-400 text-[11px] max-w-[300px]">{chk.description}</td>
+                                  <td className="p-3 text-slate-300">
+                                    {chk.alert ? (
+                                      <div className="space-y-1 bg-rose-500/5 p-3 rounded-lg border border-rose-500/10">
+                                        <div className="text-rose-400 font-black flex items-center gap-1.5">
+                                          <span>❌</span> {chk.alert.title}
+                                        </div>
+                                        <div className="text-[10px] text-slate-300 font-medium leading-relaxed">{chk.alert.description}</div>
+                                        {chk.alert.voucher && (
+                                          <div className="text-[9px] font-mono text-cyan-400 mt-1 pt-1 border-t border-white/5">
+                                            Voucher: #{chk.alert.voucher.voucherNumber} ({chk.alert.voucher.type}) | Date: {new Date(chk.alert.voucher.date).toLocaleDateString("en-IN")}
+                                            {chk.alert.voucher.narration && <span className="block text-slate-400 italic">"{chk.alert.voucher.narration}"</span>}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-500 text-[10px] italic">Satisfied. No audit exceptions.</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
