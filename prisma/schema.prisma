@@ -32,6 +32,10 @@ model User {
   tbUploads        TrialBalanceUpload[]
   resolvedAlerts   ComplianceAlert[]
   resolvedScrutinyAlerts ScrutinyAlert[]
+  createdProvisions      Provision[]           @relation("CreatedProvisions")
+  updatedProvisions      Provision[]           @relation("UpdatedProvisions")
+  approvedProvisions     Provision[]           @relation("ApprovedProvisions")
+  reversedProvisions     Provision[]           @relation("ReversedProvisions")
   createdAt        DateTime                 @default(now())
 }
 
@@ -125,6 +129,7 @@ model Client {
   unifiedMappings      UnifiedLedgerMapping[]
   bsValues             BSValue[]
   accessLogs           ClientAccessLog[]
+  provisions           Provision[]
   createdAt            DateTime          @default(now())
 
   @@index([clientCode])
@@ -455,6 +460,8 @@ model NormalizedLedger {
   
   voucherLines   NormalizedVoucherLine[]
   alerts         ScrutinyAlert[]
+  debitProvisions        Provision[]           @relation("DebitLedger")
+  creditProvisions       Provision[]           @relation("CreditLedger")
   
   @@unique([clientId, name])
   @@index([clientId, groupName])
@@ -475,6 +482,8 @@ model NormalizedVoucher {
   
   lines          NormalizedVoucherLine[]
   alerts         ScrutinyAlert[]
+  originalProvision      Provision?            @relation("OriginalVoucher")
+  reversalProvision      Provision?            @relation("ReversalVoucher")
   
   createdAt      DateTime              @default(now())
   
@@ -574,4 +583,49 @@ model BSValue {
   updatedAt  DateTime @updatedAt
 
   @@unique([clientId, headName, month, year])
+}
+
+model Provision {
+  id                   String            @id @default(cuid())
+  clientId             String
+  client               Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  provisionNumber      String            @unique
+  provisionDate        DateTime
+  financialYear        Int
+  provisionType        String            // "INCOME" or "EXPENSE"
+  debitLedgerId        String
+  debitLedger          NormalizedLedger  @relation("DebitLedger", fields: [debitLedgerId], references: [id])
+  creditLedgerId       String
+  creditLedger         NormalizedLedger  @relation("CreditLedger", fields: [creditLedgerId], references: [id])
+  amount               Float
+  narration            String?           @db.Text
+  effectiveMonth       String            // e.g. "Apr", "May"
+  reference            String?
+  autoReverse          Boolean           @default(false)
+  status               String            @default("PENDING") // PENDING, POSTED, REVERSED
+  
+  // Linkages to posted double-entry journals
+  voucherId            String?           @unique
+  voucher              NormalizedVoucher? @relation("OriginalVoucher", fields: [voucherId], references: [id], onDelete: SetNull)
+  reversalVoucherId    String?           @unique
+  reversalVoucher      NormalizedVoucher? @relation("ReversalVoucher", fields: [reversalVoucherId], references: [id], onDelete: SetNull)
+  
+  // Custom categorization and metadata
+  category             String            @default("PROVISION") // PROVISION, PREPAID, DEFERRED_REV, DEFERRED_EXP, ACCRUAL, ADJ
+  metadata             Json?             // Holds { department: "Sales", costCentre: "Mumbai" }
+
+  // Audit trail
+  createdById          String?
+  createdBy            User?             @relation("CreatedProvisions", fields: [createdById], references: [id])
+  createdDate          DateTime          @default(now())
+  updatedById          String?
+  updatedBy            User?             @relation("UpdatedProvisions", fields: [updatedById], references: [id])
+  updatedDate          DateTime          @updatedAt
+  approvedById         String?
+  approvedBy           User?             @relation("ApprovedProvisions", fields: [approvedById], references: [id])
+  approvedDate         DateTime?
+  reversedById         String?
+  reversedBy           User?             @relation("ReversedProvisions", fields: [reversedById], references: [id])
+  reversalDate         DateTime?
+  reversalReason       String?           @db.Text
 }
