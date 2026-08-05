@@ -7,7 +7,8 @@ async function main() {
     await prisma.$executeRawUnsafe('ALTER TABLE "UserLoginActivity" ENABLE ROW LEVEL SECURITY;');
     await prisma.$executeRawUnsafe('ALTER TABLE "SecurityAlert" ENABLE ROW LEVEL SECURITY;');
     await prisma.$executeRawUnsafe('ALTER TABLE "ClientAccessLog" ENABLE ROW LEVEL SECURITY;');
-    console.log('Successfully enabled RLS on all three tables!');
+    await prisma.$executeRawUnsafe('ALTER TABLE "Provision" ENABLE ROW LEVEL SECURITY;');
+    console.log('Successfully enabled RLS on all four tables!');
   } catch (err) {
     console.error('Failed to enable RLS:', err);
   } finally {
