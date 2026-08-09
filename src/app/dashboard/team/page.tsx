@@ -58,6 +58,12 @@ export default async function TeamManagementPage() {
     orderBy: { createdAt: 'desc' }
   });
 
+  const filteredPending = pendingRequests.filter(request => {
+    if (!request.rejectedByUserIds) return true;
+    const rejections = request.rejectedByUserIds.split(",").filter(Boolean);
+    return !rejections.includes(user.id);
+  });
+
   const activeTeam = await prisma.organizationMembership.findMany({
     where: {
       organizationId: { in: orgIds },
@@ -88,7 +94,7 @@ export default async function TeamManagementPage() {
           </Link>
         </header>
 
-        <TeamApprovalsClient initialPending={pendingRequests} initialActive={activeTeam} />
+        <TeamApprovalsClient initialPending={filteredPending} initialActive={activeTeam} />
       </div>
     </div>
   );

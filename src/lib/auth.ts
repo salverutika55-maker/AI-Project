@@ -19,12 +19,13 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Missing credentials");
         }
         
+        const emailNormalized = credentials.email.trim().toLowerCase();
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+          where: { email: emailNormalized },
         });
 
         if (!user) {
-          await logSecurityEvent(null, "LOGIN_FAILED", undefined, `Failed login attempt for ${credentials.email}`, req);
+          await logSecurityEvent(null, "LOGIN_FAILED", undefined, `Failed login attempt for ${emailNormalized}`, req);
           throw new Error("No user found with this email");
         }
 
@@ -78,13 +79,13 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
+      if (user && token) {
         token.role = (user as any).role;
       }
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
+      if (session && session.user && token) {
         (session.user as any).role = token.role;
       }
       return session;

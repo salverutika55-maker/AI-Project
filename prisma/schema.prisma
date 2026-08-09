@@ -36,6 +36,7 @@ model User {
   updatedProvisions      Provision[]           @relation("UpdatedProvisions")
   approvedProvisions     Provision[]           @relation("ApprovedProvisions")
   reversedProvisions     Provision[]           @relation("ReversedProvisions")
+  approvedMemberships    OrganizationMembership[] @relation("ApprovedMemberships")
   createdAt        DateTime                 @default(now())
 }
 
@@ -55,6 +56,13 @@ model OrganizationMembership {
   status           String       @default("PENDING") // PENDING, APPROVED, REJECTED
   user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  approvedAt         DateTime?
+  approvedByUserId   String?
+  approvedByUser     User?        @relation("ApprovedMemberships", fields: [approvedByUserId], references: [id])
+  rejectedAt         DateTime?
+  rejectionReason    String?
+  rejectedByUserIds  String?      
+  notificationStatus String?      @default("SENT")
   createdAt        DateTime     @default(now())
 
   @@unique([userId, organizationId])
