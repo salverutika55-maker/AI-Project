@@ -20,11 +20,14 @@ export const authOptions: NextAuthOptions = {
         }
         
         const emailNormalized = credentials.email.trim().toLowerCase();
+        console.log(`[AUTH_SESSION_CREATE] | Email: ${emailNormalized}`);
+
         const user = await prisma.user.findUnique({
           where: { email: emailNormalized },
         });
 
         if (!user) {
+          console.log(`[AUTH_LOGIN_FAILED] | Email: ${emailNormalized} | Reason: User not found`);
           await logSecurityEvent(null, "LOGIN_FAILED", undefined, `Failed login attempt for ${emailNormalized}`, req);
           throw new Error("No user found with this email");
         }
@@ -35,6 +38,7 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isPasswordValid) {
+          console.log(`[AUTH_LOGIN_FAILED] | Email: ${emailNormalized} | Reason: Invalid password`);
           await logSecurityEvent(user.id, "LOGIN_FAILED", undefined, `Invalid password attempt for ${credentials.email}`, req);
           throw new Error("Invalid password");
         }
@@ -66,6 +70,8 @@ export const authOptions: NextAuthOptions = {
           }
         }
 
+        console.log(`[AUTH_LOGIN_SUCCESS] | Email: ${user.email}`);
+
         return {
           id: user.id,
           email: user.email,
@@ -94,5 +100,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/login",
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || "finanalyzer_secret_prod_fallback_987",
 };
