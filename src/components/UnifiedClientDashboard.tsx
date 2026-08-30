@@ -34,6 +34,8 @@ import RiskIntelligenceDashboard from "./RiskIntelligenceDashboard";
 import LedgerDrilldownDrawer from "./LedgerDrilldownDrawer";
 import ProvisionDashboard from "./ProvisionDashboard";
 import ChartExplorer from "./ChartExplorer";
+import FundFlowDashboard from "./FundFlowDashboard";
+import { Waves } from "lucide-react";
 
 interface UnifiedDashboardProps {
   client: any;
@@ -46,7 +48,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const isAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(userRole);
 
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"executive" | "performance" | "balanceSheet" | "analytics" | "compliance" | "risk" | "advisory" | "diagnostics" | "insights" | "chartExplorer" | "provision">("executive");
+  const [activeTab, setActiveTab] = useState<"executive" | "performance" | "balanceSheet" | "analytics" | "compliance" | "risk" | "advisory" | "diagnostics" | "insights" | "chartExplorer" | "provision" | "fundFlow">("executive");
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedMonth, setSelectedMonth] = useState("May");
@@ -802,6 +804,9 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           <button onClick={() => setActiveTab("provision")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "provision" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <ArrowRightLeft className="w-4 h-4" /> Provision Accounting
           </button>
+          <button onClick={() => setActiveTab("fundFlow")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "fundFlow" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <Waves className="w-4 h-4" /> Fund Flow
+          </button>
         </div>
 
         {/* 3. TAB CONTENT */}
@@ -1330,6 +1335,12 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           {activeTab === "provision" && (
             <ErrorBoundary title="Provision Accounting Error">
               <ProvisionDashboard clientId={client.id} selectedYear={selectedYear} client={client} />
+            </ErrorBoundary>
+          )}
+
+          {activeTab === "fundFlow" && (
+            <ErrorBoundary title="Fund Flow Module Error">
+              <FundFlowDashboard clientId={client.id} selectedYear={selectedYear} client={client} displayCurrency={displayCurrency} />
             </ErrorBoundary>
           )}
         </div>
