@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, Fragment } from "react";
 import { 
   Waves, ArrowUpRight, ArrowDownRight, RefreshCw, Layers, TrendingUp, TrendingDown,
   DollarSign, Activity, FileSpreadsheet, FileText, ChevronRight, X, Search,
-  CheckCircle2, AlertCircle, AlertTriangle, HelpCircle, ArrowRightLeft, Factory, Briefcase, BarChart3, PieChart, ShieldCheck
+  CheckCircle2, AlertCircle, AlertTriangle, HelpCircle, ArrowRightLeft, Factory, Briefcase, BarChart3, PieChart, ShieldCheck, Calendar
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -17,20 +17,31 @@ interface FundFlowDashboardProps {
   selectedYear: number;
   client: any;
   displayCurrency?: string;
+  selectedMonth?: string;
+  fyType?: "APR_MAR" | "JAN_DEC";
 }
 
 export default function FundFlowDashboard({
   clientId,
   selectedYear,
   client,
-  displayCurrency = "INR"
+  displayCurrency = "INR",
+  selectedMonth: initialMonth = "Mar",
+  fyType = "APR_MAR"
 }: FundFlowDashboardProps) {
   const [viewMode, setViewMode] = useState<"MONTHLY" | "CUMULATIVE">("MONTHLY");
-  const [selectedMonth, setSelectedMonth] = useState<string>("Mar");
+  const [activeMonth, setActiveMonth] = useState<string>(initialMonth || "Mar");
   const [selectedChartId, setSelectedChartId] = useState<string>("net_fund_flow_trend");
   const [loading, setLoading] = useState(true);
   const [fundFlowData, setFundFlowData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync if prop changes
+  useEffect(() => {
+    if (initialMonth && initialMonth !== activeMonth) {
+      setActiveMonth(initialMonth);
+    }
+  }, [initialMonth]);
 
   // Drilldown state
   const [drilldownModal, setDrilldownModal] = useState<{
@@ -38,6 +49,7 @@ export default function FundFlowDashboard({
     categoryKey: string;
     categoryTitle: string;
     month: string;
+    mode: "MONTHLY" | "CUMULATIVE";
     loading: boolean;
     data: any | null;
     searchQuery: string;
@@ -45,7 +57,8 @@ export default function FundFlowDashboard({
     isOpen: false,
     categoryKey: "",
     categoryTitle: "",
-    month: "all",
+    month: activeMonth,
+    mode: viewMode,
     loading: false,
     data: null,
     searchQuery: ""
@@ -53,13 +66,13 @@ export default function FundFlowDashboard({
 
   useEffect(() => {
     fetchFundFlowData();
-  }, [clientId, selectedYear]);
+  }, [clientId, selectedYear, activeMonth, viewMode, fyType]);
 
   const fetchFundFlowData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/clients/${clientId}/fund-flow?year=${selectedYear}`);
+      const res = await fetch(`/api/clients/${clientId}/fund-flow?year=${selectedYear}&month=${activeMonth}&mode=${viewMode}&fyType=${fyType}`);
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.error || "Failed to load Fund Flow data");
@@ -74,19 +87,22 @@ export default function FundFlowDashboard({
     }
   };
 
-  const handleOpenDrilldown = async (categoryKey: string, categoryTitle: string, month: string = "all") => {
+  const handleOpenDrilldown = async (categoryKey: string, categoryTitle: string, targetMonth: string = activeMonth) => {
     setDrilldownModal({
       isOpen: true,
       categoryKey,
       categoryTitle,
-      month,
+      month: targetMonth,
+      mode: viewMode,
       loading: true,
       data: null,
       searchQuery: ""
     });
 
     try {
-      const res = await fetch(`/api/clients/${clientId}/fund-flow/drilldown?category=${encodeURIComponent(categoryKey)}&month=${month}&year=${selectedYear}`);
+      const res = await fetch(
+        `/api/clients/${clientId}/fund-flow/drilldown?category=${encodeURIComponent(categoryKey)}&month=${targetMonth}&mode=${viewMode}&year=${selectedYear}&fyType=${fyType}`
+      );
       if (!res.ok) throw new Error("Failed to fetch drilldown");
       const data = await res.json();
       setDrilldownModal(prev => ({ ...prev, loading: false, data }));
@@ -108,7 +124,14 @@ export default function FundFlowDashboard({
   const sector = fundFlowData?.sector || client?.sector || "TRADING";
   const SectorIcon = sector === "MANUFACTURING" ? Factory : sector === "SERVICE" ? Briefcase : ArrowRightLeft;
 
-  const monthsList = fundFlowData?.visibleMonths || ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+  const allFYMonths = fundFlowData?.months?.filter((m: string) => m !== "Opening") || (
+    fyType === "JAN_DEC"
+      ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+      : ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+  );
+
+  const visibleMonths = fundFlowData?.visibleMonths || [activeMonth];
+  const activePeriod = fundFlowData?.activePeriod;
 
   // Selected chart config
   const activeChart = useMemo(() => {
@@ -121,28 +144,43 @@ export default function FundFlowDashboard({
     if (!fundFlowData) return;
     const rows: any[] = [];
 
+    rows.push({ Section: `FUND FLOW STATEMENT - ${viewMode} (${activePeriod?.periodLabel || activeMonth})` });
     rows.push({ Section: "WORKING CAPITAL STATEMENT" });
     rows.push({ Category: "Current Assets" });
     fundFlowData.workingCapitalStatement.currentAssets.forEach((item: any) => {
-      const rowObj: any = { Item: item.displayName };
-      monthsList.forEach((m: string) => rowObj[m] = item.values[m] || 0);
-      rowObj["Closing"] = item.values["Closing"] || 0;
+      const rowObj: any = { 
+        Item: item.displayName,
+        "Opening Position": item.openingPosition,
+        "Period Movement": item.periodMovement,
+        "Closing Position": item.closingPosition
+      };
+      if (viewMode === "CUMULATIVE") {
+        visibleMonths.forEach((m: string) => rowObj[m] = item.values[m] || 0);
+      }
       rows.push(rowObj);
     });
 
     rows.push({ Section: "SOURCES OF FUNDS" });
     fundFlowData.sourcesOfFunds.forEach((item: any) => {
-      const rowObj: any = { Item: item.displayName };
-      monthsList.forEach((m: string) => rowObj[m] = item.values[m] || 0);
-      rowObj["Closing (Cumulative)"] = item.values["Closing"] || 0;
+      const rowObj: any = { 
+        Item: item.displayName,
+        "Calculated Period Amount": item.periodValue
+      };
+      if (viewMode === "CUMULATIVE") {
+        visibleMonths.forEach((m: string) => rowObj[m] = item.values[m] || 0);
+      }
       rows.push(rowObj);
     });
 
     rows.push({ Section: "APPLICATIONS OF FUNDS" });
     fundFlowData.applicationsOfFunds.forEach((item: any) => {
-      const rowObj: any = { Item: item.displayName };
-      monthsList.forEach((m: string) => rowObj[m] = item.values[m] || 0);
-      rowObj["Closing (Cumulative)"] = item.values["Closing"] || 0;
+      const rowObj: any = { 
+        Item: item.displayName,
+        "Calculated Period Amount": item.periodValue
+      };
+      if (viewMode === "CUMULATIVE") {
+        visibleMonths.forEach((m: string) => rowObj[m] = item.values[m] || 0);
+      }
       rows.push(rowObj);
     });
 
@@ -151,7 +189,7 @@ export default function FundFlowDashboard({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `Fund_Flow_${client.name}_${selectedYear}.csv`);
+    link.setAttribute("download", `Fund_Flow_${client.name}_${viewMode}_${activeMonth}_${selectedYear}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -162,7 +200,9 @@ export default function FundFlowDashboard({
       <div className="min-h-[500px] flex flex-col items-center justify-center p-12 bg-[#13131A] rounded-3xl border border-white/5">
         <RefreshCw className="w-10 h-10 text-cyan-400 animate-spin mb-4" />
         <h3 className="text-lg font-black text-white">Analyzing Financial Statements & Cash Movements...</h3>
-        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Generating sector-aware Fund Flow working papers</p>
+        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
+          Generating {viewMode.toLowerCase()} Fund Flow for {activeMonth} ({selectedYear})
+        </p>
       </div>
     );
   }
@@ -192,42 +232,61 @@ export default function FundFlowDashboard({
             <Waves className="w-6 h-6 text-cyan-400" />
           </div>
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-xl font-black text-white">Fund Flow Statement & Working Capital</h2>
               <span className="px-3 py-1 bg-cyan-500/10 border border-cyan-500/20 rounded-lg text-[10px] font-black text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
                 <SectorIcon className="w-3 h-3" /> {sector} MODEL
               </span>
+              <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                {viewMode === "MONTHLY" ? `PERIOD: ${activeMonth.toUpperCase()} ONLY` : `PERIOD: ${allFYMonths[0].toUpperCase()} → ${activeMonth.toUpperCase()} (CUMULATIVE)`}
+              </span>
             </div>
-            <p className="text-xs text-slate-500 font-bold mt-1">
-              Audit working paper tracking sources, deployments, and working capital liquidity
+            <p className="text-xs text-slate-400 font-medium mt-1">
+              {activePeriod?.periodLabel || `${activeMonth} ${selectedYear}`}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Monthly vs Cumulative Switcher */}
+          {/* Monthly / Cumulative Mode Toggle */}
           <div className="bg-black/40 border border-white/10 rounded-xl p-1 flex">
             <button
               onClick={() => setViewMode("MONTHLY")}
-              className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+              className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
                 viewMode === "MONTHLY" ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20" : "text-slate-400 hover:text-white"
               }`}
             >
-              Monthly Fund Flow
+              Monthly
             </button>
             <button
               onClick={() => setViewMode("CUMULATIVE")}
-              className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+              className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
                 viewMode === "CUMULATIVE" ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20" : "text-slate-400 hover:text-white"
               }`}
             >
-              Cumulative Fund Flow
+              Cumulative
             </button>
+          </div>
+
+          {/* Month Selector for Fund Flow */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-xl">
+            <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+            <select
+              value={activeMonth}
+              onChange={e => setActiveMonth(e.target.value)}
+              className="bg-transparent text-xs font-black text-cyan-400 border-none focus:outline-none cursor-pointer"
+            >
+              {allFYMonths.map((m: string) => (
+                <option key={m} value={m} className="bg-[#13131A] text-white">
+                  {m.toUpperCase()}
+                </option>
+              ))}
+            </select>
           </div>
 
           <button
             onClick={handleExportCSV}
-            className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+            className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
             title="Export CSV"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -235,7 +294,7 @@ export default function FundFlowDashboard({
 
           <button
             onClick={fetchFundFlowData}
-            className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+            className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
             title="Refresh"
           >
             <RefreshCw className="w-4 h-4" />
@@ -267,7 +326,7 @@ export default function FundFlowDashboard({
       {fundFlowData.insights && fundFlowData.insights.length > 0 && (
         <div className="bg-[#13131A] border border-white/5 rounded-3xl p-6 shadow-xl">
           <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" /> Data-Driven Management Observations
+            <ShieldCheck className="w-4 h-4 text-emerald-400" /> Data-Driven Management Observations ({activePeriod?.periodLabel || activeMonth})
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {fundFlowData.insights.map((ins: any) => (
@@ -381,11 +440,13 @@ export default function FundFlowDashboard({
               </div>
               <div>
                 <h3 className="text-base font-black text-white">Sources of Funds (Inflows)</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Operations, Asset Liquidations & Funding Additions</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                  {viewMode === "MONTHLY" ? `${activeMonth} Inflows` : `Cumulative Inflows (${allFYMonths[0]} → ${activeMonth})`}
+                </p>
               </div>
             </div>
             <span className="text-xs font-mono font-black text-emerald-400">
-              Total: {formatCurrency(fundFlowData.summaryStatement.find((s: any) => s.id === "total_sources_of_funds")?.values["Closing"] || 0)}
+              Total: {formatCurrency(activePeriod?.totalSources || 0)}
             </span>
           </div>
 
@@ -394,13 +455,13 @@ export default function FundFlowDashboard({
               <thead>
                 <tr className="border-b border-white/10 bg-white/[0.01]">
                   <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[280px]">Particulars</th>
-                  {monthsList.map((m: string) => (
-                    <th key={m} className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[110px] border-l border-white/5">
+                  {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => (
+                    <th key={m} className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[100px] border-l border-white/5">
                       {m}
                     </th>
                   ))}
                   <th className="p-4 text-center text-[10px] font-black text-emerald-400 uppercase tracking-widest min-w-[140px] border-l border-white/10 bg-emerald-500/5">
-                    {viewMode === "MONTHLY" ? "FY Total" : "Cumulative"}
+                    {viewMode === "MONTHLY" ? `${activeMonth} Inflow` : `Cumulative Total (${allFYMonths[0]}–${activeMonth})`}
                   </th>
                 </tr>
               </thead>
@@ -409,21 +470,21 @@ export default function FundFlowDashboard({
                   <tr key={item.id} className="hover:bg-white/[0.02] transition-colors group">
                     <td className="p-4 font-bold text-slate-300">
                       <button
-                        onClick={() => handleOpenDrilldown(item.category, item.displayName)}
+                        onClick={() => handleOpenDrilldown(item.category, item.displayName, activeMonth)}
                         className="text-left hover:text-cyan-400 hover:underline flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <span>{item.displayName}</span>
                         <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
                       </button>
                     </td>
-                    {monthsList.map((m: string) => {
+                    {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => {
                       const val = item.values[m] || 0;
                       return (
                         <td key={m} className="p-3 text-center font-mono font-bold text-slate-400 border-l border-white/5">
                           {val > 0 ? (
                             <button
                               onClick={() => handleOpenDrilldown(item.category, item.displayName, m)}
-                              className="hover:text-cyan-400 hover:underline transition-colors"
+                              className="hover:text-cyan-400 hover:underline transition-colors cursor-pointer"
                             >
                               {formatCurrency(val)}
                             </button>
@@ -434,29 +495,28 @@ export default function FundFlowDashboard({
                       );
                     })}
                     <td className="p-4 text-center font-mono font-black text-emerald-400 border-l border-white/10 bg-emerald-500/5">
-                      {formatCurrency(item.values["Closing"] || 0)}
+                      <button
+                        onClick={() => handleOpenDrilldown(item.category, item.displayName, activeMonth)}
+                        className="hover:text-emerald-300 hover:underline transition-colors cursor-pointer"
+                      >
+                        {formatCurrency(item.periodValue || 0)}
+                      </button>
                     </td>
                   </tr>
                 ))}
 
                 {/* Total Sources Row */}
-                {(() => {
-                  const tot = fundFlowData.summaryStatement.find((s: any) => s.id === "total_sources_of_funds");
-                  if (!tot) return null;
-                  return (
-                    <tr className="bg-emerald-500/10 font-black border-t-2 border-emerald-500/30">
-                      <td className="p-4 text-emerald-300 uppercase tracking-wider">{tot.displayName}</td>
-                      {monthsList.map((m: string) => (
-                        <td key={m} className="p-3 text-center font-mono text-emerald-300 border-l border-white/5">
-                          {formatCurrency(tot.values[m] || 0)}
-                        </td>
-                      ))}
-                      <td className="p-4 text-center font-mono text-emerald-300 border-l border-white/10 bg-emerald-500/20">
-                        {formatCurrency(tot.values["Closing"] || 0)}
-                      </td>
-                    </tr>
-                  );
-                })()}
+                <tr className="bg-emerald-500/10 font-black border-t-2 border-emerald-500/30">
+                  <td className="p-4 text-emerald-300 uppercase tracking-wider">Total Sources of Funds (A)</td>
+                  {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => (
+                    <td key={m} className="p-3 text-center font-mono text-emerald-300 border-l border-white/5">
+                      {formatCurrency(fundFlowData.summaryStatement.find((s: any) => s.id === "total_sources_of_funds")?.values[m] || 0)}
+                    </td>
+                  ))}
+                  <td className="p-4 text-center font-mono text-emerald-300 border-l border-white/10 bg-emerald-500/20">
+                    {formatCurrency(activePeriod?.totalSources || 0)}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -471,11 +531,13 @@ export default function FundFlowDashboard({
               </div>
               <div>
                 <h3 className="text-base font-black text-white">Applications of Funds (Deployments)</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">CapEx, Debt Repayment, Working Capital Absorption</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                  {viewMode === "MONTHLY" ? `${activeMonth} Outflows` : `Cumulative Outflows (${allFYMonths[0]} → ${activeMonth})`}
+                </p>
               </div>
             </div>
             <span className="text-xs font-mono font-black text-rose-400">
-              Total: {formatCurrency(fundFlowData.summaryStatement.find((s: any) => s.id === "total_applications_of_funds")?.values["Closing"] || 0)}
+              Total: {formatCurrency(activePeriod?.totalApplications || 0)}
             </span>
           </div>
 
@@ -484,13 +546,13 @@ export default function FundFlowDashboard({
               <thead>
                 <tr className="border-b border-white/10 bg-white/[0.01]">
                   <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[280px]">Particulars</th>
-                  {monthsList.map((m: string) => (
-                    <th key={m} className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[110px] border-l border-white/5">
+                  {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => (
+                    <th key={m} className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[100px] border-l border-white/5">
                       {m}
                     </th>
                   ))}
                   <th className="p-4 text-center text-[10px] font-black text-rose-400 uppercase tracking-widest min-w-[140px] border-l border-white/10 bg-rose-500/5">
-                    {viewMode === "MONTHLY" ? "FY Total" : "Cumulative"}
+                    {viewMode === "MONTHLY" ? `${activeMonth} Outflow` : `Cumulative Total (${allFYMonths[0]}–${activeMonth})`}
                   </th>
                 </tr>
               </thead>
@@ -499,21 +561,21 @@ export default function FundFlowDashboard({
                   <tr key={item.id} className="hover:bg-white/[0.02] transition-colors group">
                     <td className="p-4 font-bold text-slate-300">
                       <button
-                        onClick={() => handleOpenDrilldown(item.category, item.displayName)}
+                        onClick={() => handleOpenDrilldown(item.category, item.displayName, activeMonth)}
                         className="text-left hover:text-cyan-400 hover:underline flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <span>{item.displayName}</span>
                         <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
                       </button>
                     </td>
-                    {monthsList.map((m: string) => {
+                    {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => {
                       const val = item.values[m] || 0;
                       return (
                         <td key={m} className="p-3 text-center font-mono font-bold text-slate-400 border-l border-white/5">
                           {val > 0 ? (
                             <button
                               onClick={() => handleOpenDrilldown(item.category, item.displayName, m)}
-                              className="hover:text-cyan-400 hover:underline transition-colors"
+                              className="hover:text-cyan-400 hover:underline transition-colors cursor-pointer"
                             >
                               {formatCurrency(val)}
                             </button>
@@ -524,29 +586,28 @@ export default function FundFlowDashboard({
                       );
                     })}
                     <td className="p-4 text-center font-mono font-black text-rose-400 border-l border-white/10 bg-rose-500/5">
-                      {formatCurrency(item.values["Closing"] || 0)}
+                      <button
+                        onClick={() => handleOpenDrilldown(item.category, item.displayName, activeMonth)}
+                        className="hover:text-rose-300 hover:underline transition-colors cursor-pointer"
+                      >
+                        {formatCurrency(item.periodValue || 0)}
+                      </button>
                     </td>
                   </tr>
                 ))}
 
                 {/* Total Applications Row */}
-                {(() => {
-                  const tot = fundFlowData.summaryStatement.find((s: any) => s.id === "total_applications_of_funds");
-                  if (!tot) return null;
-                  return (
-                    <tr className="bg-rose-500/10 font-black border-t-2 border-rose-500/30">
-                      <td className="p-4 text-rose-300 uppercase tracking-wider">{tot.displayName}</td>
-                      {monthsList.map((m: string) => (
-                        <td key={m} className="p-3 text-center font-mono text-rose-300 border-l border-white/5">
-                          {formatCurrency(tot.values[m] || 0)}
-                        </td>
-                      ))}
-                      <td className="p-4 text-center font-mono text-rose-300 border-l border-white/10 bg-rose-500/20">
-                        {formatCurrency(tot.values["Closing"] || 0)}
-                      </td>
-                    </tr>
-                  );
-                })()}
+                <tr className="bg-rose-500/10 font-black border-t-2 border-rose-500/30">
+                  <td className="p-4 text-rose-300 uppercase tracking-wider">Total Applications of Funds (B)</td>
+                  {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => (
+                    <td key={m} className="p-3 text-center font-mono text-rose-300 border-l border-white/5">
+                      {formatCurrency(fundFlowData.summaryStatement.find((s: any) => s.id === "total_applications_of_funds")?.values[m] || 0)}
+                    </td>
+                  ))}
+                  <td className="p-4 text-center font-mono text-rose-300 border-l border-white/10 bg-rose-500/20">
+                    {formatCurrency(activePeriod?.totalApplications || 0)}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -560,8 +621,12 @@ export default function FundFlowDashboard({
                 <Layers className="w-4 h-4 text-cyan-400" />
               </div>
               <div>
-                <h3 className="text-base font-black text-white">Net Fund Flow & Working Capital Movement</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Reconciliation of Net Fund Inflows with Working Capital</p>
+                <h3 className="text-base font-black text-white">
+                  Working Capital Movement & Reconciliation ({viewMode === "MONTHLY" ? activeMonth : `${allFYMonths[0]} → ${activeMonth}`})
+                </h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                  Reconciliation: Opening Working Capital + Net Fund Flow = Closing Working Capital
+                </p>
               </div>
             </div>
           </div>
@@ -571,14 +636,16 @@ export default function FundFlowDashboard({
               <thead>
                 <tr className="border-b border-white/10 bg-white/[0.01]">
                   <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[280px]">Summary Item</th>
-                  <th className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[110px]">Opening</th>
-                  {monthsList.map((m: string) => (
-                    <th key={m} className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[110px] border-l border-white/5">
+                  <th className="p-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[130px]">
+                    {viewMode === "MONTHLY" ? `Start of ${activeMonth}` : `FY Opening (${allFYMonths[0]})`}
+                  </th>
+                  {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => (
+                    <th key={m} className="p-3 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest min-w-[100px] border-l border-white/5">
                       {m}
                     </th>
                   ))}
                   <th className="p-4 text-center text-[10px] font-black text-cyan-400 uppercase tracking-widest min-w-[140px] border-l border-white/10 bg-cyan-500/5">
-                    Closing
+                    {viewMode === "MONTHLY" ? `End of ${activeMonth}` : `Closing as of ${activeMonth}`}
                   </th>
                 </tr>
               </thead>
@@ -586,43 +653,37 @@ export default function FundFlowDashboard({
                 {fundFlowData.workingCapitalStatement.workingCapitalSummary.map((item: any) => (
                   <tr key={item.id} className="hover:bg-white/[0.02] transition-colors">
                     <td className="p-4 font-sans text-slate-300 font-bold">{item.displayName}</td>
-                    <td className="p-3 text-center text-slate-400">{formatCurrency(item.values["Opening"] || 0)}</td>
-                    {monthsList.map((m: string) => (
+                    <td className="p-3 text-center text-slate-400">{formatCurrency(item.openingPosition || 0)}</td>
+                    {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => (
                       <td key={m} className="p-3 text-center text-slate-300 border-l border-white/5">
                         {formatCurrency(item.values[m] || 0)}
                       </td>
                     ))}
                     <td className="p-4 text-center font-black text-cyan-400 border-l border-white/10 bg-cyan-500/5">
-                      {formatCurrency(item.values["Closing"] || 0)}
+                      {formatCurrency(item.closingPosition || item.periodValue || 0)}
                     </td>
                   </tr>
                 ))}
 
                 {/* Net Fund Flow Row */}
-                {(() => {
-                  const net = fundFlowData.summaryStatement.find((s: any) => s.id === "net_fund_flow");
-                  if (!net) return null;
-                  return (
-                    <tr className="bg-cyan-500/10 font-black border-t-2 border-cyan-500/30 text-cyan-300">
-                      <td className="p-4 font-sans uppercase tracking-wider">{net.displayName}</td>
-                      <td className="p-3 text-center">-</td>
-                      {monthsList.map((m: string) => (
-                        <td key={m} className="p-3 text-center border-l border-white/5">
-                          {formatCurrency(net.values[m] || 0)}
-                        </td>
-                      ))}
-                      <td className="p-4 text-center border-l border-white/10 bg-cyan-500/20">
-                        {formatCurrency(net.values["Closing"] || 0)}
-                      </td>
-                    </tr>
-                  );
-                })()}
+                <tr className="bg-cyan-500/10 font-black border-t-2 border-cyan-500/30 text-cyan-300">
+                  <td className="p-4 font-sans uppercase tracking-wider">Net Fund Flow (A - B)</td>
+                  <td className="p-3 text-center">-</td>
+                  {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => (
+                    <td key={m} className="p-3 text-center border-l border-white/5">
+                      {formatCurrency(fundFlowData.summaryStatement.find((s: any) => s.id === "net_fund_flow")?.values[m] || 0)}
+                    </td>
+                  ))}
+                  <td className="p-4 text-center border-l border-white/10 bg-cyan-500/20">
+                    {formatCurrency(activePeriod?.netFundFlow || 0)}
+                  </td>
+                </tr>
 
                 {/* Reconciliation Check Row */}
                 <tr className="bg-black/30 font-bold text-slate-400">
                   <td className="p-4 font-sans text-[11px] uppercase tracking-wider text-slate-500">Reconciliation Variance</td>
                   <td className="p-3 text-center">-</td>
-                  {monthsList.map((m: string) => {
+                  {viewMode === "CUMULATIVE" && visibleMonths.map((m: string) => {
                     const recon = fundFlowData.reconciliation[m];
                     const diff = recon ? recon.difference : 0;
                     return (
@@ -638,13 +699,13 @@ export default function FundFlowDashboard({
                     );
                   })}
                   <td className="p-4 text-center border-l border-white/10 bg-black/40">
-                    {Math.abs(fundFlowData.reconciliation["Cumulative"]?.difference || 0) < 1 ? (
+                    {activePeriod?.isBalanced ? (
                       <span className="text-[10px] text-emerald-400 font-sans font-bold flex items-center justify-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5" /> Reconciled
                       </span>
                     ) : (
                       <span className="text-amber-400 font-mono text-xs font-black">
-                        {formatCurrency(fundFlowData.reconciliation["Cumulative"]?.difference || 0)}
+                        {formatCurrency(activePeriod?.difference || 0)}
                       </span>
                     )}
                   </td>
@@ -669,7 +730,9 @@ export default function FundFlowDashboard({
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-black text-white">{drilldownModal.categoryTitle}</h3>
                     <span className="px-2.5 py-0.5 bg-white/10 rounded text-[10px] font-mono text-slate-300">
-                      {drilldownModal.month.toUpperCase()} {selectedYear}
+                      {drilldownModal.mode === "MONTHLY"
+                        ? `${drilldownModal.month.toUpperCase()} ${selectedYear}`
+                        : `${allFYMonths[0].toUpperCase()} → ${drilldownModal.month.toUpperCase()} ${selectedYear} (CUMULATIVE)`}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 font-bold mt-0.5">
@@ -679,7 +742,7 @@ export default function FundFlowDashboard({
               </div>
               <button
                 onClick={() => setDrilldownModal(prev => ({ ...prev, isOpen: false }))}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all"
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -795,7 +858,7 @@ export default function FundFlowDashboard({
                   </div>
                 </div>
               ) : (
-                <p className="text-center text-xs text-slate-500 py-12">No voucher records found for this category.</p>
+                <p className="text-center text-xs text-slate-500 py-12">No voucher records found for this category in the selected period.</p>
               )}
             </div>
           </div>

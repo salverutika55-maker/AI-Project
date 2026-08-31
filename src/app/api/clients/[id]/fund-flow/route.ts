@@ -14,6 +14,9 @@ export async function GET(
   const { id } = await params;
   const { searchParams } = new URL(req.url);
   const selectedYear = parseInt(searchParams.get("year") || new Date().getFullYear().toString(), 10);
+  const selectedMonth = searchParams.get("month") || "Mar";
+  const mode = (searchParams.get("mode") || "MONTHLY").toUpperCase() as "MONTHLY" | "CUMULATIVE";
+  const fyType = searchParams.get("fyType") as "APR_MAR" | "JAN_DEC" | undefined;
 
   const session = await getServerSession(authOptions);
   if (!session || !session.user?.email) {
@@ -26,7 +29,7 @@ export async function GET(
 
     await authorizeClientAction(user.id, id, "READ_ONLY");
 
-    const data = await calculateFundFlow(id, selectedYear);
+    const data = await calculateFundFlow(id, selectedYear, selectedMonth, mode, fyType);
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Fund Flow calculation error:", error);

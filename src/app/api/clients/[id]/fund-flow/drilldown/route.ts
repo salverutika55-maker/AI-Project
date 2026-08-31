@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { authorizeClientAction } from "@/lib/rbac";
-import { categorizeLedgerForFundFlow, FY_MONTHS, MONTH_SHORT_NAMES } from "@/lib/services/fund-flow-engine";
+import { categorizeLedgerForFundFlow, getFiscalYearMonths, MONTH_SHORT_NAMES } from "@/lib/services/fund-flow-engine";
 import { Sector } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +29,8 @@ export async function GET(
   const { searchParams } = new URL(req.url);
   const categoryKey = searchParams.get("category");
   const monthParam = searchParams.get("month") || "all";
+  const mode = (searchParams.get("mode") || "MONTHLY").toUpperCase() as "MONTHLY" | "CUMULATIVE";
+  const fyTypeOverride = searchParams.get("fyType") as "APR_MAR" | "JAN_DEC" | undefined;
   const ledgerIdParam = searchParams.get("ledgerId");
   const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString(), 10);
 
@@ -45,13 +47,23 @@ export async function GET(
 
     const client = await prisma.client.findUnique({
       where: { id },
-      select: { id: true, name: true, sector: true }
+      select: { id: true, name: true, sector: true, fiscalYearStartMonth: true }
     });
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
     const sector = client.sector || Sector.TRADING;
-    const targetFYStart = new Date(`${year}-04-01T00:00:00.000Z`);
-    const targetFYEnd = new Date(`${year + 1}-03-31T23:59:59.999Z`);
+    let fyStartMonth = client.fiscalYearStartMonth || 4;
+    if (fyTypeOverride === "JAN_DEC") fyStartMonth = 1;
+    else if (fyTypeOverride === "APR_MAR") fyStartMonth = 4;
+
+    const FY_MONTHS = getFiscalYearMonths(fyStartMonth);
+
+    const targetFYStart = fyStartMonth === 1 
+      ? new Date(`${year}-01-01T00:00:00.000Z`)
+      : new Date(`${year}-04-01T00:00:00.000Z`);
+    const targetFYEnd = fyStartMonth === 1
+      ? new Date(`${year}-12-31T23:59:59.999Z`)
+      : new Date(`${year + 1}-03-31T23:59:59.999Z`);
 
     // Fetch all active ledgers & unified mappings for this client
     const [allLedgers, mappings] = await Promise.all([
@@ -105,12 +117,27 @@ export async function GET(
       orderBy: { voucher: { date: "asc" } }
     });
 
-    // Filter by month if specified
+    // Resolve month filtering based on mode
+    let targetMonthsSet = new Set<string>();
+    if (monthParam !== "all") {
+      const idx = FY_MONTHS.indexOf(monthParam);
+      if (idx !== -1) {
+        if (mode === "CUMULATIVE") {
+          FY_MONTHS.slice(0, idx + 1).forEach(m => targetMonthsSet.add(m.toLowerCase()));
+        } else {
+          targetMonthsSet.add(monthParam.toLowerCase());
+        }
+      } else {
+        targetMonthsSet.add(monthParam.toLowerCase());
+      }
+    }
+
+    // Filter voucher lines
     const filteredLines = voucherLines.filter(line => {
-      if (monthParam === "all") return true;
+      if (targetMonthsSet.size === 0) return true;
       const d = new Date(line.voucher.date);
-      const mName = MONTH_SHORT_NAMES[d.getUTCMonth()];
-      return mName.toLowerCase() === monthParam.toLowerCase();
+      const mName = MONTH_SHORT_NAMES[d.getUTCMonth()].toLowerCase();
+      return targetMonthsSet.has(mName);
     });
 
     // Map voucher details for client drilldown view
@@ -159,6 +186,7 @@ export async function GET(
       sector,
       categoryKey,
       month: monthParam,
+      mode,
       year,
       totalMatchedLedgers: matchedLedgers.length,
       totalVouchers: vouchersList.length,

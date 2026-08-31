@@ -1340,7 +1340,14 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
 
           {activeTab === "fundFlow" && (
             <ErrorBoundary title="Fund Flow Module Error">
-              <FundFlowDashboard clientId={client.id} selectedYear={selectedYear} client={client} displayCurrency={displayCurrency} />
+              <FundFlowDashboard 
+                clientId={client.id} 
+                selectedYear={selectedYear} 
+                client={client} 
+                displayCurrency={displayCurrency}
+                selectedMonth={selectedMonth}
+                fyType={fyType}
+              />
             </ErrorBoundary>
           )}
         </div>

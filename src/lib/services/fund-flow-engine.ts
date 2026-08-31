@@ -1,9 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import { Sector } from "@prisma/client";
 
-export const FY_MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
-export const FULL_MONTHS = ["Opening", ...FY_MONTHS];
 export const MONTH_SHORT_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function getFiscalYearMonths(fiscalYearStartMonth: number = 4): string[] {
+  if (fiscalYearStartMonth === 1) {
+    return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  }
+  // Default: April to March (start month 4)
+  return ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+}
 
 export interface FundFlowLineItem {
   id: string;
@@ -13,7 +19,11 @@ export interface FundFlowLineItem {
   subCategory: "OPERATING" | "WORKING_CAPITAL" | "LONG_TERM" | "EQUITY" | "SUMMARY";
   isHeader?: boolean;
   isTotal?: boolean;
-  values: Record<string, number>; // "Opening", "Apr" ... "Mar", "Closing", "Cumulative"
+  values: Record<string, number>; // "Opening", "Apr" ... "Mar", "Closing"
+  periodValue: number; // Value specific to current mode (Monthly or Cumulative up to selectedMonth)
+  openingPosition: number; // Opening position for the active period
+  closingPosition: number; // Closing position for the active period
+  periodMovement: number; // closingPosition - openingPosition
   ledgerIds?: string[];
   ledgerNames?: string[];
   explanation?: string;
@@ -30,6 +40,23 @@ export interface FundFlowReconciliation {
   difference: number;
   isBalanced: boolean;
   possibleCauses: string[];
+}
+
+export interface FundFlowActivePeriod {
+  mode: "MONTHLY" | "CUMULATIVE";
+  selectedMonth: string;
+  startMonth: string;
+  endMonth: string;
+  periodLabel: string;
+  visibleMonths: string[];
+  openingWorkingCapital: number;
+  closingWorkingCapital: number;
+  changeInWorkingCapital: number;
+  totalSources: number;
+  totalApplications: number;
+  netFundFlow: number;
+  difference: number;
+  isBalanced: boolean;
 }
 
 export interface FundFlowKPI {
@@ -72,8 +99,12 @@ export interface FundFlowResponse {
   clientName: string;
   sector: Sector;
   financialYear: number;
+  mode: "MONTHLY" | "CUMULATIVE";
+  selectedMonth: string;
+  fyType: "APR_MAR" | "JAN_DEC";
   months: string[];
   visibleMonths: string[];
+  activePeriod: FundFlowActivePeriod;
   workingCapitalStatement: {
     currentAssets: FundFlowLineItem[];
     currentLiabilities: FundFlowLineItem[];
@@ -226,7 +257,13 @@ export function categorizeLedgerForFundFlow(
   }
 }
 
-export async function calculateFundFlow(clientId: string, year: number): Promise<FundFlowResponse> {
+export async function calculateFundFlow(
+  clientId: string,
+  year: number,
+  selectedMonthParam: string = "Mar",
+  mode: "MONTHLY" | "CUMULATIVE" = "MONTHLY",
+  fyTypeOverride?: "APR_MAR" | "JAN_DEC"
+): Promise<FundFlowResponse> {
   // 1. Fetch Client, Ledgers, Mappings, and Voucher Lines scoped strictly by clientId
   const [client, ledgers, mappings, voucherLines] = await Promise.all([
     prisma.client.findUnique({
@@ -255,8 +292,31 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
   }
 
   const sector = client.sector || Sector.TRADING;
-  const targetFYStart = new Date(`${year}-04-01T00:00:00.000Z`);
-  const targetFYEnd = new Date(`${year + 1}-03-31T23:59:59.999Z`);
+  
+  // Resolve Financial Year configuration dynamically
+  let fyStartMonth = client.fiscalYearStartMonth || 4;
+  if (fyTypeOverride === "JAN_DEC") fyStartMonth = 1;
+  else if (fyTypeOverride === "APR_MAR") fyStartMonth = 4;
+
+  const fyType: "APR_MAR" | "JAN_DEC" = fyStartMonth === 1 ? "JAN_DEC" : "APR_MAR";
+  const FY_MONTHS = getFiscalYearMonths(fyStartMonth);
+  const FULL_MONTHS = ["Opening", ...FY_MONTHS];
+
+  // Resolve selected month index and visible months range
+  let targetMonthIndex = FY_MONTHS.indexOf(selectedMonthParam);
+  if (targetMonthIndex === -1) {
+    targetMonthIndex = FY_MONTHS.length - 1; // Default to last month of FY
+  }
+  const selectedMonth = FY_MONTHS[targetMonthIndex];
+  const visibleMonths = FY_MONTHS.slice(0, targetMonthIndex + 1);
+
+  // Set date boundaries based on fiscal year type
+  const targetFYStart = fyStartMonth === 1 
+    ? new Date(`${year}-01-01T00:00:00.000Z`)
+    : new Date(`${year}-04-01T00:00:00.000Z`);
+  const targetFYEnd = fyStartMonth === 1
+    ? new Date(`${year}-12-31T23:59:59.999Z`)
+    : new Date(`${year + 1}-03-31T23:59:59.999Z`);
 
   // Build mapping lookup
   const mappingMap = new Map<string, (typeof mappings)[number]>();
@@ -301,7 +361,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
   let earliestYear = year;
   const voucherYears = voucherLines.map(vl => {
     const d = new Date(vl.voucher.date);
-    return d.getUTCMonth() < 3 ? d.getUTCFullYear() - 1 : d.getUTCFullYear();
+    return (fyStartMonth === 4 && d.getUTCMonth() < 3) ? d.getUTCFullYear() - 1 : d.getUTCFullYear();
   });
   if (voucherYears.length > 0) earliestYear = Math.min(...voucherYears);
 
@@ -309,7 +369,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
   const movementsByLedgerYear = new Map<string, Map<number, { debit: number; credit: number }>>();
   for (const vl of voucherLines) {
     const d = new Date(vl.voucher.date);
-    const vYear = d.getUTCMonth() < 3 ? d.getUTCFullYear() - 1 : d.getUTCFullYear();
+    const vYear = (fyStartMonth === 4 && d.getUTCMonth() < 3) ? d.getUTCFullYear() - 1 : d.getUTCFullYear();
     if (!movementsByLedgerYear.has(vl.ledgerId)) movementsByLedgerYear.set(vl.ledgerId, new Map());
     const yearMap = movementsByLedgerYear.get(vl.ledgerId)!;
     if (!yearMap.has(vYear)) yearMap.set(vYear, { debit: 0, credit: 0 });
@@ -464,7 +524,14 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       itemValues[m] = monthly[m].closing;
       caTotals[m] += monthly[m].closing;
     });
-    itemValues["Closing"] = itemValues["Mar"] ?? itemValues["Opening"];
+    itemValues["Closing"] = itemValues[FY_MONTHS[FY_MONTHS.length - 1]] ?? itemValues["Opening"];
+
+    // Compute period-specific position
+    const openingPos = mode === "MONTHLY"
+      ? (targetMonthIndex === 0 ? itemValues["Opening"] : monthly[FY_MONTHS[targetMonthIndex - 1]]?.closing || 0)
+      : itemValues["Opening"];
+    const closingPos = monthly[selectedMonth]?.closing || 0;
+    const periodVal = closingPos;
 
     caLineItems.push({
       id: `ca_${key}`,
@@ -473,6 +540,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       classification: "WORKING_CAPITAL",
       subCategory: "WORKING_CAPITAL",
       values: itemValues,
+      periodValue: periodVal,
+      openingPosition: openingPos,
+      closingPosition: closingPos,
+      periodMovement: closingPos - openingPos,
       ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
       ledgerNames: val.ledgerBalances.map(l => l.ledgerName)
     });
@@ -489,7 +560,13 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       itemValues[m] = monthly[m].closing;
       clTotals[m] += monthly[m].closing;
     });
-    itemValues["Closing"] = itemValues["Mar"] ?? itemValues["Opening"];
+    itemValues["Closing"] = itemValues[FY_MONTHS[FY_MONTHS.length - 1]] ?? itemValues["Opening"];
+
+    const openingPos = mode === "MONTHLY"
+      ? (targetMonthIndex === 0 ? itemValues["Opening"] : monthly[FY_MONTHS[targetMonthIndex - 1]]?.closing || 0)
+      : itemValues["Opening"];
+    const closingPos = monthly[selectedMonth]?.closing || 0;
+    const periodVal = closingPos;
 
     clLineItems.push({
       id: `cl_${key}`,
@@ -498,6 +575,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       classification: "WORKING_CAPITAL",
       subCategory: "WORKING_CAPITAL",
       values: itemValues,
+      periodValue: periodVal,
+      openingPosition: openingPos,
+      closingPosition: closingPos,
+      periodMovement: closingPos - openingPos,
       ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
       ledgerNames: val.ledgerBalances.map(l => l.ledgerName)
     });
@@ -509,7 +590,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
   FULL_MONTHS.forEach(m => {
     wcTotals[m] = caTotals[m] - clTotals[m];
   });
-  wcTotals["Closing"] = wcTotals["Mar"] ?? wcTotals["Opening"];
+  wcTotals["Closing"] = wcTotals[FY_MONTHS[FY_MONTHS.length - 1]] ?? wcTotals["Opening"];
 
   let prevWC = wcTotals["Opening"];
   for (const m of FY_MONTHS) {
@@ -519,6 +600,13 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
   deltaWCTotals["Opening"] = 0;
   deltaWCTotals["Closing"] = wcTotals["Closing"] - wcTotals["Opening"];
 
+  // Determine Active Period Working Capital opening, closing, and delta
+  const activePeriodOpeningWC = mode === "MONTHLY"
+    ? (targetMonthIndex === 0 ? wcTotals["Opening"] : wcTotals[FY_MONTHS[targetMonthIndex - 1]])
+    : wcTotals["Opening"];
+  const activePeriodClosingWC = wcTotals[selectedMonth];
+  const activePeriodDeltaWC = activePeriodClosingWC - activePeriodOpeningWC;
+
   const wcSummaryItems: FundFlowLineItem[] = [
     {
       id: "total_current_assets",
@@ -527,7 +615,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       classification: "WORKING_CAPITAL",
       subCategory: "SUMMARY",
       isTotal: true,
-      values: { ...caTotals, Closing: caTotals["Mar"] ?? caTotals["Opening"] }
+      values: { ...caTotals, Closing: caTotals[FY_MONTHS[FY_MONTHS.length - 1]] ?? caTotals["Opening"] },
+      periodValue: caTotals[selectedMonth],
+      openingPosition: mode === "MONTHLY" ? (targetMonthIndex === 0 ? caTotals["Opening"] : caTotals[FY_MONTHS[targetMonthIndex - 1]]) : caTotals["Opening"],
+      closingPosition: caTotals[selectedMonth],
+      periodMovement: caTotals[selectedMonth] - (mode === "MONTHLY" ? (targetMonthIndex === 0 ? caTotals["Opening"] : caTotals[FY_MONTHS[targetMonthIndex - 1]]) : caTotals["Opening"])
     },
     {
       id: "total_current_liabilities",
@@ -536,7 +628,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       classification: "WORKING_CAPITAL",
       subCategory: "SUMMARY",
       isTotal: true,
-      values: { ...clTotals, Closing: clTotals["Mar"] ?? clTotals["Opening"] }
+      values: { ...clTotals, Closing: clTotals[FY_MONTHS[FY_MONTHS.length - 1]] ?? clTotals["Opening"] },
+      periodValue: clTotals[selectedMonth],
+      openingPosition: mode === "MONTHLY" ? (targetMonthIndex === 0 ? clTotals["Opening"] : clTotals[FY_MONTHS[targetMonthIndex - 1]]) : clTotals["Opening"],
+      closingPosition: clTotals[selectedMonth],
+      periodMovement: clTotals[selectedMonth] - (mode === "MONTHLY" ? (targetMonthIndex === 0 ? clTotals["Opening"] : clTotals[FY_MONTHS[targetMonthIndex - 1]]) : clTotals["Opening"])
     },
     {
       id: "net_working_capital",
@@ -545,7 +641,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       classification: "WORKING_CAPITAL",
       subCategory: "SUMMARY",
       isTotal: true,
-      values: wcTotals
+      values: wcTotals,
+      periodValue: activePeriodClosingWC,
+      openingPosition: activePeriodOpeningWC,
+      closingPosition: activePeriodClosingWC,
+      periodMovement: activePeriodDeltaWC
     },
     {
       id: "change_in_working_capital",
@@ -554,7 +654,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       classification: "WORKING_CAPITAL",
       subCategory: "SUMMARY",
       isTotal: true,
-      values: deltaWCTotals
+      values: deltaWCTotals,
+      periodValue: activePeriodDeltaWC,
+      openingPosition: 0,
+      closingPosition: activePeriodDeltaWC,
+      periodMovement: activePeriodDeltaWC
     }
   ];
 
@@ -575,7 +679,15 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
   const sourcesList: FundFlowLineItem[] = [];
   const applicationsList: FundFlowLineItem[] = [];
 
-  // Add Funds from Operations to Sources (or Applications if negative)
+  // Helper to compute periodValue for flow line items (sum of months for cumulative, or selectedMonth for monthly)
+  function getFlowPeriodValue(valMap: Record<string, number>): number {
+    if (mode === "MONTHLY") {
+      return valMap[selectedMonth] || 0;
+    }
+    return visibleMonths.reduce((acc, m) => acc + (valMap[m] || 0), 0);
+  }
+
+  // Operating Funds Line Item
   sourcesList.push({
     id: "src_operating_funds",
     category: "operating_funds",
@@ -583,6 +695,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     classification: "SOURCE",
     subCategory: "OPERATING",
     values: operatingFundsValues,
+    periodValue: getFlowPeriodValue(operatingFundsValues),
+    openingPosition: 0,
+    closingPosition: getFlowPeriodValue(operatingFundsValues),
+    periodMovement: getFlowPeriodValue(operatingFundsValues),
     explanation: "Operating cash flow generated from revenue after direct and indirect operating expenses with non-cash depreciation added back."
   });
 
@@ -616,7 +732,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     srcVals["Closing"] = cumSrc;
     appVals["Closing"] = cumApp;
 
-    // Only add if there is active movement
+    const openingPos = mode === "MONTHLY"
+      ? (targetMonthIndex === 0 ? monthly["Opening"].closing : monthly[FY_MONTHS[targetMonthIndex - 1]]?.closing || 0)
+      : monthly["Opening"].closing;
+    const closingPos = monthly[selectedMonth]?.closing || 0;
+
     if (cumSrc > 0 || FY_MONTHS.some(m => srcVals[m] > 0)) {
       sourcesList.push({
         id: `src_asset_${key}`,
@@ -625,6 +745,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "SOURCE",
         subCategory: "WORKING_CAPITAL",
         values: srcVals,
+        periodValue: getFlowPeriodValue(srcVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Funds released through collection or liquidation of ${val.label}.`
@@ -639,6 +763,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "APPLICATION",
         subCategory: "WORKING_CAPITAL",
         values: appVals,
+        periodValue: getFlowPeriodValue(appVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Funds absorbed/tied up in ${val.label}.`
@@ -676,6 +804,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     srcVals["Closing"] = cumSrc;
     appVals["Closing"] = cumApp;
 
+    const openingPos = mode === "MONTHLY"
+      ? (targetMonthIndex === 0 ? monthly["Opening"].closing : monthly[FY_MONTHS[targetMonthIndex - 1]]?.closing || 0)
+      : monthly["Opening"].closing;
+    const closingPos = monthly[selectedMonth]?.closing || 0;
+
     if (cumSrc > 0 || FY_MONTHS.some(m => srcVals[m] > 0)) {
       sourcesList.push({
         id: `src_liab_${key}`,
@@ -684,6 +817,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "SOURCE",
         subCategory: "WORKING_CAPITAL",
         values: srcVals,
+        periodValue: getFlowPeriodValue(srcVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Operating funding provided by ${val.label}.`
@@ -698,6 +835,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "APPLICATION",
         subCategory: "WORKING_CAPITAL",
         values: appVals,
+        periodValue: getFlowPeriodValue(appVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Funds deployed towards settlements/repayments of ${val.label}.`
@@ -733,6 +874,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     srcVals["Closing"] = cumSrc;
     appVals["Closing"] = cumApp;
 
+    const openingPos = mode === "MONTHLY"
+      ? (targetMonthIndex === 0 ? monthly["Opening"].closing : monthly[FY_MONTHS[targetMonthIndex - 1]]?.closing || 0)
+      : monthly["Opening"].closing;
+    const closingPos = monthly[selectedMonth]?.closing || 0;
+
     if (cumApp > 0 || FY_MONTHS.some(m => appVals[m] > 0)) {
       applicationsList.push({
         id: `app_capex_${key}`,
@@ -741,6 +887,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "APPLICATION",
         subCategory: "LONG_TERM",
         values: appVals,
+        periodValue: getFlowPeriodValue(appVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Capital expenditure incurred on additions to ${val.label}.`
@@ -755,6 +905,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "SOURCE",
         subCategory: "LONG_TERM",
         values: srcVals,
+        periodValue: getFlowPeriodValue(srcVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Proceeds received from the disposal or realization of ${val.label}.`
@@ -790,6 +944,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     srcVals["Closing"] = cumSrc;
     appVals["Closing"] = cumApp;
 
+    const openingPos = mode === "MONTHLY"
+      ? (targetMonthIndex === 0 ? monthly["Opening"].closing : monthly[FY_MONTHS[targetMonthIndex - 1]]?.closing || 0)
+      : monthly["Opening"].closing;
+    const closingPos = monthly[selectedMonth]?.closing || 0;
+
     if (cumSrc > 0 || FY_MONTHS.some(m => srcVals[m] > 0)) {
       sourcesList.push({
         id: `src_borrowing_${key}`,
@@ -798,6 +957,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "SOURCE",
         subCategory: "LONG_TERM",
         values: srcVals,
+        periodValue: getFlowPeriodValue(srcVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Inflow from new long-term borrowings or credit facilities under ${val.label}.`
@@ -812,6 +975,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "APPLICATION",
         subCategory: "LONG_TERM",
         values: appVals,
+        periodValue: getFlowPeriodValue(appVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Principal repayment and reduction of ${val.label}.`
@@ -846,6 +1013,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     srcVals["Closing"] = cumSrc;
     appVals["Closing"] = cumApp;
 
+    const openingPos = mode === "MONTHLY"
+      ? (targetMonthIndex === 0 ? monthly["Opening"].closing : monthly[FY_MONTHS[targetMonthIndex - 1]]?.closing || 0)
+      : monthly["Opening"].closing;
+    const closingPos = monthly[selectedMonth]?.closing || 0;
+
     if (cumSrc > 0 || FY_MONTHS.some(m => srcVals[m] > 0)) {
       sourcesList.push({
         id: `src_equity_${key}`,
@@ -854,6 +1026,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "SOURCE",
         subCategory: "EQUITY",
         values: srcVals,
+        periodValue: getFlowPeriodValue(srcVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Capital infusion or equity addition from owners/shareholders.`
@@ -868,6 +1044,10 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         classification: "APPLICATION",
         subCategory: "EQUITY",
         values: appVals,
+        periodValue: getFlowPeriodValue(appVals),
+        openingPosition: openingPos,
+        closingPosition: closingPos,
+        periodMovement: closingPos - openingPos,
         ledgerIds: val.ledgerBalances.map(l => l.ledgerId),
         ledgerNames: val.ledgerBalances.map(l => l.ledgerName),
         explanation: `Owner withdrawals, drawings, or dividend distributions.`
@@ -902,6 +1082,21 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
   totalApplicationsValues["Closing"] = cumTotApps;
   netFundFlowValues["Closing"] = cumTotSources - cumTotApps;
 
+  // Active Period Totals
+  const activePeriodTotalSources = mode === "MONTHLY"
+    ? totalSourcesValues[selectedMonth] || 0
+    : visibleMonths.reduce((acc, m) => acc + (totalSourcesValues[m] || 0), 0);
+
+  const activePeriodTotalApplications = mode === "MONTHLY"
+    ? totalApplicationsValues[selectedMonth] || 0
+    : visibleMonths.reduce((acc, m) => acc + (totalApplicationsValues[m] || 0), 0);
+
+  const activePeriodNetFundFlow = activePeriodTotalSources - activePeriodTotalApplications;
+
+  const activePeriodExpectedClosingWC = activePeriodOpeningWC + activePeriodNetFundFlow;
+  const activePeriodDifference = Math.round((activePeriodClosingWC - activePeriodExpectedClosingWC) * 100) / 100;
+  const activePeriodIsBalanced = Math.abs(activePeriodDifference) < 1.0;
+
   const summaryStatement: FundFlowLineItem[] = [
     {
       id: "total_sources_of_funds",
@@ -910,7 +1105,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       classification: "SOURCE",
       subCategory: "SUMMARY",
       isTotal: true,
-      values: totalSourcesValues
+      values: totalSourcesValues,
+      periodValue: activePeriodTotalSources,
+      openingPosition: 0,
+      closingPosition: activePeriodTotalSources,
+      periodMovement: activePeriodTotalSources
     },
     {
       id: "total_applications_of_funds",
@@ -919,7 +1118,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       classification: "APPLICATION",
       subCategory: "SUMMARY",
       isTotal: true,
-      values: totalApplicationsValues
+      values: totalApplicationsValues,
+      periodValue: activePeriodTotalApplications,
+      openingPosition: 0,
+      closingPosition: activePeriodTotalApplications,
+      periodMovement: activePeriodTotalApplications
     },
     {
       id: "net_fund_flow",
@@ -928,12 +1131,15 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       classification: "WORKING_CAPITAL",
       subCategory: "SUMMARY",
       isTotal: true,
-      values: netFundFlowValues
+      values: netFundFlowValues,
+      periodValue: activePeriodNetFundFlow,
+      openingPosition: 0,
+      closingPosition: activePeriodNetFundFlow,
+      periodMovement: activePeriodNetFundFlow
     }
   ];
 
   // 5. RECONCILIATION ENGINE
-  // Validate Opening WC + Net Fund Flow = Closing WC per month & cumulative
   const reconciliationMap: Record<string, FundFlowReconciliation> = {};
 
   let rollingOpeningWC = wcTotals["Opening"];
@@ -966,18 +1172,20 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     rollingOpeningWC = actualClosingWC;
   }
 
-  // Cumulative Reconciliation
-  const cumNetFlow = netFundFlowValues["Closing"];
-  const cumActualClosingWC = wcTotals["Closing"];
-  const cumExpectedClosingWC = wcTotals["Opening"] + cumNetFlow;
+  // Cumulative Reconciliation up to selectedMonth
+  const cumSourcesUpToSelected = visibleMonths.reduce((acc, m) => acc + (totalSourcesValues[m] || 0), 0);
+  const cumAppsUpToSelected = visibleMonths.reduce((acc, m) => acc + (totalApplicationsValues[m] || 0), 0);
+  const cumNetFlowUpToSelected = cumSourcesUpToSelected - cumAppsUpToSelected;
+  const cumActualClosingWC = wcTotals[selectedMonth];
+  const cumExpectedClosingWC = wcTotals["Opening"] + cumNetFlowUpToSelected;
   const cumDiff = Math.round((cumActualClosingWC - cumExpectedClosingWC) * 100) / 100;
 
   reconciliationMap["Cumulative"] = {
-    month: "Cumulative (Full FY)",
+    month: `Cumulative (${FY_MONTHS[0]} → ${selectedMonth})`,
     openingWorkingCapital: wcTotals["Opening"],
-    sourcesTotal: totalSourcesValues["Closing"],
-    applicationsTotal: totalApplicationsValues["Closing"],
-    netFundFlow: cumNetFlow,
+    sourcesTotal: cumSourcesUpToSelected,
+    applicationsTotal: cumAppsUpToSelected,
+    netFundFlow: cumNetFlowUpToSelected,
     closingWorkingCapital: cumActualClosingWC,
     expectedClosingWorkingCapital: cumExpectedClosingWC,
     difference: cumDiff,
@@ -987,37 +1195,44 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
 
   // 6. SECTOR-AWARE KPIS
   const kpis: FundFlowKPI[] = [];
-  const latestMonth = FY_MONTHS[FY_MONTHS.length - 1]; // March or latest
-  const totalRevYear = FY_MONTHS.reduce((acc, m) => acc + fyVouchersTotal[m].revenue, 0) || 1;
-  const totalExpYear = FY_MONTHS.reduce((acc, m) => acc + fyVouchersTotal[m].expenses, 0) || 1;
+  
+  // Period-specific revenue & expense aggregates
+  const periodRevenue = mode === "MONTHLY"
+    ? fyVouchersTotal[selectedMonth]?.revenue || 0
+    : visibleMonths.reduce((acc, m) => acc + fyVouchersTotal[m].revenue, 0) || 1;
+    
+  const periodExpense = mode === "MONTHLY"
+    ? fyVouchersTotal[selectedMonth]?.expenses || 0
+    : visibleMonths.reduce((acc, m) => acc + fyVouchersTotal[m].expenses, 0) || 1;
 
-  const currentRecVal = caLineItems.find(c => c.category === "trade_receivables")?.values["Closing"] || 0;
-  const currentPayVal = clLineItems.find(c => c.category === "trade_payables")?.values["Closing"] || 0;
-  const currentInvVal = caLineItems.find(c => ["inventory", "raw_material", "finished_goods"].includes(c.category))?.values["Closing"] || 0;
+  const currentRecVal = caLineItems.find(c => c.category === "trade_receivables")?.values[selectedMonth] || 0;
+  const currentPayVal = clLineItems.find(c => c.category === "trade_payables")?.values[selectedMonth] || 0;
+  const currentInvVal = caLineItems.find(c => ["inventory", "raw_material", "finished_goods"].includes(c.category))?.values[selectedMonth] || 0;
 
-  // Days calculation
-  const recDays = Math.round((currentRecVal / totalRevYear) * 365);
-  const payDays = Math.round((currentPayVal / totalExpYear) * 365);
-  const invDays = Math.round((currentInvVal / totalExpYear) * 365);
+  // Days calculation scaled to period duration
+  const periodDaysCount = mode === "MONTHLY" ? 30 : visibleMonths.length * 30;
+  const recDays = Math.round((currentRecVal / (periodRevenue || 1)) * periodDaysCount);
+  const payDays = Math.round((currentPayVal / (periodExpense || 1)) * periodDaysCount);
+  const invDays = Math.round((currentInvVal / (periodExpense || 1)) * periodDaysCount);
   const ccc = invDays + recDays - payDays;
 
   // Common KPIs
   kpis.push({
     id: "kpi_net_working_capital",
     label: "Net Working Capital",
-    value: wcTotals["Closing"],
-    displayValue: `₹${Math.round(wcTotals["Closing"]).toLocaleString("en-IN")}`,
-    description: "Current Assets minus Current Liabilities as of period closing.",
+    value: activePeriodClosingWC,
+    displayValue: `₹${Math.round(activePeriodClosingWC).toLocaleString("en-IN")}`,
+    description: `Current Assets minus Current Liabilities as of ${selectedMonth}.`,
     category: "LIQUIDITY"
   });
 
   kpis.push({
     id: "kpi_net_fund_flow",
-    label: "Net Fund Flow (FY)",
-    value: netFundFlowValues["Closing"],
-    displayValue: `₹${Math.round(netFundFlowValues["Closing"]).toLocaleString("en-IN")}`,
-    trend: netFundFlowValues["Closing"] >= 0 ? "UP" : "DOWN",
-    description: "Total sources minus total applications generated across the financial year.",
+    label: mode === "MONTHLY" ? `Net Fund Flow (${selectedMonth})` : `Net Fund Flow (${FY_MONTHS[0]}–${selectedMonth})`,
+    value: activePeriodNetFundFlow,
+    displayValue: `₹${Math.round(activePeriodNetFundFlow).toLocaleString("en-IN")}`,
+    trend: activePeriodNetFundFlow >= 0 ? "UP" : "DOWN",
+    description: `Total sources minus applications for ${mode === "MONTHLY" ? selectedMonth : `${FY_MONTHS[0]} to ${selectedMonth}`}.`,
     category: "FLOW"
   });
 
@@ -1027,7 +1242,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "Receivable Days (DSO)",
       value: recDays,
       displayValue: `${recDays} Days`,
-      description: "Average collection period for trade customer debts.",
+      description: `Collection velocity for trade customer debts during ${selectedMonth}.`,
       category: "CYCLE"
     });
     kpis.push({
@@ -1035,7 +1250,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "Inventory Holding Days",
       value: invDays,
       displayValue: `${invDays} Days`,
-      description: "Average duration stock is held before sale.",
+      description: "Duration stock is held before sale.",
       category: "CYCLE"
     });
     kpis.push({
@@ -1043,7 +1258,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "Payable Days (DPO)",
       value: payDays,
       displayValue: `${payDays} Days`,
-      description: "Average credit duration extended by suppliers.",
+      description: "Credit duration extended by suppliers.",
       category: "CYCLE"
     });
     kpis.push({
@@ -1051,7 +1266,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "Cash Conversion Cycle (CCC)",
       value: ccc,
       displayValue: `${ccc} Days`,
-      description: "Days taken to convert inventory and receivables into cash minus supplier credit.",
+      description: "Operating cash conversion duration (Inv + DSO - DPO).",
       category: "CYCLE"
     });
     kpis.push({
@@ -1059,12 +1274,12 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "Supplier Funding",
       value: currentPayVal,
       displayValue: `₹${Math.round(currentPayVal).toLocaleString("en-IN")}`,
-      description: "Working capital funded interest-free by trade payables.",
+      description: `Working capital funded by trade payables as of ${selectedMonth}.`,
       category: "FUNDING"
     });
   } else if (sector === Sector.SERVICE) {
-    const custAdvVal = clLineItems.find(c => c.category === "customer_advances")?.values["Closing"] || 0;
-    const empLiabVal = clLineItems.find(c => c.category === "employee_payables")?.values["Closing"] || 0;
+    const custAdvVal = clLineItems.find(c => c.category === "customer_advances")?.values[selectedMonth] || 0;
+    const empLiabVal = clLineItems.find(c => c.category === "employee_payables")?.values[selectedMonth] || 0;
 
     kpis.push({
       id: "kpi_dso",
@@ -1077,9 +1292,9 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     kpis.push({
       id: "kpi_rev_rec_ratio",
       label: "Revenue vs Receivables",
-      value: (totalRevYear / (currentRecVal || 1)).toFixed(2),
-      displayValue: `${(totalRevYear / (currentRecVal || 1)).toFixed(1)}x`,
-      description: "Velocity of annual revenue realization relative to outstanding receivables.",
+      value: (periodRevenue / (currentRecVal || 1)).toFixed(2),
+      displayValue: `${(periodRevenue / (currentRecVal || 1)).toFixed(1)}x`,
+      description: "Velocity of revenue realization relative to outstanding receivables.",
       category: "CYCLE"
     });
     kpis.push({
@@ -1087,7 +1302,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "Customer Advance Funding",
       value: custAdvVal,
       displayValue: `₹${Math.round(custAdvVal).toLocaleString("en-IN")}`,
-      description: "Operating activities pre-funded by client retainers and advances.",
+      description: `Operating activities pre-funded by client retainers as of ${selectedMonth}.`,
       category: "FUNDING"
     });
     kpis.push({
@@ -1095,18 +1310,21 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "Operating & Staff Payables",
       value: empLiabVal + currentPayVal,
       displayValue: `₹${Math.round(empLiabVal + currentPayVal).toLocaleString("en-IN")}`,
-      description: "Short-term funding from accrued payroll and professional payables.",
+      description: `Short-term funding from accrued payroll as of ${selectedMonth}.`,
       category: "FUNDING"
     });
   } else if (sector === Sector.MANUFACTURING) {
-    const rmVal = caLineItems.find(c => c.category === "raw_material")?.values["Closing"] || 0;
-    const wipVal = caLineItems.find(c => c.category === "wip_inventory")?.values["Closing"] || 0;
-    const fgVal = caLineItems.find(c => c.category === "finished_goods")?.values["Closing"] || 0;
-    const capexVal = applicationsList.filter(a => a.subCategory === "LONG_TERM").reduce((sum, a) => sum + (a.values["Closing"] || 0), 0);
+    const rmVal = caLineItems.find(c => c.category === "raw_material")?.values[selectedMonth] || 0;
+    const wipVal = caLineItems.find(c => c.category === "wip_inventory")?.values[selectedMonth] || 0;
+    const fgVal = caLineItems.find(c => c.category === "finished_goods")?.values[selectedMonth] || 0;
+    
+    const capexVal = applicationsList
+      .filter(a => a.subCategory === "LONG_TERM")
+      .reduce((sum, a) => sum + (mode === "MONTHLY" ? (a.values[selectedMonth] || 0) : getFlowPeriodValue(a.values)), 0);
 
-    const rmDays = Math.round((rmVal / totalExpYear) * 365);
-    const wipDays = Math.round((wipVal / totalExpYear) * 365);
-    const fgDays = Math.round((fgVal / totalExpYear) * 365);
+    const rmDays = Math.round((rmVal / (periodExpense || 1)) * periodDaysCount);
+    const wipDays = Math.round((wipVal / (periodExpense || 1)) * periodDaysCount);
+    const fgDays = Math.round((fgVal / (periodExpense || 1)) * periodDaysCount);
     const mfgCycle = rmDays + wipDays + fgDays + recDays - payDays;
 
     kpis.push({
@@ -1122,7 +1340,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "WIP Production Cycle",
       value: wipDays,
       displayValue: `${wipDays} Days`,
-      description: "Average dwell time in the factory production floor.",
+      description: "Average dwell time on the factory floor.",
       category: "CYCLE"
     });
     kpis.push({
@@ -1130,7 +1348,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "Finished Goods Holding",
       value: fgDays,
       displayValue: `${fgDays} Days`,
-      description: "Average days finished items remain in warehouse before dispatch.",
+      description: "Days finished goods remain in warehouse before dispatch.",
       category: "CYCLE"
     });
     kpis.push({
@@ -1138,7 +1356,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "Manufacturing Operating Cycle",
       value: mfgCycle,
       displayValue: `${mfgCycle} Days`,
-      description: "Complete manufacturing cash conversion cycle (RM + WIP + FG + DSO - DPO).",
+      description: "Complete manufacturing cash conversion cycle.",
       category: "CYCLE"
     });
     kpis.push({
@@ -1146,7 +1364,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       label: "CapEx Additions (Plant & Machinery)",
       value: capexVal,
       displayValue: `₹${Math.round(capexVal).toLocaleString("en-IN")}`,
-      description: "Total capital expenditure deployed into factory fixed assets.",
+      description: `Capital expenditure deployed into factory fixed assets in ${selectedMonth}.`,
       category: "FUNDING"
     });
     kpis.push({
@@ -1159,24 +1377,42 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     });
   }
 
-  // 7. CHART DATASETS
+  // 7. CHART DATASETS (Mode and Period Aware)
+  // For Monthly mode: display months up to selectedMonth with focus on selectedMonth
+  // For Cumulative mode: display cumulative progression from FY start through selectedMonth
+  const chartDisplayMonths = visibleMonths;
+
   const charts: FundFlowChartConfig[] = [
     {
       id: "net_fund_flow_trend",
-      title: "Monthly Net Fund Flow Trend",
+      title: mode === "MONTHLY" ? "Monthly Net Fund Flow Trend" : `Cumulative Net Fund Flow (${FY_MONTHS[0]} → ${selectedMonth})`,
       type: "line",
-      description: "Trend of net liquid funds generated vs absorbed per month.",
+      description: mode === "MONTHLY" ? "Net liquid funds generated vs absorbed per month." : "Cumulative progression of net funds generated.",
       dataKeys: [
         { key: "netFlow", label: "Net Fund Flow", color: "#22D3EE" },
         { key: "sources", label: "Total Sources", color: "#10B981" },
         { key: "applications", label: "Total Applications", color: "#F43F5E" }
       ],
-      data: FY_MONTHS.map(m => ({
-        name: m,
-        netFlow: netFundFlowValues[m],
-        sources: totalSourcesValues[m],
-        applications: totalApplicationsValues[m]
-      }))
+      data: chartDisplayMonths.map((m, idx) => {
+        if (mode === "MONTHLY") {
+          return {
+            name: m,
+            netFlow: netFundFlowValues[m] || 0,
+            sources: totalSourcesValues[m] || 0,
+            applications: totalApplicationsValues[m] || 0
+          };
+        }
+        // Cumulative
+        const cumSlice = chartDisplayMonths.slice(0, idx + 1);
+        const cumSrc = cumSlice.reduce((s, mon) => s + (totalSourcesValues[mon] || 0), 0);
+        const cumApp = cumSlice.reduce((s, mon) => s + (totalApplicationsValues[mon] || 0), 0);
+        return {
+          name: m,
+          netFlow: cumSrc - cumApp,
+          sources: cumSrc,
+          applications: cumApp
+        };
+      })
     },
     {
       id: "working_capital_trend",
@@ -1188,45 +1424,55 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         { key: "currentLiabilities", label: "Current Liabilities", color: "#F43F5E" },
         { key: "workingCapital", label: "Net Working Capital", color: "#3B82F6" }
       ],
-      data: FULL_MONTHS.map(m => ({
+      data: ["Opening", ...chartDisplayMonths].map(m => ({
         name: m,
-        currentAssets: caTotals[m],
-        currentLiabilities: clTotals[m],
-        workingCapital: wcTotals[m]
+        currentAssets: caTotals[m] || 0,
+        currentLiabilities: clTotals[m] || 0,
+        workingCapital: wcTotals[m] || 0
       }))
     },
     {
       id: "sources_vs_applications_bar",
-      title: "Monthly Sources vs Applications",
+      title: mode === "MONTHLY" ? "Monthly Sources vs Applications" : `Cumulative Sources vs Applications (${FY_MONTHS[0]} → ${selectedMonth})`,
       type: "bar",
-      description: "Side-by-side comparison of total funding sources against fund deployments.",
+      description: "Side-by-side comparison of total funding sources against deployments.",
       dataKeys: [
         { key: "sources", label: "Sources", color: "#10B981" },
         { key: "applications", label: "Applications", color: "#F43F5E" }
       ],
-      data: FY_MONTHS.map(m => ({
-        name: m,
-        sources: totalSourcesValues[m],
-        applications: totalApplicationsValues[m]
-      }))
+      data: chartDisplayMonths.map((m, idx) => {
+        if (mode === "MONTHLY") {
+          return {
+            name: m,
+            sources: totalSourcesValues[m] || 0,
+            applications: totalApplicationsValues[m] || 0
+          };
+        }
+        const cumSlice = chartDisplayMonths.slice(0, idx + 1);
+        return {
+          name: m,
+          sources: cumSlice.reduce((s, mon) => s + (totalSourcesValues[mon] || 0), 0),
+          applications: cumSlice.reduce((s, mon) => s + (totalApplicationsValues[mon] || 0), 0)
+        };
+      })
     },
     {
       id: "cumulative_fund_flow",
-      title: "Cumulative Fund Flow Evolution",
+      title: "Working Capital & Cumulative Fund Flow",
       type: "line",
-      description: "Cumulative evolution of funds from opening working capital to full FY closing.",
+      description: "Evolution of funds from opening working capital to current closing position.",
       dataKeys: [
         { key: "cumNetFlow", label: "Cumulative Net Flow", color: "#A855F7" },
         { key: "workingCapital", label: "Closing Working Capital", color: "#22D3EE" }
       ],
       data: (() => {
         let rolling = 0;
-        return FY_MONTHS.map(m => {
-          rolling += netFundFlowValues[m];
+        return chartDisplayMonths.map(m => {
+          rolling += netFundFlowValues[m] || 0;
           return {
             name: m,
             cumNetFlow: rolling,
-            workingCapital: wcTotals[m]
+            workingCapital: wcTotals[m] || 0
           };
         });
       })()
@@ -1245,7 +1491,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         { key: "inventory", label: "Inventory", color: "#F59E0B" },
         { key: "payables", label: "Trade Payables", color: "#EC4899" }
       ],
-      data: FULL_MONTHS.map(m => ({
+      data: ["Opening", ...chartDisplayMonths].map(m => ({
         name: m,
         receivables: caLineItems.find(c => c.category === "trade_receivables")?.values[m] || 0,
         inventory: caLineItems.find(c => c.category === "inventory")?.values[m] || 0,
@@ -1259,11 +1505,11 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
       type: "bar",
       description: "Service billing realization and client pre-funding trends.",
       dataKeys: [
-        { key: "revenue", label: "Monthly Revenue", color: "#10B981" },
+        { key: "revenue", label: "Revenue", color: "#10B981" },
         { key: "receivables", label: "Receivables", color: "#3B82F6" },
         { key: "advances", label: "Customer Advances", color: "#A855F7" }
       ],
-      data: FY_MONTHS.map(m => ({
+      data: chartDisplayMonths.map(m => ({
         name: m,
         revenue: fyVouchersTotal[m].revenue,
         receivables: caLineItems.find(c => c.category === "trade_receivables")?.values[m] || 0,
@@ -1281,7 +1527,7 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
         { key: "wip", label: "Work in Progress", color: "#A855F7" },
         { key: "finishedGoods", label: "Finished Goods", color: "#10B981" }
       ],
-      data: FULL_MONTHS.map(m => ({
+      data: ["Opening", ...chartDisplayMonths].map(m => ({
         name: m,
         rawMaterial: caLineItems.find(c => c.category === "raw_material")?.values[m] || 0,
         wip: caLineItems.find(c => c.category === "wip_inventory")?.values[m] || 0,
@@ -1290,94 +1536,123 @@ export async function calculateFundFlow(clientId: string, year: number): Promise
     });
   }
 
-  // 8. DATA-DRIVEN MANAGEMENT INSIGHTS
+  // 8. DATA-DRIVEN MANAGEMENT INSIGHTS (Mode & Period Specific)
   const insights: ManagementInsight[] = [];
+  const periodDesc = mode === "MONTHLY" ? `in ${selectedMonth}` : `between ${FY_MONTHS[0]} and ${selectedMonth}`;
 
-  // Working Capital Insight
-  const wcDelta = wcTotals["Closing"] - wcTotals["Opening"];
-  if (wcDelta > 0) {
+  if (activePeriodDeltaWC > 0) {
     insights.push({
       id: "ins_wc_increase",
       type: "POSITIVE",
       title: "Working Capital Expansion",
-      description: `Net Working Capital expanded by ₹${Math.round(wcDelta).toLocaleString("en-IN")} over the financial year, strengthening liquidity reserves.`,
-      impactAmount: wcDelta
+      description: `Net Working Capital expanded by ₹${Math.round(activePeriodDeltaWC).toLocaleString("en-IN")} ${periodDesc}, strengthening liquidity reserves.`,
+      impactAmount: activePeriodDeltaWC,
+      month: selectedMonth
     });
-  } else if (wcDelta < 0) {
+  } else if (activePeriodDeltaWC < 0) {
     insights.push({
       id: "ins_wc_decrease",
       type: "WARNING",
       title: "Working Capital Contraction",
-      description: `Net Working Capital contracted by ₹${Math.round(Math.abs(wcDelta)).toLocaleString("en-IN")}, indicating funds deployed into non-current assets or debt settlement.`,
-      impactAmount: Math.abs(wcDelta)
+      description: `Net Working Capital contracted by ₹${Math.round(Math.abs(activePeriodDeltaWC)).toLocaleString("en-IN")} ${periodDesc}, indicating funds deployed into long-term assets or debt settlements.`,
+      impactAmount: Math.abs(activePeriodDeltaWC),
+      month: selectedMonth
     });
   }
 
-  // Operating Funds Insight
-  if (operatingFundsValues["Closing"] > 0) {
+  const opFundsItem = sourcesList.find(s => s.category === "operating_funds");
+  if (opFundsItem && opFundsItem.periodValue > 0) {
     insights.push({
       id: "ins_op_funds",
       type: "POSITIVE",
-      title: "Positive Operating Funds Generation",
-      description: `Core operations generated ₹${Math.round(operatingFundsValues["Closing"]).toLocaleString("en-IN")} of fresh funding across the year.`,
-      impactAmount: operatingFundsValues["Closing"]
+      title: "Operating Funds Generation",
+      description: `Core operations generated ₹${Math.round(opFundsItem.periodValue).toLocaleString("en-IN")} of fresh funds ${periodDesc}.`,
+      impactAmount: opFundsItem.periodValue,
+      month: selectedMonth
     });
   }
 
-  // Top Receivables Absorption / Release
-  const recLine = applicationsList.find(a => a.category === "trade_receivables") || sourcesList.find(s => s.category === "trade_receivables");
-  if (recLine && recLine.values["Closing"] > 0) {
-    if (recLine.classification === "APPLICATION") {
+  // Receivables Insight
+  const recItem = applicationsList.find(a => a.category === "trade_receivables") || sourcesList.find(s => s.category === "trade_receivables");
+  if (recItem && recItem.periodValue > 0) {
+    if (recItem.classification === "APPLICATION") {
       insights.push({
         id: "ins_rec_absorption",
         type: "WARNING",
-        title: "Liquidity Absorbed in Trade Receivables",
-        description: `Customer dues increased by ₹${Math.round(recLine.values["Closing"]).toLocaleString("en-IN")}, absorbing operational funds during the year.`,
-        impactAmount: recLine.values["Closing"]
+        title: "Liquidity Absorbed in Receivables",
+        description: `Customer dues increased by ₹${Math.round(recItem.periodValue).toLocaleString("en-IN")} ${periodDesc}, absorbing operating funds.`,
+        impactAmount: recItem.periodValue,
+        month: selectedMonth
       });
     } else {
       insights.push({
         id: "ins_rec_release",
         type: "POSITIVE",
         title: "Cash Released from Receivables Collection",
-        description: `Collections from trade debtors released ₹${Math.round(recLine.values["Closing"]).toLocaleString("en-IN")} in liquid operating funds.`,
-        impactAmount: recLine.values["Closing"]
+        description: `Customer collections released ₹${Math.round(recItem.periodValue).toLocaleString("en-IN")} in operating funds ${periodDesc}.`,
+        impactAmount: recItem.periodValue,
+        month: selectedMonth
       });
     }
   }
 
   // Supplier Funding Insight
-  const payLine = sourcesList.find(s => s.category === "trade_payables");
-  if (payLine && payLine.values["Closing"] > 0) {
+  const payItem = sourcesList.find(s => s.category === "trade_payables");
+  if (payItem && payItem.periodValue > 0) {
     insights.push({
       id: "ins_pay_funding",
       type: "INFO",
       title: "Supplier Credit Operating Funding",
-      description: `Trade payables provided ₹${Math.round(payLine.values["Closing"]).toLocaleString("en-IN")} of interest-free working capital funding.`,
-      impactAmount: payLine.values["Closing"]
+      description: `Trade payables provided ₹${Math.round(payItem.periodValue).toLocaleString("en-IN")} of interest-free funding ${periodDesc}.`,
+      impactAmount: payItem.periodValue,
+      month: selectedMonth
     });
   }
 
   // Fixed Asset CapEx Insight
   const capexItems = applicationsList.filter(a => a.subCategory === "LONG_TERM");
-  const totalCapex = capexItems.reduce((acc, c) => acc + (c.values["Closing"] || 0), 0);
-  if (totalCapex > 0) {
+  const periodCapex = capexItems.reduce((acc, c) => acc + (c.periodValue || 0), 0);
+  if (periodCapex > 0) {
     insights.push({
       id: "ins_capex",
       type: "INFO",
       title: "Capital Expenditure Investment",
-      description: `₹${Math.round(totalCapex).toLocaleString("en-IN")} was invested into fixed asset additions and production infrastructure.`,
-      impactAmount: totalCapex
+      description: `₹${Math.round(periodCapex).toLocaleString("en-IN")} was invested into fixed assets and infrastructure ${periodDesc}.`,
+      impactAmount: periodCapex,
+      month: selectedMonth
     });
   }
+
+  const activePeriod: FundFlowActivePeriod = {
+    mode,
+    selectedMonth,
+    startMonth: mode === "MONTHLY" ? selectedMonth : FY_MONTHS[0],
+    endMonth: selectedMonth,
+    periodLabel: mode === "MONTHLY"
+      ? `${selectedMonth} ${year} (Monthly Fund Flow)`
+      : `${FY_MONTHS[0]} ${year} – ${selectedMonth} ${year} (Cumulative Fund Flow)`,
+    visibleMonths,
+    openingWorkingCapital: activePeriodOpeningWC,
+    closingWorkingCapital: activePeriodClosingWC,
+    changeInWorkingCapital: activePeriodDeltaWC,
+    totalSources: activePeriodTotalSources,
+    totalApplications: activePeriodTotalApplications,
+    netFundFlow: activePeriodNetFundFlow,
+    difference: activePeriodDifference,
+    isBalanced: activePeriodIsBalanced
+  };
 
   return {
     clientId: client.id,
     clientName: client.name,
     sector,
     financialYear: year,
+    mode,
+    selectedMonth,
+    fyType,
     months: FULL_MONTHS,
-    visibleMonths: FY_MONTHS,
+    visibleMonths,
+    activePeriod,
     workingCapitalStatement: {
       currentAssets: caLineItems,
       currentLiabilities: clLineItems,
