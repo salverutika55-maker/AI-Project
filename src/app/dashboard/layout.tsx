@@ -20,11 +20,10 @@ export default async function DashboardLayout({
     <div className="min-h-screen bg-[#0A0A0C] text-slate-200 flex flex-col md:flex-row">
       {/* Sidebar */}
       <aside className="w-full md:w-64 border-r border-white/5 bg-[#13131A] flex flex-col hidden md:flex sticky top-0 h-screen">
-        <div className="p-6 border-b border-white/5 flex items-center gap-2">
-          <div className="bg-cyan-500 rounded p-1.5">
-            <LineChart className="w-5 h-5 text-slate-950" />
-          </div>
-          <span className="text-xl font-bold tracking-tight text-white"><Link href="/">FinAnalyzer</Link></span>
+        <div className="p-6 border-b border-white/5 flex items-center">
+          <Link href="/" className="flex items-center hover:opacity-95 transition-opacity">
+            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-8 w-auto" />
+          </Link>
         </div>
         <div className="p-4 flex-1">
           <nav className="space-y-1">
@@ -58,12 +57,9 @@ export default async function DashboardLayout({
       <main className="flex-1 flex flex-col h-screen overflow-y-auto w-full">
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between p-4 border-b border-white/5 bg-[#13131A] sticky top-0 z-50">
-          <div className="flex items-center gap-2">
-            <div className="bg-cyan-500 rounded p-1.5">
-              <LineChart className="w-5 h-5 text-slate-950" />
-            </div>
-            <span className="font-bold text-white">FinAnalyzer</span>
-          </div>
+          <Link href="/" className="flex items-center">
+            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-7 w-auto" />
+          </Link>
           <Link href="/api/auth/signout" className="text-sm font-medium text-red-400">Log Out</Link>
         </header>
 

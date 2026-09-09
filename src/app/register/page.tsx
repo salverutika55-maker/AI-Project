@@ -59,11 +59,10 @@ export default function RegisterPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-500/10 rounded-full blur-[120px] pointer-events-none" />
       
       <div className="w-full max-w-md bg-[#13131A] border border-white/10 rounded-2xl p-8 relative z-10 shadow-2xl">
-        <div className="flex items-center gap-2 mb-8 justify-center">
-          <div className="bg-cyan-500 rounded p-1.5">
-            <LineChart className="w-6 h-6 text-slate-950" />
-          </div>
-          <span className="text-2xl font-bold tracking-tight text-white hover:text-cyan-400"><Link href="/">FinAnalyzer</Link></span>
+        <div className="flex items-center mb-8 justify-center">
+          <Link href="/" className="flex items-center hover:opacity-95 transition-opacity">
+            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-10 w-auto" />
+          </Link>
         </div>
         
         <h2 className="text-xl font-bold text-white mb-2 text-center">Create an Account</h2>

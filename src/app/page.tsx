@@ -54,12 +54,9 @@ export default async function Home() {
       {/* Navigation (Simple) */}
       <nav className="border-b border-white/5 bg-[#0A0A0C]/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-cyan-500 rounded p-1.5">
-              <LineChart className="w-6 h-6 text-slate-950" />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-white">FinAnalyzer</span>
-          </div>
+          <Link href="/" className="flex items-center hover:opacity-95 transition-opacity">
+            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-9 w-auto" />
+          </Link>
           <div className="hidden md:flex gap-8 text-sm font-medium text-slate-400">
             <a href="#features" className="hover:text-white transition-colors">Platform</a>
             <a href="#how-it-works" className="hover:text-white transition-colors">How it Works</a>
@@ -409,11 +406,8 @@ export default async function Home() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-16">
             <div className="col-span-2">
-              <div className="flex items-center gap-2 mb-6">
-                <div className="bg-cyan-500 rounded p-1.5">
-                  <LineChart className="w-5 h-5 text-slate-950" />
-                </div>
-                <span className="text-xl font-bold tracking-tight text-white">FinAnalyzer</span>
+              <div className="flex items-center mb-4">
+                <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-8 w-auto" />
               </div>
               <p className="text-slate-400 max-w-sm">
                 The most powerful AI-driven financial analytics platform for modern businesses.
