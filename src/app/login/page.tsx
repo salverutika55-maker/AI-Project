@@ -40,7 +40,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md bg-[#13131A] border border-white/10 rounded-2xl p-8 relative z-10 shadow-2xl">
         <div className="flex items-center mb-8 justify-center">
           <Link href="/" className="flex items-center hover:opacity-95 transition-opacity">
-            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-10 w-auto" />
+            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer™" className="h-10 w-auto" />
           </Link>
         </div>
         

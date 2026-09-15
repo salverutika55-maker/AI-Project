@@ -497,7 +497,7 @@ export default function DashboardClient({ initialRecords, clients, activeClientI
                         <h3 className="text-xl font-bold text-white mb-2">{activeClient?.software} Linked Successfully!</h3>
                         {syncSuccess && <div className="bg-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm mb-4">Connection established! You can now sync.</div>}
                         {syncError && <div className="bg-red-500/20 text-red-400 p-3 rounded-lg text-sm mb-4 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {syncError}</div>}
-                        <p className="text-sm text-emerald-400/80 mb-6">FinAnalyzer is securely connected to your live {activeClient?.software} account.</p>
+                        <p className="text-sm text-emerald-400/80 mb-6">FinAnalyzer™ is securely connected to your live {activeClient?.software} account.</p>
                         
                         <button 
                           onClick={async () => {

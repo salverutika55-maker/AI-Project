@@ -55,7 +55,7 @@ export default async function Home() {
       <nav className="border-b border-white/5 bg-[#0A0A0C]/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <Link href="/" className="flex items-center hover:opacity-95 transition-opacity">
-            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-9 w-auto" />
+            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer™" className="h-9 w-auto" />
           </Link>
           <div className="hidden md:flex gap-8 text-sm font-medium text-slate-400">
             <a href="#features" className="hover:text-white transition-colors">Platform</a>
@@ -108,7 +108,7 @@ export default async function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
             </span>
-            FinAnalyzer Engine 2.0 is Live • Created by Rutika Salve
+            FinAnalyzer™ Engine 2.0 is Live • Created by Rutika Salve
           </div>
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-white mb-8 max-w-4xl mx-auto leading-[1.1]">
             Master your metrics. <br className="hidden md:block"/> Elevate your enterprise.
@@ -407,7 +407,7 @@ export default async function Home() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-16">
             <div className="col-span-2">
               <div className="flex items-center mb-4">
-                <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-8 w-auto" />
+                <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer™" className="h-8 w-auto" />
               </div>
               <p className="text-slate-400 max-w-sm">
                 The most powerful AI-driven financial analytics platform for modern businesses.
@@ -434,7 +434,7 @@ export default async function Home() {
           </div>
           <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-slate-500 text-sm">
-              © {new Date().getFullYear()} FinAnalyzer. All rights reserved. | <span className="text-cyan-400/80">Created by Rutika Salve</span>
+              © {new Date().getFullYear()} FinAnalyzer™. All rights reserved. | <span className="text-cyan-400/80">Created by Rutika Salve</span>
             </p>
             <div className="flex gap-4">
               <div className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 transition-colors cursor-pointer" />

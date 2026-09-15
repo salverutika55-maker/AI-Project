@@ -22,7 +22,7 @@ export default async function DashboardLayout({
       <aside className="w-full md:w-64 border-r border-white/5 bg-[#13131A] flex flex-col hidden md:flex sticky top-0 h-screen">
         <div className="p-6 border-b border-white/5 flex items-center">
           <Link href="/" className="flex items-center hover:opacity-95 transition-opacity">
-            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-8 w-auto" />
+            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer™" className="h-8 w-auto" />
           </Link>
         </div>
         <div className="p-4 flex-1">
@@ -58,7 +58,7 @@ export default async function DashboardLayout({
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between p-4 border-b border-white/5 bg-[#13131A] sticky top-0 z-50">
           <Link href="/" className="flex items-center">
-            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer" className="h-7 w-auto" />
+            <img src="/FinAnalyzer-logo.svg" alt="FinAnalyzer™" className="h-7 w-auto" />
           </Link>
           <Link href="/api/auth/signout" className="text-sm font-medium text-red-400">Log Out</Link>
         </header>

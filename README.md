@@ -1,6 +1,6 @@
-# FinAnalyzer — Financial Analytics & Audit Intelligence Platform
+# FinAnalyzer™ — Financial Analytics & Audit Intelligence Platform
 
-FinAnalyzer is an enterprise-grade financial analytics, business intelligence, and audit working paper platform designed for Chartered Accountants, forensic auditors, and corporate finance teams. It integrates directly with major ERP and accounting software to deliver real-time financial reporting, compliance auditing, and strategic advisory.
+FinAnalyzer™ is an enterprise-grade financial analytics, business intelligence, and audit working paper platform designed for Chartered Accountants, forensic auditors, and corporate finance teams. It integrates directly with major ERP and accounting software to deliver real-time financial reporting, compliance auditing, and strategic advisory.
 
 ---
 
@@ -39,7 +39,7 @@ FinAnalyzer is an enterprise-grade financial analytics, business intelligence, a
 
 ## 🔌 ERP & Accounting Connectors
 
-FinAnalyzer supports automated data syncing and schema normalization across:
+FinAnalyzer™ supports automated data syncing and schema normalization across:
 - **Tally Prime** (via XML trial balance/voucher imports)
 - **Zoho Books** (via OAuth API integration)
 - **QuickBooks Online** (via OAuth API integration)
@@ -51,7 +51,7 @@ FinAnalyzer supports automated data syncing and schema normalization across:
 
 ## 🔒 Security & Multi-Tenant RBAC
 
-FinAnalyzer enforces strict organization-level data isolation:
+FinAnalyzer™ enforces strict organization-level data isolation:
 - **Global Administrator** (`ADMIN`): Platform-level oversight and diagnostic logs.
 - **Organization Roles**:
   - `SUPER_ADMIN`: Full organization access, billing, and membership approvals.

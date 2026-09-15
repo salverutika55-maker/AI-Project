@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FinAnalyzer - Next-Gen Financial Intelligence & Advisory Platform",
+  title: "FinAnalyzer™ - Next-Gen Financial Intelligence & Advisory Platform",
   description: "Advanced accounting analytics, automated reporting, ratio intelligence, and fund flow analysis.",
   icons: {
     icon: "/FinAnalyzer-icon.svg",
