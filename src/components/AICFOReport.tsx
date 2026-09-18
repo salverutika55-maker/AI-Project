@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   X, BrainCircuit, Activity, TrendingUp, TrendingDown, AlertTriangle, Target, CheckCircle2, 
   Zap, PieChart, Users, Building, ShieldAlert, FileText, Banknote, ShieldCheck, 
@@ -9,6 +9,11 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { CfoMisReportResult, CfoInsightCard } from "@/lib/services/cfo-mis-engine";
+import { 
+  getFinancialYearMonths, 
+  resolveCanonicalFinancialPeriod,
+  FinancialMonthOption 
+} from "@/lib/financial-periods";
 
 interface AICFOReportProps {
   isOpen: boolean;
@@ -34,15 +39,24 @@ export default function AICFOReport({
   const [error, setError] = useState<string | null>(null);
   const [selectedDrilldown, setSelectedDrilldown] = useState<CfoInsightCard | null>(null);
   const [mode, setMode] = useState<"monthly" | "cumulative">("monthly");
-  const [activeMonth, setActiveMonth] = useState<string>(selectedMonth);
 
-  const months = fyType === "JAN_DEC" 
-    ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    : ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+  const monthOptions = useMemo(() => {
+    return getFinancialYearMonths(selectedYear, fyType);
+  }, [selectedYear, fyType]);
+
+  const [activePeriodKey, setActivePeriodKey] = useState<string>(() => {
+    const initialResolved = resolveCanonicalFinancialPeriod(selectedYear, selectedMonth, fyType);
+    return initialResolved.periodKey;
+  });
 
   useEffect(() => {
-    setActiveMonth(selectedMonth);
-  }, [selectedMonth]);
+    const resolved = resolveCanonicalFinancialPeriod(selectedYear, selectedMonth, fyType);
+    setActivePeriodKey(resolved.periodKey);
+  }, [selectedYear, selectedMonth, fyType]);
+
+  const currentResolvedPeriod = useMemo(() => {
+    return resolveCanonicalFinancialPeriod(selectedYear, activePeriodKey, fyType);
+  }, [selectedYear, activePeriodKey, fyType]);
 
   useEffect(() => {
     if (isOpen) {
@@ -50,7 +64,7 @@ export default function AICFOReport({
       setError(null);
       setReport(null);
 
-      fetch(`/api/clients/${clientId}/ai-cfo?year=${selectedYear}&month=${encodeURIComponent(activeMonth)}&fyType=${fyType}&mode=${mode}`, {
+      fetch(`/api/clients/${clientId}/ai-cfo?year=${selectedYear}&month=${encodeURIComponent(activePeriodKey)}&fyType=${fyType}&mode=${mode}`, {
         cache: "no-store"
       })
         .then(async res => {
@@ -72,7 +86,7 @@ export default function AICFOReport({
     } else {
       setReport(null);
     }
-  }, [isOpen, clientId, selectedYear, activeMonth, fyType, mode]);
+  }, [isOpen, clientId, selectedYear, activePeriodKey, fyType, mode]);
 
   if (!isOpen) return null;
 
@@ -123,7 +137,7 @@ export default function AICFOReport({
                 </span>
               </div>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
-                {clientName} • {report?.periodTitle || `${activeMonth} ${selectedYear}`}
+                {clientName} • {report?.periodTitle || (mode === "cumulative" ? currentResolvedPeriod.cumulativePeriod.label : currentResolvedPeriod.label)}
               </p>
             </div>
           </div>
@@ -157,15 +171,15 @@ export default function AICFOReport({
               </button>
             </div>
 
-            {/* Reference Month Selector */}
+            {/* Reference Month Selector (Canonical FY-Mapped Labels) */}
             <select
-              value={activeMonth}
-              onChange={(e) => setActiveMonth(e.target.value)}
+              value={activePeriodKey}
+              onChange={(e) => setActivePeriodKey(e.target.value)}
               className="bg-[#13131A] border border-white/10 rounded-xl px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-cyan-500/50 cursor-pointer"
             >
-              {months.map(m => (
-                <option key={m} value={m} className="bg-[#13131A] text-white">
-                  {m} {selectedYear}
+              {monthOptions.map(opt => (
+                <option key={opt.periodKey} value={opt.periodKey} className="bg-[#13131A] text-white">
+                  {opt.label}
                 </option>
               ))}
             </select>

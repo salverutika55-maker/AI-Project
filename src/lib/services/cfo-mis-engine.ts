@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
-import { parseFinancialPeriod } from "./early-warning-engine";
+import { 
+  resolveCanonicalFinancialPeriod, 
+  getFinancialYearMonths,
+  CanonicalFinancialPeriod,
+  formatDateIso 
+} from "@/lib/financial-periods";
 
 export interface CfoInsightCard {
   id: string;
@@ -61,10 +66,14 @@ export interface CfoMisReportResult {
   clientName: string;
   sector: "TRADING" | "SERVICE" | "MANUFACTURING";
   financialYear: number;
+  financialYearLabel?: string;
   selectedMonth: string;
+  calendarYear?: number;
+  periodKey?: string;
   analysisMode: "MONTHLY" | "CUMULATIVE";
   periodLabel: string;
   periodTitle: string;
+  canonicalPeriod?: CanonicalFinancialPeriod;
   calculationPeriod: {
     start: string;
     end: string;
@@ -148,10 +157,6 @@ function formatLakhs(num: number): string {
   return `₹${num.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
-function formatDateIso(d: Date): string {
-  return d.toISOString().split("T")[0];
-}
-
 export async function generateCfoMisReport(
   clientId: string,
   targetYear: number,
@@ -180,29 +185,29 @@ export async function generateCfoMisReport(
   const analysisMode: "MONTHLY" | "CUMULATIVE" = isCumulative ? "CUMULATIVE" : "MONTHLY";
 
   const fyStartMonth = fyTypeParam === "JAN_DEC" ? 1 : (client.fiscalYearStartMonth || 4);
-  const { targetMonthIndex, selectedMonthName, isJanDec, monthNames } = parseFinancialPeriod(
+
+  // 1. Resolve Canonical Financial Period
+  let canonicalPeriod = resolveCanonicalFinancialPeriod(
     targetYear,
     selectedMonthParam,
+    fyTypeParam,
     fyStartMonth
   );
 
-  // Determine FY Calendar boundaries
-  let fyStartCalYear = isJanDec ? targetYear : targetYear;
-  const startMonthZeroIndexed = fyStartMonth - 1;
-
-  let fyStartUtc = new Date(Date.UTC(fyStartCalYear, startMonthZeroIndexed, 1, 0, 0, 0, 0));
-  let fyEndUtc = new Date(Date.UTC(fyStartCalYear + 1, startMonthZeroIndexed, 1, 0, 0, 0, 0));
-
+  // Check if target client data aligns directly or with targetYear - 1
   const countAtTarget = await prisma.normalizedVoucher.count({
     where: {
       clientId,
-      date: { gte: fyStartUtc, lt: fyEndUtc }
+      date: { 
+        gte: canonicalPeriod.cumulativePeriod.periodStartUtc, 
+        lt: new Date(Date.UTC(canonicalPeriod.fyStartYear + 1, fyStartMonth - 1, 1, 0, 0, 0, 0)) 
+      }
     }
   });
 
-  if (countAtTarget === 0 && !isJanDec) {
-    const prevYearStart = new Date(Date.UTC(targetYear - 1, startMonthZeroIndexed, 1, 0, 0, 0, 0));
-    const prevYearEnd = new Date(Date.UTC(targetYear, startMonthZeroIndexed, 1, 0, 0, 0, 0));
+  if (countAtTarget === 0 && !canonicalPeriod.isJanDec) {
+    const prevYearStart = new Date(Date.UTC(canonicalPeriod.fyStartYear - 1, fyStartMonth - 1, 1, 0, 0, 0, 0));
+    const prevYearEnd = new Date(Date.UTC(canonicalPeriod.fyStartYear, fyStartMonth - 1, 1, 0, 0, 0, 0));
     const countAtPrev = await prisma.normalizedVoucher.count({
       where: {
         clientId,
@@ -210,80 +215,59 @@ export async function generateCfoMisReport(
       }
     });
     if (countAtPrev > 0) {
-      fyStartCalYear = targetYear - 1;
-      fyStartUtc = prevYearStart;
-      fyEndUtc = prevYearEnd;
+      canonicalPeriod = resolveCanonicalFinancialPeriod(
+        canonicalPeriod.fyStartYear - 1,
+        selectedMonthParam,
+        fyTypeParam,
+        fyStartMonth
+      );
     }
   }
 
-  // Calculate calendar month & year for selected month
-  let calMonth: number;
-  let calYear: number;
-
-  if (isJanDec) {
-    calMonth = targetMonthIndex + 1;
-    calYear = fyStartCalYear;
-  } else {
-    if (targetMonthIndex < 9) {
-      calMonth = targetMonthIndex + 4; // 4..12
-      calYear = fyStartCalYear;
-    } else {
-      calMonth = targetMonthIndex - 8; // 1..3
-      calYear = fyStartCalYear + 1;
-    }
-  }
-
-  const monthStartUtc = new Date(Date.UTC(calYear, calMonth - 1, 1, 0, 0, 0, 0));
-  const nextMonthNum = calMonth === 12 ? 1 : calMonth + 1;
-  const nextYearNum = calMonth === 12 ? calYear + 1 : calYear;
-  const monthEndUtc = new Date(Date.UTC(nextYearNum, nextMonthNum - 1, 1, 0, 0, 0, 0));
-
-  // Prior month boundaries (for monthly mode)
-  const prevMonthNum = calMonth === 1 ? 12 : calMonth - 1;
-  const prevYearNum = calMonth === 1 ? calYear - 1 : calYear;
-  const priorMonthStartUtc = new Date(Date.UTC(prevYearNum, prevMonthNum - 1, 1, 0, 0, 0, 0));
-  const priorMonthEndUtc = monthStartUtc;
-
-  // Prior FY Comparable period (for cumulative mode)
-  const priorFyStartUtc = new Date(Date.UTC(fyStartCalYear - 1, startMonthZeroIndexed, 1, 0, 0, 0, 0));
-  const priorFyEndUtc = new Date(Date.UTC(calYear - 1, calMonth - 1, 1, 0, 0, 0, 0));
+  const selectedMonthName = canonicalPeriod.monthName;
+  const calYear = canonicalPeriod.calendarYear;
+  const calMonth = canonicalPeriod.monthNumber;
+  const isFullYear = canonicalPeriod.cumulativePeriod.isFullYear;
+  const monthsInCumulative = canonicalPeriod.cumulativePeriod.monthsCount;
 
   // Active Period boundaries based on mode
-  const activePeriodStartUtc = isCumulative ? fyStartUtc : monthStartUtc;
-  const activePeriodEndUtc = monthEndUtc;
+  const activePeriodStartUtc = isCumulative 
+    ? canonicalPeriod.cumulativePeriod.periodStartUtc 
+    : canonicalPeriod.periodStartUtc;
+  const activePeriodEndUtc = canonicalPeriod.periodEndUtc;
 
-  const comparisonStartUtc = isCumulative ? priorFyStartUtc : priorMonthStartUtc;
-  const comparisonEndUtc = isCumulative ? priorFyEndUtc : priorMonthEndUtc;
+  // Comparison Period boundaries based on mode
+  const comparisonStartUtc = isCumulative 
+    ? canonicalPeriod.comparablePriorCumulativePeriod.periodStartUtc 
+    : canonicalPeriod.previousMonth.periodStartUtc;
+  const comparisonEndUtc = isCumulative 
+    ? canonicalPeriod.comparablePriorCumulativePeriod.periodEndUtc 
+    : canonicalPeriod.previousMonth.periodEndUtc;
 
-  const monthsInCumulative = targetMonthIndex + 1;
-  const isFullYear = targetMonthIndex === 11;
+  const fyStartUtc = canonicalPeriod.cumulativePeriod.periodStartUtc;
 
   const periodDays = Math.round((activePeriodEndUtc.getTime() - activePeriodStartUtc.getTime()) / (1000 * 60 * 60 * 24));
   const comparisonDays = Math.round((comparisonEndUtc.getTime() - comparisonStartUtc.getTime()) / (1000 * 60 * 60 * 24));
 
   const periodLabel = isCumulative
-    ? (isFullYear 
-        ? `FY ${fyStartCalYear}-${String(fyStartCalYear + 1).slice(-2)} Full-Year` 
-        : `FY ${fyStartCalYear}-${String(fyStartCalYear + 1).slice(-2)} YTD (${monthNames[0]} → ${selectedMonthName})`)
-    : `${selectedMonthName} ${calYear}`;
+    ? canonicalPeriod.cumulativePeriod.label
+    : canonicalPeriod.label;
 
   const periodTitle = isCumulative
-    ? (isFullYear 
-        ? `Executive CFO Takeaway — FY ${fyStartCalYear}-${String(fyStartCalYear + 1).slice(-2)} Full-Year` 
-        : `Executive CFO Takeaway — FY ${fyStartCalYear}-${String(fyStartCalYear + 1).slice(-2)} YTD (${monthNames[0]}–${selectedMonthName})`)
-    : `Executive CFO Takeaway — ${selectedMonthName} ${calYear}`;
+    ? `Executive CFO Takeaway — ${canonicalPeriod.cumulativePeriod.label}`
+    : `Executive CFO Takeaway — ${canonicalPeriod.label}`;
 
   const comparisonPeriodLabel = isCumulative
-    ? `Prior FY Comparable Period (${monthNames[0]} → ${selectedMonthName})`
-    : `Previous Month (${prevMonthNum === 1 ? "Jan" : prevMonthNum === 2 ? "Feb" : prevMonthNum === 3 ? "Mar" : prevMonthNum === 4 ? "Apr" : prevMonthNum === 5 ? "May" : prevMonthNum === 6 ? "Jun" : prevMonthNum === 7 ? "Jul" : prevMonthNum === 8 ? "Aug" : prevMonthNum === 9 ? "Sep" : prevMonthNum === 10 ? "Oct" : prevMonthNum === 11 ? "Nov" : "Dec"} ${prevYearNum})`;
+    ? canonicalPeriod.comparablePriorCumulativePeriod.label
+    : `Previous Month (${canonicalPeriod.previousMonth.label})`;
 
   const calculationPeriod = {
-    start: formatDateIso(activePeriodStartUtc),
-    end: formatDateIso(new Date(activePeriodEndUtc.getTime() - 1))
+    start: isCumulative ? canonicalPeriod.cumulativePeriod.periodStart : canonicalPeriod.periodStart,
+    end: canonicalPeriod.periodEnd
   };
   const comparisonPeriod = {
-    start: formatDateIso(comparisonStartUtc),
-    end: formatDateIso(new Date(comparisonEndUtc.getTime() - 1)),
+    start: isCumulative ? canonicalPeriod.comparablePriorCumulativePeriod.periodStart : canonicalPeriod.previousMonth.periodStart,
+    end: isCumulative ? canonicalPeriod.comparablePriorCumulativePeriod.periodEnd : canonicalPeriod.previousMonth.periodEnd,
     label: comparisonPeriodLabel
   };
 
@@ -422,7 +406,7 @@ export async function generateCfoMisReport(
 
   // 4. Fetch PNL Values
   const pnlValues = await prisma.pNLValue.findMany({
-    where: { clientId, year: { in: [fyStartCalYear, targetYear] } }
+    where: { clientId, year: { in: [canonicalPeriod.fyStartYear, targetYear] } }
   });
 
   // Calculate FLOW METRICS for Active Period (sum of transactions)
@@ -453,9 +437,12 @@ export async function generateCfoMisReport(
 
   // Fallback to PNL Values if voucher sales are zero
   if (activePeriodSales === 0) {
-    const targetMonthsSlice = isCumulative ? monthNames.slice(0, targetMonthIndex + 1) : [selectedMonthName];
-    pnlValues.forEach(pv => {
-      if (targetMonthsSlice.some(m => m.toLowerCase() === pv.month?.toLowerCase())) {
+    const allMonthsList = getFinancialYearMonths(canonicalPeriod.fyStartYear, fyTypeParam, fyStartMonth);
+    const targetMonthsSlice = isCumulative 
+      ? allMonthsList.slice(0, canonicalPeriod.monthIndexInFy + 1).map(m => m.monthName) 
+      : [selectedMonthName];
+    pnlValues.forEach((pv: any) => {
+      if (targetMonthsSlice.some((m: string) => m.toLowerCase() === pv.month?.toLowerCase())) {
         const h = pv.headName.toLowerCase();
         const amt = decryptValue(pv.amount);
         if (h.includes("revenue") || h.includes("sales") || h.includes("income")) {
@@ -1043,11 +1030,15 @@ export async function generateCfoMisReport(
     clientId: client.id,
     clientName: client.name,
     sector: client.sector,
-    financialYear: targetYear,
+    financialYear: canonicalPeriod.fyStartYear,
+    financialYearLabel: canonicalPeriod.financialYear,
     selectedMonth: selectedMonthName,
+    calendarYear: calYear,
+    periodKey: canonicalPeriod.periodKey,
     analysisMode,
     periodLabel,
     periodTitle,
+    canonicalPeriod,
     calculationPeriod,
     comparisonPeriod,
     executiveTakeaway: {
