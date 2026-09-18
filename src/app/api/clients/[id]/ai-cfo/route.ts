@@ -16,6 +16,7 @@ export async function GET(
   const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString(), 10);
   const month = searchParams.get("month") || "Apr";
   const fyType = searchParams.get("fyType") || "APR_MAR";
+  const mode = (searchParams.get("mode") as "monthly" | "cumulative") || "monthly";
 
   const session = await getServerSession(authOptions);
   if (!session || !session.user?.email) {
@@ -28,7 +29,7 @@ export async function GET(
     await authorizeClientAction(user.id, id, "READ_ONLY");
 
     // Generate full CFO MIS Insight Engine Report
-    const report = await generateCfoMisReport(id, year, month, fyType);
+    const report = await generateCfoMisReport(id, year, month, fyType, mode);
 
     return new NextResponse(
       JSON.stringify(report),

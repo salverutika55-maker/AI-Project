@@ -33,6 +33,16 @@ export default function AICFOReport({
   const [report, setReport] = useState<CfoMisReportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedDrilldown, setSelectedDrilldown] = useState<CfoInsightCard | null>(null);
+  const [mode, setMode] = useState<"monthly" | "cumulative">("monthly");
+  const [activeMonth, setActiveMonth] = useState<string>(selectedMonth);
+
+  const months = fyType === "JAN_DEC" 
+    ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    : ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+
+  useEffect(() => {
+    setActiveMonth(selectedMonth);
+  }, [selectedMonth]);
 
   useEffect(() => {
     if (isOpen) {
@@ -40,7 +50,7 @@ export default function AICFOReport({
       setError(null);
       setReport(null);
 
-      fetch(`/api/clients/${clientId}/ai-cfo?year=${selectedYear}&month=${encodeURIComponent(selectedMonth)}&fyType=${fyType}`, {
+      fetch(`/api/clients/${clientId}/ai-cfo?year=${selectedYear}&month=${encodeURIComponent(activeMonth)}&fyType=${fyType}&mode=${mode}`, {
         cache: "no-store"
       })
         .then(async res => {
@@ -62,7 +72,7 @@ export default function AICFOReport({
     } else {
       setReport(null);
     }
-  }, [isOpen, clientId, selectedYear, selectedMonth, fyType]);
+  }, [isOpen, clientId, selectedYear, activeMonth, fyType, mode]);
 
   if (!isOpen) return null;
 
@@ -93,32 +103,80 @@ export default function AICFOReport({
       <div className="w-full max-w-6xl bg-[#0A0A0C] border-x border-white/10 shadow-2xl flex flex-col h-full relative animate-in slide-in-from-bottom-8 duration-500">
         
         {/* Sticky Header */}
-        <div className="h-24 border-b border-white/5 bg-[#0A0A0C]/90 backdrop-blur-xl flex items-center justify-between px-6 md:px-10 shrink-0 sticky top-0 z-50">
+        <div className="min-h-24 border-b border-white/5 bg-[#0A0A0C]/90 backdrop-blur-xl flex flex-wrap items-center justify-between px-6 md:px-10 py-4 gap-4 shrink-0 sticky top-0 z-50">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 rounded-2xl flex items-center justify-center border border-indigo-500/30 shadow-lg shadow-indigo-500/10">
+            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 rounded-2xl flex items-center justify-center border border-indigo-500/30 shadow-lg shadow-indigo-500/10 shrink-0">
               <BrainCircuit className="w-6 h-6 text-indigo-400" />
             </div>
             <div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2 md:gap-3">
                 <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">AI CFO MIS Insight Engine</h1>
                 <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
                   {report?.sector || "CORPORATE"}
                 </span>
-                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-300">
-                  {report?.periodLabel || `${selectedMonth} ${selectedYear}`}
+                <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                  mode === "cumulative" 
+                    ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
+                    : "bg-cyan-500/20 border-cyan-500/40 text-cyan-300"
+                }`}>
+                  {mode === "cumulative" ? "Cumulative / YTD" : "Monthly View"}
                 </span>
               </div>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
-                {clientName} • Data-Driven CFO Management Decision Support
+                {clientName} • {report?.periodTitle || `${activeMonth} ${selectedYear}`}
               </p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-3 bg-white/5 hover:bg-rose-500/20 rounded-xl text-slate-400 hover:text-rose-400 transition-colors border border-transparent hover:border-rose-500/30"
-          >
-            <X className="w-6 h-6" />
-          </button>
+
+          <div className="flex items-center gap-3">
+            {/* Mode Selector Toggle */}
+            <div className="flex items-center bg-black/50 p-1 rounded-xl border border-white/10 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setMode("monthly")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                  mode === "monthly"
+                    ? "bg-cyan-500 text-black shadow-lg shadow-cyan-500/20"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                Monthly
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("cumulative")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                  mode === "cumulative"
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                Cumulative / YTD
+              </button>
+            </div>
+
+            {/* Reference Month Selector */}
+            <select
+              value={activeMonth}
+              onChange={(e) => setActiveMonth(e.target.value)}
+              className="bg-[#13131A] border border-white/10 rounded-xl px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+            >
+              {months.map(m => (
+                <option key={m} value={m} className="bg-[#13131A] text-white">
+                  {m} {selectedYear}
+                </option>
+              ))}
+            </select>
+
+            <button 
+              onClick={onClose}
+              className="p-2.5 bg-white/5 hover:bg-rose-500/20 rounded-xl text-slate-400 hover:text-rose-400 transition-colors border border-transparent hover:border-rose-500/30 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Document Body */}
@@ -130,9 +188,13 @@ export default function AICFOReport({
                 <div className="absolute inset-0 border-4 border-indigo-500 rounded-full border-t-transparent animate-spin"></div>
                 <BrainCircuit className="absolute inset-0 m-auto w-10 h-10 text-indigo-500 animate-pulse" />
               </div>
-              <h3 className="text-2xl font-black text-white mb-2 tracking-tight">Generating CFO MIS Insights...</h3>
+              <h3 className="text-2xl font-black text-white mb-2 tracking-tight">
+                {mode === "cumulative" ? "Calculating Cumulative / YTD CFO Insights..." : "Generating Monthly CFO MIS Insights..."}
+              </h3>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-widest animate-pulse">
-                Auditing Ledger Elasticity • Calculating Working Capital Velocity • Generating Management Questions
+                {mode === "cumulative" 
+                  ? "Aggregating Full-Year Flows • Point-in-Time Balance Sheet Closes • Generating Trajectory Analysis"
+                  : "Auditing Ledger Elasticity • Calculating Working Capital Velocity • Generating Management Questions"}
               </p>
             </div>
           ) : error ? (
@@ -142,7 +204,7 @@ export default function AICFOReport({
               <p className="text-sm text-slate-400 leading-relaxed mb-4">{error}</p>
               <button 
                 onClick={onClose}
-                className="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold text-white transition-all"
+                className="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold text-white transition-all cursor-pointer"
               >
                 Close Report
               </button>
@@ -150,6 +212,29 @@ export default function AICFOReport({
           ) : report ? (
             <div className="max-w-5xl mx-auto space-y-12 pb-20 animate-in fade-in duration-700">
               
+              {/* Audit Transparency & Calculation Window Banner */}
+              <div className="bg-[#13131A] border border-white/5 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 text-xs">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className={`px-2.5 py-1 rounded-lg font-black text-[10px] uppercase tracking-wider ${
+                    report.analysisMode === "CUMULATIVE" ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30" : "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                  }`}>
+                    {report.analysisMode === "CUMULATIVE" ? "Cumulative / YTD Mode" : "Monthly Mode"}
+                  </div>
+                  <div className="text-slate-300">
+                    <span className="text-slate-500 font-bold uppercase text-[10px] mr-1.5">Calculation Window:</span>
+                    <span className="font-mono font-bold text-white">{report.calculationPeriod.start} → {report.calculationPeriod.end}</span>
+                  </div>
+                  <div className="text-slate-400">
+                    <span className="text-slate-500 font-bold uppercase text-[10px] mr-1.5">Comparison:</span>
+                    <span className="font-mono text-slate-300">{report.comparisonPeriod.label} ({report.comparisonPeriod.start} → {report.comparisonPeriod.end})</span>
+                  </div>
+                </div>
+                <div className="text-slate-500 font-medium text-[11px] flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>{report.sourceMetadata.totalVouchersInPeriod} Vouchers • {report.sourceMetadata.totalLedgersAnalyzed} Ledgers</span>
+                </div>
+              </div>
+
               {/* ========================================================================= */}
               {/* SECTION 1: EXECUTIVE CFO TAKEAWAY & HEADLINE KPI CARDS                   */}
               {/* ========================================================================= */}
@@ -157,10 +242,10 @@ export default function AICFOReport({
                 <div className="flex items-center justify-between border-b border-white/10 pb-4">
                   <div className="flex items-center gap-3">
                     <Activity className="w-6 h-6 text-indigo-400" />
-                    <h2 className="text-xl font-black text-white">Executive CFO Takeaway</h2>
+                    <h2 className="text-xl font-black text-white">{report.executiveTakeaway.title}</h2>
                   </div>
                   <span className="text-xs font-mono text-slate-400">
-                    Window: {report.calculationPeriod.start} → {report.calculationPeriod.end}
+                    {report.analysisMode === "CUMULATIVE" ? "FY-to-Date Flow & Balance Position" : "Single Month Activity"}
                   </span>
                 </div>
 
@@ -171,7 +256,7 @@ export default function AICFOReport({
                     { label: "Gross Profit", val: formatCurrency(report.executiveTakeaway.headlineMetrics.grossProfit, true), sub: `${report.executiveTakeaway.headlineMetrics.grossMarginPct.toFixed(1)}% Margin`, color: "text-cyan-400" },
                     { label: "Net Profit", val: formatCurrency(report.executiveTakeaway.headlineMetrics.netProfit, true), sub: `${report.executiveTakeaway.headlineMetrics.netMarginPct.toFixed(1)}% Margin`, color: report.executiveTakeaway.headlineMetrics.netProfit < 0 ? "text-rose-400" : "text-emerald-400" },
                     { label: "Cash & Bank", val: formatCurrency(report.executiveTakeaway.headlineMetrics.cashBalance, true), sub: `${report.executiveTakeaway.headlineMetrics.cashRunwayDays > 365 ? "> 1 Yr" : `${report.executiveTakeaway.headlineMetrics.cashRunwayDays}d`} Runway`, color: report.executiveTakeaway.headlineMetrics.cashRunwayDays < 30 ? "text-amber-400" : "text-emerald-400" },
-                    { label: "Trade Receivables", val: formatCurrency(report.executiveTakeaway.headlineMetrics.totalReceivables, true), sub: "Sundry Debtors", color: "text-indigo-400" },
+                    { label: "Trade Receivables", val: formatCurrency(report.executiveTakeaway.headlineMetrics.totalReceivables, true), sub: "Closing Debtors", color: "text-indigo-400" },
                     { label: "Net Working Capital", val: formatCurrency(report.executiveTakeaway.headlineMetrics.netWorkingCapital, true), sub: report.executiveTakeaway.headlineMetrics.netWorkingCapital < 0 ? "Deficit" : "Surplus", color: report.executiveTakeaway.headlineMetrics.netWorkingCapital < 0 ? "text-rose-400" : "text-cyan-400" }
                   ].map((kpi, idx) => (
                     <div key={idx} className="bg-[#13131A] p-4 rounded-2xl border border-white/5 flex flex-col justify-between">
@@ -212,7 +297,9 @@ export default function AICFOReport({
               <section className="space-y-4">
                 <div className="flex items-center gap-3 border-b border-white/10 pb-4">
                   <RefreshCw className="w-6 h-6 text-cyan-400" />
-                  <h2 className="text-xl font-black text-white">What Changed This Period (Variance Analysis)</h2>
+                  <h2 className="text-xl font-black text-white">
+                    {report.analysisMode === "CUMULATIVE" ? "Cumulative YTD Performance vs Comparable Period" : "What Changed This Period (Variance Analysis)"}
+                  </h2>
                 </div>
 
                 <div className="border border-white/5 rounded-2xl overflow-hidden bg-[#13131A]">
@@ -220,8 +307,8 @@ export default function AICFOReport({
                     <thead className="bg-white/5 text-slate-400 uppercase font-black tracking-wider text-[10px] border-b border-white/5">
                       <tr>
                         <th className="p-3.5">Financial Metric</th>
-                        <th className="p-3.5 text-right">{report.selectedMonth} (Current)</th>
-                        <th className="p-3.5 text-right">Previous Period</th>
+                        <th className="p-3.5 text-right">{report.analysisMode === "CUMULATIVE" ? `YTD ${report.selectedMonth} (Current)` : `${report.selectedMonth} (Current)`}</th>
+                        <th className="p-3.5 text-right">{report.comparisonPeriod.label}</th>
                         <th className="p-3.5 text-right">Absolute Change</th>
                         <th className="p-3.5 text-right">% Change</th>
                         <th className="p-3.5 text-center">Direction</th>
