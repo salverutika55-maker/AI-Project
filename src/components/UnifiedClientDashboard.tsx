@@ -837,7 +837,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
               </div>
 
               {/* AI Predictive Alerts */}
-              <EarlyWarningSystem clientId={client.id} selectedYear={selectedYear} />
+              <EarlyWarningSystem clientId={client.id} selectedYear={selectedYear} selectedMonth={selectedMonth} fyType={fyType} />
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Charts Area */}

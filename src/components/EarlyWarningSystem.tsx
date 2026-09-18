@@ -9,26 +9,32 @@ import {
   ArrowRight, 
   Activity, 
   TrendingUp, 
-  TrendingDown,
+  TrendingDown, 
   ShieldAlert, 
-  Box,
-  CheckCircle2,
-  HelpCircle,
-  X,
-  Calculator,
-  Layers,
-  Sparkles,
-  ArrowUpRight
+  Box, 
+  CheckCircle2, 
+  HelpCircle, 
+  X, 
+  Calculator, 
+  Layers, 
+  Sparkles, 
+  ArrowUpRight,
+  Calendar,
+  Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { EarlyWarningAlert, EarlyWarningResult } from "@/lib/services/early-warning-engine";
 
 export default function EarlyWarningSystem({ 
   clientId, 
-  selectedYear 
+  selectedYear,
+  selectedMonth = "Apr",
+  fyType = "APR_MAR"
 }: { 
   clientId: string; 
   selectedYear: number;
+  selectedMonth?: string;
+  fyType?: "APR_MAR" | "JAN_DEC";
 }) {
   const [data, setData] = useState<EarlyWarningResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,10 +45,14 @@ export default function EarlyWarningSystem({
     let isMounted = true;
     setLoading(true);
     setError(null);
+    setData(null); // Clear previous month data immediately to prevent stale values
 
     async function fetchWarnings() {
       try {
-        const res = await fetch(`/api/clients/${clientId}/early-warnings?year=${selectedYear}`);
+        const res = await fetch(
+          `/api/clients/${clientId}/early-warnings?year=${selectedYear}&month=${encodeURIComponent(selectedMonth)}&fyType=${fyType}`,
+          { cache: "no-store" }
+        );
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.error || `HTTP ${res.status}: Failed to load early warnings`);
@@ -67,7 +77,7 @@ export default function EarlyWarningSystem({
     return () => {
       isMounted = false;
     };
-  }, [clientId, selectedYear]);
+  }, [clientId, selectedYear, selectedMonth, fyType]);
 
   const getAlertStyles = (type: string) => {
     switch (type) {
@@ -103,16 +113,19 @@ export default function EarlyWarningSystem({
   if (loading) {
     return (
       <div className="bg-[#13131A] rounded-3xl border border-white/5 p-6 md:p-8 shadow-2xl">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-white/5 animate-pulse" />
-          <div className="space-y-2">
-            <div className="h-5 w-48 bg-white/5 rounded-md animate-pulse" />
-            <div className="h-3 w-32 bg-white/5 rounded-md animate-pulse" />
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-white/5 animate-pulse" />
+            <div className="space-y-2">
+              <div className="h-5 w-48 bg-white/5 rounded-md animate-pulse" />
+              <div className="h-3 w-32 bg-white/5 rounded-md animate-pulse" />
+            </div>
           </div>
+          <div className="h-8 w-28 bg-white/5 rounded-xl animate-pulse" />
         </div>
         <div className="space-y-3">
-          <div className="h-20 bg-white/5 rounded-2xl animate-pulse" />
-          <div className="h-20 bg-white/5 rounded-2xl animate-pulse" />
+          <div className="h-24 bg-white/5 rounded-2xl animate-pulse" />
+          <div className="h-24 bg-white/5 rounded-2xl animate-pulse" />
         </div>
       </div>
     );
@@ -170,9 +183,12 @@ export default function EarlyWarningSystem({
               <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-400">
                 {data?.sector || "GENERAL"}
               </span>
+              <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> {data?.periodLabel}
+              </span>
             </div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
-              Data-Driven CFO Risk Diagnostics • {data?.periodLabel || `FY ${selectedYear}`}
+              Period-Aware CFO Risk Diagnostics • Window: {data?.calculationPeriod?.start} → {data?.calculationPeriod?.end}
             </p>
           </div>
         </div>
@@ -200,7 +216,7 @@ export default function EarlyWarningSystem({
           {summary.totalCount === 0 && (
             <div className="px-3.5 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-black text-emerald-400">All Metrics Healthy</span>
+              <span className="text-xs font-black text-emerald-400">All Metrics Healthy for {data?.periodLabel}</span>
             </div>
           )}
         </div>
@@ -214,10 +230,10 @@ export default function EarlyWarningSystem({
               <CheckCircle2 className="w-6 h-6 text-emerald-400" />
             </div>
             <h3 className="text-base font-bold text-white mb-1">
-              No Material Early Warnings Detected
+              No Material Early Warnings Detected for {data?.periodLabel}
             </h3>
             <p className="text-xs text-slate-400 max-w-md mb-4">
-              All calculated financial indicators (Liquidity Runway, DSO, Vendor Concentration, Tax Ledgers) for {data?.clientName} are within standard operating benchmarks for {data?.periodLabel}.
+              All calculated financial indicators (Liquidity Runway, DSO, Concentration, Tax Accounts) for {data?.clientName} are within standard operating benchmarks for the period {data?.calculationPeriod?.start} to {data?.calculationPeriod?.end}.
             </p>
             {dataSufficiency && dataSufficiency.status !== "SUFFICIENT" && (
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-[11px]">
@@ -225,14 +241,14 @@ export default function EarlyWarningSystem({
                 <span>
                   {dataSufficiency.totalVouchersInPeriod === 0 
                     ? `Based on ${dataSufficiency.totalLedgers} mapped ledger accounts.` 
-                    : `Evaluated across ${dataSufficiency.totalVouchersInPeriod} synced vouchers.`}
+                    : `Evaluated across ${dataSufficiency.totalVouchersInPeriod} synced vouchers in ${data?.periodLabel}.`}
                 </span>
               </div>
             )}
           </div>
         ) : (
           <div className="space-y-4">
-            <AnimatePresence>
+            <AnimatePresence mode="wait">
               {alerts.map((alert, index) => (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -256,9 +272,14 @@ export default function EarlyWarningSystem({
                       <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest opacity-80">
                         {getCategoryIcon(alert.category)} {alert.category.replace("_", " ")}
                       </span>
-                      <span className="text-[11px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                        View Math & Audit Trail <ArrowUpRight className="w-3.5 h-3.5" />
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                          {data?.periodLabel}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                          View Math & Audit Trail <ArrowUpRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
                     </div>
                     <h3 className="text-base font-black text-white mb-1.5 group-hover:text-cyan-300 transition-colors">
                       {alert.title}
@@ -305,9 +326,14 @@ export default function EarlyWarningSystem({
                     {getAlertIcon(selectedAlert.type)}
                   </div>
                   <div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                      Audit Drill-Down • {selectedAlert.category.replace("_", " ")}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Audit Drill-Down • {selectedAlert.category.replace("_", " ")}
+                      </span>
+                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
+                        {data?.periodLabel}
+                      </span>
+                    </div>
                     <h3 className="text-lg font-black text-white">{selectedAlert.title}</h3>
                   </div>
                 </div>
@@ -321,6 +347,28 @@ export default function EarlyWarningSystem({
 
               {/* Modal Body */}
               <div className="p-6 space-y-6">
+                {/* Period & Timeframe Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-black/30 border border-white/5 rounded-2xl p-4">
+                  <div>
+                    <span className="text-slate-400 flex items-center gap-1.5 mb-1 font-bold">
+                      <Calendar className="w-3.5 h-3.5 text-cyan-400" /> Selected Period Window
+                    </span>
+                    <span className="font-mono font-bold text-white text-xs">
+                      {selectedAlert.drilldown.periodAnalyzed}
+                    </span>
+                  </div>
+                  {selectedAlert.drilldown.comparisonPeriod && (
+                    <div>
+                      <span className="text-slate-400 flex items-center gap-1.5 mb-1 font-bold">
+                        <Clock className="w-3.5 h-3.5 text-amber-400" /> Comparison Prior Window
+                      </span>
+                      <span className="font-mono font-bold text-slate-300 text-xs">
+                        {selectedAlert.drilldown.comparisonPeriod}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Mathematical Calculation & Formula */}
                 <div className="bg-black/30 border border-white/5 rounded-2xl p-4">
                   <div className="flex items-center gap-2 mb-2 text-cyan-400">
@@ -366,7 +414,7 @@ export default function EarlyWarningSystem({
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-slate-400">
                       <Layers className="w-4 h-4" />
-                      <h4 className="text-xs font-black uppercase tracking-wider">Supporting Synced Ledgers</h4>
+                      <h4 className="text-xs font-black uppercase tracking-wider">Supporting Synced Ledgers (as of {data?.periodLabel})</h4>
                     </div>
                     <div className="border border-white/5 rounded-xl overflow-hidden">
                       <table className="w-full text-xs text-left">
@@ -374,7 +422,7 @@ export default function EarlyWarningSystem({
                           <tr>
                             <th className="p-2.5">Ledger Name</th>
                             <th className="p-2.5">Group</th>
-                            <th className="p-2.5 text-right">Balance / Volume</th>
+                            <th className="p-2.5 text-right">Balance as of Month-End</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5 font-medium text-slate-300">

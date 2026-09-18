@@ -14,6 +14,8 @@ export async function GET(
   const { id } = await params;
   const { searchParams } = new URL(req.url);
   const yearParam = searchParams.get("year");
+  const monthParam = searchParams.get("month") || "Apr";
+  const fyTypeParam = searchParams.get("fyType") || "APR_MAR";
   const year = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear();
 
   // 1. Authenticate user session
@@ -31,13 +33,22 @@ export async function GET(
     // 2. Authorize tenant/client access
     await authorizeClientAction(user.id, id, "READ_ONLY");
 
-    // 3. Compute live, data-driven early warnings
-    const warningsResult = await calculateEarlyWarnings(id, year);
+    // 3. Compute live, period-aware, data-driven early warnings
+    const warningsResult = await calculateEarlyWarnings(id, year, monthParam, fyTypeParam);
 
-    return NextResponse.json({
-      success: true,
-      data: warningsResult
-    });
+    return new NextResponse(
+      JSON.stringify({
+        success: true,
+        data: warningsResult
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+        }
+      }
+    );
   } catch (error: any) {
     console.error(`Early Warnings calculation error for client ${id}:`, error);
     return NextResponse.json(
