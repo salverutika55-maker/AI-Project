@@ -1365,6 +1365,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
         clientId={client.id}
         clientName={client.name} 
         selectedYear={selectedYear}
+        selectedMonth={selectedMonth}
+        fyType={fyType}
       />
 
       {/* Ledger Drill-Down Drawer */}
