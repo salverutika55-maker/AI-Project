@@ -6,6 +6,7 @@ import {
   CanonicalFinancialPeriod,
   formatDateIso 
 } from "@/lib/financial-periods";
+import { buildBalanceSheetTrace } from "@/lib/services/balance-sheet-trace";
 
 export interface CfoInsightCard {
   id: string;
@@ -271,60 +272,83 @@ export async function generateCfoMisReport(
     label: comparisonPeriodLabel
   };
 
-  // 2. Fetch Ledgers
-  const ledgers = await prisma.normalizedLedger.findMany({
-    where: { clientId, isActive: true },
-    select: {
-      id: true,
-      name: true,
-      groupName: true,
-      openingBalance: true,
-      closingBalance: true,
-      nature: true
-    }
-  });
+  // 2. Fetch Balance Sheet Trace from Trusted Balance Sheet Engine
+  const bsTraceCurrentFy = await buildBalanceSheetTrace(clientId, canonicalPeriod.fyStartYear);
+  const isPriorMonthInPrevFy = !isCumulative && canonicalPeriod.monthIndexInFy === 0;
+  const bsTracePrevFy = (isCumulative || isPriorMonthInPrevFy) 
+    ? await buildBalanceSheetTrace(clientId, canonicalPeriod.fyStartYear - 1).catch(() => null)
+    : null;
 
-  const cashAndBankLedgers: typeof ledgers = [];
-  const receivableLedgers: typeof ledgers = [];
-  const payableLedgers: typeof ledgers = [];
-  const dutiesAndTaxesLedgers: typeof ledgers = [];
-  const inventoryLedgers: typeof ledgers = [];
-  const salesLedgers: typeof ledgers = [];
-  const directExpenseLedgers: typeof ledgers = [];
-  const indirectExpenseLedgers: typeof ledgers = [];
+  const getBsBalancesForMonth = (monthName: string, isPriorFy: boolean = false) => {
+    const traceEngine = isPriorFy && bsTracePrevFy ? bsTracePrevFy : bsTraceCurrentFy;
+    let receivables = 0;
+    let cashAndBank = 0;
+    let payables = 0;
+    let inventory = 0;
+    let currentAssets = 0;
+    let currentLiabilities = 0;
 
-  for (const l of ledgers) {
-    const g = (l.groupName || "").toLowerCase();
-    const n = (l.name || "").toLowerCase();
+    const debtorLedgersList: Array<{ name: string; group: string; amount: number }> = [];
+    const cashLedgersList: Array<{ name: string; group: string; amount: number }> = [];
+    const payableLedgersList: Array<{ name: string; group: string; amount: number }> = [];
 
-    if (g.includes("bank") || g.includes("cash") || n.includes("bank") || n.includes("petty cash")) {
-      cashAndBankLedgers.push(l);
-    }
-    if (g.includes("debtor") || g.includes("receivable") || n.includes("debtor") || n.includes("receivable")) {
-      receivableLedgers.push(l);
-    }
-    if (g.includes("creditor") || g.includes("payable") || n.includes("creditor") || n.includes("payable")) {
-      payableLedgers.push(l);
-    }
-    if (g.includes("duty") || g.includes("tax") || g.includes("gst") || n.includes("gst") || n.includes("tax")) {
-      dutiesAndTaxesLedgers.push(l);
-    }
-    if (g.includes("stock") || g.includes("inventory") || n.includes("stock") || n.includes("inventory")) {
-      inventoryLedgers.push(l);
-    }
-    if (g.includes("sales") || g.includes("income") || g.includes("revenue") || n.includes("sales") || n.includes("revenue")) {
-      salesLedgers.push(l);
-    }
-    if (g.includes("direct expense") || g.includes("cogs") || g.includes("purchase") || g.includes("trading cost")) {
-      directExpenseLedgers.push(l);
-    }
-    if (g.includes("indirect") || g.includes("administrative") || g.includes("operating expense") || g.includes("salary") || g.includes("rent")) {
-      indirectExpenseLedgers.push(l);
-    }
-  }
+    traceEngine.ledgerTraces.forEach(l => {
+      const amt = l.monthTraces[monthName]?.closing || 0;
+      const sh = (l.subHeadName || "").toLowerCase();
+      const g = (l.groupName || "").toLowerCase();
+      const mg = l.mainGroup;
 
-  // 3. Fetch Vouchers for Active Period, Comparison Period, and Full Year
-  const [vouchersInActivePeriod, vouchersInComparisonPeriod, vouchersInFY] = await Promise.all([
+      if (mg === "Assets" && g.includes("current asset")) {
+        currentAssets += amt;
+      }
+      if (mg === "Liabilities" && g.includes("current liab")) {
+        currentLiabilities += amt;
+      }
+
+      if (sh.includes("debtor") || sh.includes("receivable") || g.includes("debtor") || g.includes("receivable")) {
+        receivables += amt;
+        if (amt !== 0) debtorLedgersList.push({ name: l.ledgerName, group: l.groupName, amount: amt });
+      }
+      if (sh.includes("cash") || sh.includes("bank") || g.includes("bank") || g.includes("cash")) {
+        cashAndBank += amt;
+        if (amt !== 0) cashLedgersList.push({ name: l.ledgerName, group: l.groupName, amount: amt });
+      }
+      if (sh.includes("creditor") || sh.includes("payable") || g.includes("creditor") || g.includes("payable")) {
+        payables += amt;
+        if (amt !== 0) payableLedgersList.push({ name: l.ledgerName, group: l.groupName, amount: amt });
+      }
+      if (sh.includes("stock") || sh.includes("inventory") || g.includes("stock") || g.includes("inventory")) {
+        inventory += amt;
+      }
+    });
+
+    const netWorkingCapital = (currentAssets > 0 || currentLiabilities > 0)
+      ? currentAssets - currentLiabilities
+      : receivables + inventory + cashAndBank - payables;
+
+    return {
+      receivables,
+      cashAndBank,
+      payables,
+      inventory,
+      currentAssets,
+      currentLiabilities,
+      netWorkingCapital,
+      debtorLedgersList,
+      cashLedgersList,
+      payableLedgersList
+    };
+  };
+
+  const activeBs = getBsBalancesForMonth(canonicalPeriod.monthName, false);
+  const comparisonBs = isCumulative
+    ? getBsBalancesForMonth(canonicalPeriod.monthName, true)
+    : (isPriorMonthInPrevFy
+        ? getBsBalancesForMonth(canonicalPeriod.previousMonth.monthName, true)
+        : getBsBalancesForMonth(canonicalPeriod.previousMonth.monthName, false));
+
+  // 3. Fetch Vouchers, PNL, and Ledgers for Active Period, Comparison Period, and Full Year
+  const [vouchersInActivePeriod, vouchersInComparisonPeriod, pnlCurrentFy, pnlPrevFy, allRawLedgers] = await Promise.all([
     // Active calculation period (Month or Cumulative YTD)
     prisma.normalizedVoucher.findMany({
       where: { clientId, date: { gte: activePeriodStartUtc, lt: activePeriodEndUtc } },
@@ -348,131 +372,95 @@ export async function generateCfoMisReport(
         }
       }
     }),
-    // Full FY up to selected month end
-    prisma.normalizedVoucher.findMany({
-      where: { clientId, date: { gte: fyStartUtc, lt: activePeriodEndUtc } },
-      include: {
-        lines: {
-          select: { ledgerId: true, amount: true, entryType: true }
-        }
-      }
+    // PNL values for Current FY
+    prisma.pNLValue.findMany({
+      where: { clientId, year: canonicalPeriod.fyStartYear }
+    }),
+    // PNL values for Prior FY
+    (isCumulative || isPriorMonthInPrevFy)
+      ? prisma.pNLValue.findMany({ where: { clientId, year: canonicalPeriod.fyStartYear - 1 } }).catch(() => [])
+      : Promise.resolve([]),
+    // All Ledgers for metadata
+    prisma.normalizedLedger.findMany({
+      where: { clientId },
+      select: { id: true, name: true, groupName: true, openingBalance: true }
     })
   ]);
 
-  // Compute exact running balances as of selectedMonthEnd and prior period end
-  // (POINT-IN-TIME BALANCES ARE NEVER SUMMED!)
-  const ledgerMovementsUpToPeriodEnd: Record<string, { debit: number; credit: number }> = {};
-  const ledgerMovementsUpToComparisonEnd: Record<string, { debit: number; credit: number }> = {};
+  // Decrypt and aggregate P&L values
+  const allMonthsList = getFinancialYearMonths(canonicalPeriod.fyStartYear, fyTypeParam, fyStartMonth);
 
-  vouchersInFY.forEach(v => {
-    const isBeforeComparisonEnd = v.date < comparisonEndUtc;
-    v.lines.forEach(l => {
-      if (!l.ledgerId) return;
-      const amt = Math.abs(l.amount || 0);
-      const isDebit = (l.entryType || "").toUpperCase() === "DEBIT";
-
-      if (!ledgerMovementsUpToPeriodEnd[l.ledgerId]) {
-        ledgerMovementsUpToPeriodEnd[l.ledgerId] = { debit: 0, credit: 0 };
-      }
-      if (isDebit) ledgerMovementsUpToPeriodEnd[l.ledgerId].debit += amt;
-      else ledgerMovementsUpToPeriodEnd[l.ledgerId].credit += amt;
-
-      if (isBeforeComparisonEnd) {
-        if (!ledgerMovementsUpToComparisonEnd[l.ledgerId]) {
-          ledgerMovementsUpToComparisonEnd[l.ledgerId] = { debit: 0, credit: 0 };
+  const getPnlRevenueForMonth = (monthName: string, isPriorFy: boolean = false): number => {
+    const list = isPriorFy ? pnlPrevFy : pnlCurrentFy;
+    let rev = 0;
+    list.forEach((p: any) => {
+      if (p.month?.toLowerCase() === monthName.toLowerCase()) {
+        const h = p.headName.toLowerCase();
+        if (h.includes("revenue") || h.includes("sales") || h.includes("income")) {
+          rev += decryptValue(p.amount);
         }
-        if (isDebit) ledgerMovementsUpToComparisonEnd[l.ledgerId].debit += amt;
-        else ledgerMovementsUpToComparisonEnd[l.ledgerId].credit += amt;
       }
     });
-  });
-
-  const getLedgerBalanceAsOf = (ledger: typeof ledgers[0], isComparisonPeriod: boolean = false): number => {
-    const mov = isComparisonPeriod 
-      ? ledgerMovementsUpToComparisonEnd[ledger.id] 
-      : ledgerMovementsUpToPeriodEnd[ledger.id];
-    const initial = ledger.openingBalance || 0;
-    if (!mov) {
-      return isComparisonPeriod ? initial : (ledger.closingBalance || initial);
-    }
-    const g = (ledger.groupName || "").toLowerCase();
-    const isAsset = g.includes("bank") || g.includes("cash") || g.includes("debtor") || g.includes("receivable") || g.includes("stock") || g.includes("asset");
-    if (isAsset) {
-      return initial + (mov.debit - mov.credit);
-    } else {
-      return initial + (mov.credit - mov.debit);
-    }
+    return rev;
   };
 
-  // 4. Fetch PNL Values
-  const pnlValues = await prisma.pNLValue.findMany({
-    where: { clientId, year: { in: [canonicalPeriod.fyStartYear, targetYear] } }
-  });
+  const getCumulativePnlRevenue = (upToMonthIndex: number, isPriorFy: boolean = false): number => {
+    let rev = 0;
+    for (let i = 0; i <= upToMonthIndex; i++) {
+      const m = allMonthsList[i]?.monthName;
+      if (m) rev += getPnlRevenueForMonth(m, isPriorFy);
+    }
+    return rev;
+  };
 
-  // Calculate FLOW METRICS for Active Period (sum of transactions)
-  let activePeriodSales = 0;
+  // Calculate Flow Metrics (Revenue, Purchases, Disbursements, Collections)
+  let activePeriodSales = isCumulative
+    ? getCumulativePnlRevenue(canonicalPeriod.monthIndexInFy, false)
+    : getPnlRevenueForMonth(canonicalPeriod.monthName, false);
+
+  let comparisonPeriodSales = isCumulative
+    ? getCumulativePnlRevenue(canonicalPeriod.monthIndexInFy, true)
+    : (isPriorMonthInPrevFy 
+        ? getPnlRevenueForMonth(canonicalPeriod.previousMonth.monthName, true) 
+        : getPnlRevenueForMonth(canonicalPeriod.previousMonth.monthName, false));
+
   let activePeriodPurchases = 0;
   let activePeriodPayments = 0;
   let activePeriodReceipts = 0;
 
   vouchersInActivePeriod.forEach(v => {
-    const t = v.type.toLowerCase();
-    if (t === "sales") activePeriodSales += v.totalAmount || 0;
-    else if (t === "purchase") activePeriodPurchases += v.totalAmount || 0;
+    const t = (v.type || "").toLowerCase();
+    if (activePeriodSales === 0 && t === "sales") activePeriodSales += v.totalAmount || 0;
+    if (t === "purchase") activePeriodPurchases += v.totalAmount || 0;
     else if (t === "payment") activePeriodPayments += v.totalAmount || 0;
     else if (t === "receipt") activePeriodReceipts += v.totalAmount || 0;
   });
 
-  // Flow metrics for Comparison Period
-  let comparisonPeriodSales = 0;
   let comparisonPeriodPurchases = 0;
   let comparisonPeriodPayments = 0;
 
   vouchersInComparisonPeriod.forEach(v => {
-    const t = v.type.toLowerCase();
-    if (t === "sales") comparisonPeriodSales += v.totalAmount || 0;
-    else if (t === "purchase") comparisonPeriodPurchases += v.totalAmount || 0;
+    const t = (v.type || "").toLowerCase();
+    if (comparisonPeriodSales === 0 && t === "sales") comparisonPeriodSales += v.totalAmount || 0;
+    if (t === "purchase") comparisonPeriodPurchases += v.totalAmount || 0;
     else if (t === "payment") comparisonPeriodPayments += v.totalAmount || 0;
   });
 
-  // Fallback to PNL Values if voucher sales are zero
-  if (activePeriodSales === 0) {
-    const allMonthsList = getFinancialYearMonths(canonicalPeriod.fyStartYear, fyTypeParam, fyStartMonth);
-    const targetMonthsSlice = isCumulative 
-      ? allMonthsList.slice(0, canonicalPeriod.monthIndexInFy + 1).map(m => m.monthName) 
-      : [selectedMonthName];
-    pnlValues.forEach((pv: any) => {
-      if (targetMonthsSlice.some((m: string) => m.toLowerCase() === pv.month?.toLowerCase())) {
-        const h = pv.headName.toLowerCase();
-        const amt = decryptValue(pv.amount);
-        if (h.includes("revenue") || h.includes("sales") || h.includes("income")) {
-          activePeriodSales += amt;
-        } else if (h.includes("cogs") || h.includes("purchase") || h.includes("direct expense")) {
-          activePeriodPurchases += amt;
-        }
-      }
-    });
-  }
+  // Balance Sheet Metrics from Verified Balance Sheet Engine
+  const totalCashAndBank = activeBs.cashAndBank;
+  const comparisonCashAndBank = comparisonBs.cashAndBank;
 
-  // POINT-IN-TIME CLOSING BALANCES as of Period End (NOT SUMMED)
-  const totalCashAndBank = cashAndBankLedgers.reduce((sum, l) => sum + Math.max(0, getLedgerBalanceAsOf(l)), 0);
-  const comparisonCashAndBank = cashAndBankLedgers.reduce((sum, l) => sum + Math.max(0, getLedgerBalanceAsOf(l, true)), 0);
+  const totalReceivables = activeBs.receivables;
+  const comparisonReceivables = comparisonBs.receivables;
 
-  const totalReceivables = receivableLedgers.reduce((sum, l) => sum + Math.max(0, getLedgerBalanceAsOf(l)), 0);
-  const comparisonReceivables = receivableLedgers.reduce((sum, l) => sum + Math.max(0, getLedgerBalanceAsOf(l, true)), 0);
+  const totalPayables = activeBs.payables;
+  const comparisonPayables = comparisonBs.payables;
 
-  const totalPayables = payableLedgers.reduce((sum, l) => sum + Math.max(0, getLedgerBalanceAsOf(l)), 0);
-  const comparisonPayables = payableLedgers.reduce((sum, l) => sum + Math.max(0, getLedgerBalanceAsOf(l, true)), 0);
+  const totalInventory = client.sector === "SERVICE" ? 0 : activeBs.inventory;
+  const comparisonInventory = client.sector === "SERVICE" ? 0 : comparisonBs.inventory;
 
-  const totalInventory = client.sector === "SERVICE" 
-    ? 0 
-    : inventoryLedgers.reduce((sum, l) => sum + Math.max(0, getLedgerBalanceAsOf(l)), 0);
-  const comparisonInventory = client.sector === "SERVICE"
-    ? 0
-    : inventoryLedgers.reduce((sum, l) => sum + Math.max(0, getLedgerBalanceAsOf(l, true)), 0);
-
-  const netWorkingCapital = totalReceivables + totalInventory - totalPayables;
-  const comparisonNetWorkingCapital = comparisonReceivables + comparisonInventory - comparisonPayables;
+  const netWorkingCapital = activeBs.netWorkingCapital;
+  const comparisonNetWorkingCapital = comparisonBs.netWorkingCapital;
 
   // Profitability
   const grossProfit = activePeriodSales - activePeriodPurchases;
@@ -483,7 +471,8 @@ export async function generateCfoMisReport(
   // Expense grouping for active period
   const expenseByLedger: Record<string, { name: string; group: string; amount: number }> = {};
   vouchersInActivePeriod.forEach(v => {
-    if (v.type.toLowerCase() === "payment" || v.type.toLowerCase() === "journal") {
+    const t = (v.type || "").toLowerCase();
+    if (t === "payment" || t === "journal") {
       v.lines.forEach(l => {
         if (l.ledger) {
           const g = (l.ledger.groupName || "").toLowerCase();
@@ -508,7 +497,8 @@ export async function generateCfoMisReport(
   let totalDebtorBillingInPeriod = 0;
 
   vouchersInActivePeriod.forEach(v => {
-    if (v.type.toLowerCase() === "sales" || v.type.toLowerCase() === "receipt") {
+    const t = (v.type || "").toLowerCase();
+    if (t === "sales" || t === "receipt") {
       for (const line of v.lines) {
         if (line.ledger && (line.ledger.groupName || "").toLowerCase().includes("debtor")) {
           const amount = Math.abs(line.amount || 0);
@@ -533,7 +523,8 @@ export async function generateCfoMisReport(
   let totalCreditorPurchasesInPeriod = 0;
 
   vouchersInActivePeriod.forEach(v => {
-    if (v.type.toLowerCase() === "purchase" || v.type.toLowerCase() === "payment") {
+    const t = (v.type || "").toLowerCase();
+    if (t === "purchase" || t === "payment") {
       for (const line of v.lines) {
         if (line.ledger && (line.ledger.groupName || "").toLowerCase().includes("creditor")) {
           const amount = Math.abs(line.amount || 0);
@@ -575,12 +566,12 @@ export async function generateCfoMisReport(
     ? Math.round((comparisonReceivables / priorAnnualizedSales) * 365)
     : (comparisonPeriodSales > 0 ? Math.round((comparisonReceivables / comparisonPeriodSales) * comparisonDays) : 0);
 
-  // 5. Scrutiny & Compliance Alerts
+  // 4. Scrutiny & Compliance Alerts
   const scrutinyAlerts = await prisma.scrutinyAlert.findMany({ where: { clientId } });
   const complianceAlerts = await prisma.complianceAlert.findMany({ where: { clientId } });
   const reconStates = await prisma.reconciliationState.findMany({ where: { clientId } });
 
-  // 6. Generate Material Movements ("What Changed?")
+  // 5. Generate Material Movements ("What Changed?")
   const materialMovements: MaterialMovement[] = [];
 
   const addMovement = (
@@ -621,14 +612,16 @@ export async function generateCfoMisReport(
     `Available liquid reserves stand at ${formatLakhs(totalCashAndBank)} at period end.`);
 
   addMovement("Trade Payables (AP)", totalPayables, comparisonPayables, true,
-    `Outstanding supplier payables stand at ${formatLakhs(totalPayables)}.`);
+    totalPayables > 0 
+      ? `Outstanding supplier payables stand at ${formatLakhs(totalPayables)}.`
+      : `No outstanding trade payables recorded in period closing.`);
 
   addMovement("Net Working Capital", netWorkingCapital, comparisonNetWorkingCapital, true,
     netWorkingCapital >= 0
       ? `Net working capital stands positive at ${formatLakhs(netWorkingCapital)}.`
       : `Net working capital is in a deficit of ${formatLakhs(Math.abs(netWorkingCapital))}.`);
 
-  // 7. Structured CFO Insight Cards (Observation -> Driver -> Impact -> Risk -> Action -> Question)
+  // 6. Structured CFO Insight Cards (Observation -> Driver -> Impact -> Risk -> Action -> Question)
   const structuredInsights: CfoInsightCard[] = [];
 
   const revGrowthPct = comparisonPeriodSales > 0 ? ((activePeriodSales - comparisonPeriodSales) / comparisonPeriodSales) * 100 : 0;
@@ -636,7 +629,7 @@ export async function generateCfoMisReport(
 
   // Insight 1: Receivables vs Revenue Drag
   if (totalReceivables > 0 && (arGrowthPct > revGrowthPct + 10 || dsoDays > 60)) {
-    const topDebtors = receivableLedgers.slice(0, 3).map(l => ({ name: l.name, group: l.groupName, amount: getLedgerBalanceAsOf(l) }));
+    const topDebtors = activeBs.debtorLedgersList.slice(0, 5);
     structuredInsights.push({
       id: "cfo-insight-receivables-drag",
       category: "WORKING_CAPITAL",
@@ -654,7 +647,7 @@ export async function generateCfoMisReport(
       risk: "Delayed collections increase bad debt exposure and force reliance on temporary supplier financing or credit lines.",
       action: isCumulative
         ? "Conduct a formal quarterly aging audit across all debtor balances >60 days and re-evaluate credit limits on slow-paying accounts."
-        : "Review the top 3 overdue debtor ledgers, institute weekly milestone follow-ups, and require milestone advances on future engagements.",
+        : "Review the top debtor ledgers, institute weekly milestone follow-ups, and require milestone advances on future engagements.",
       cfoQuestion: isCumulative
         ? `Why has our collection cycle averaged ${dsoDays} days across ${periodLabel}, and which aged balances require executive escalation?`
         : `What explains the collection cycle stretching to ${dsoDays} days in ${periodLabel}, and which customer invoices are past 30 days?`,
@@ -676,7 +669,7 @@ export async function generateCfoMisReport(
 
   // Insight 2: Cash Runway & Operating Liquidity
   if (cashRunwayDays < 45 || totalCashAndBank < totalPayables) {
-    const topCashAndBank = cashAndBankLedgers.map(l => ({ name: l.name, group: l.groupName, amount: getLedgerBalanceAsOf(l) }));
+    const topCashAndBank = activeBs.cashLedgersList;
     structuredInsights.push({
       id: "cfo-insight-liquidity-runway",
       category: "LIQUIDITY",
@@ -703,9 +696,13 @@ export async function generateCfoMisReport(
     });
   }
 
+
   // Insight 3: Profitability & Margins
   if (activePeriodSales > 0) {
-    const topDirectCosts = directExpenseLedgers.slice(0, 3).map(l => ({ name: l.name, group: l.groupName, amount: getLedgerBalanceAsOf(l) }));
+    const topDirectCosts = allRawLedgers
+      .filter(l => (l.groupName || "").toLowerCase().includes("direct") || (l.groupName || "").toLowerCase().includes("purchase") || (l.groupName || "").toLowerCase().includes("expense"))
+      .slice(0, 3)
+      .map(l => ({ name: l.name, group: l.groupName || "Direct Expenses", amount: typeof l.openingBalance === "number" ? l.openingBalance : decryptValue(String(l.openingBalance || 0)) }));
     if (grossMarginPct < 30 || (comparisonGrossMarginPct > 0 && grossMarginPct < comparisonGrossMarginPct - 5)) {
       structuredInsights.push({
         id: "cfo-insight-margin-compression",
@@ -788,7 +785,10 @@ export async function generateCfoMisReport(
   // Insight 5: Accounting & Scrutiny
   const highScrutinyAlerts = scrutinyAlerts.filter(a => a.severity === "HIGH");
   if (highScrutinyAlerts.length > 0) {
-    const dutiesAndTaxesSample = dutiesAndTaxesLedgers.slice(0, 5).map(l => ({ name: l.name, group: l.groupName, amount: getLedgerBalanceAsOf(l) }));
+    const dutiesAndTaxesSample = allRawLedgers
+      .filter(l => (l.groupName || "").toLowerCase().includes("tax") || (l.groupName || "").toLowerCase().includes("duty") || (l.groupName || "").toLowerCase().includes("duties"))
+      .slice(0, 5)
+      .map(l => ({ name: l.name, group: l.groupName || "Duties & Taxes", amount: typeof l.openingBalance === "number" ? l.openingBalance : decryptValue(String(l.openingBalance || 0)) }));
     structuredInsights.push({
       id: "cfo-insight-accounting-controls",
       category: "CONTROL",
@@ -1084,7 +1084,7 @@ export async function generateCfoMisReport(
     },
     sourceMetadata: {
       totalVouchersInPeriod: vouchersInActivePeriod.length,
-      totalLedgersAnalyzed: ledgers.length,
+      totalLedgersAnalyzed: allRawLedgers.length,
       periodDays,
       comparisonDays,
       monthsCount: isCumulative ? monthsInCumulative : 1
