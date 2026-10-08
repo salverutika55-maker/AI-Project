@@ -218,6 +218,7 @@ export interface GSTR3BReconSummary {
   isOutwardBalanced: boolean;
   isItcBalanced: boolean;
   riskSummary: string;
+  gstr3bExists?: boolean;
 }
 
 export interface GSTComplianceFinding {

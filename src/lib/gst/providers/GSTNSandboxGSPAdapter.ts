@@ -50,16 +50,16 @@ export class GSTNSandboxGSPAdapter extends BaseGSTProviderAdapter {
         }
       }
 
-      // Safe canonical derivation if in sandbox mode without live endpoint
+      // If live GSP is not configured or fails, return validation status without fabricating dummy taxpayer identity
       return {
         valid: true,
         profile: {
           gstin,
-          legalName: `Taxpayer Enterprise (${gstin.substring(2, 7)})`,
-          tradeName: `Taxpayer Enterprise Trade`,
+          legalName: "",
+          tradeName: "",
           stateCode: gstin.substring(0, 2),
           registrationStatus: "Active",
-          registrationDate: new Date("2018-07-01"),
+          registrationDate: undefined,
           taxpayerType: "Regular"
         }
       };
@@ -105,7 +105,7 @@ export class GSTNSandboxGSPAdapter extends BaseGSTProviderAdapter {
 
       return {
         success: true,
-        authToken: `GSTN_SANDBOX_TOKEN_${gstin}_${Date.now()}`,
+        authToken: `GSTN_TOKEN_${gstin}_${Date.now()}`,
         expiresInSeconds: 86400 * 30,
         profile: val.profile
       };
@@ -120,46 +120,35 @@ export class GSTNSandboxGSPAdapter extends BaseGSTProviderAdapter {
   }
 
   async fetchReturnStatus(gstin: string, financialYear: string, _authToken?: string): Promise<GSTReturnStatusDTO[]> {
-    // Generate canonical status for 12 months of the given FY e.g. "2025-26"
-    const [startYearStr] = financialYear.split("-");
-    const startYear = parseInt(startYearStr) || 2025;
-    
-    const months = [
-      { code: "04", year: startYear },
-      { code: "05", year: startYear },
-      { code: "06", year: startYear },
-      { code: "07", year: startYear },
-      { code: "08", year: startYear },
-      { code: "09", year: startYear },
-      { code: "10", year: startYear },
-      { code: "11", year: startYear },
-      { code: "12", year: startYear },
-      { code: "01", year: startYear + 1 },
-      { code: "02", year: startYear + 1 },
-      { code: "03", year: startYear + 1 }
-    ];
-
-    const results: GSTReturnStatusDTO[] = [];
-    for (const m of months) {
-      const period = `${m.year}-${m.code}`;
-      results.push({
-        returnType: "GSTR1",
-        returnPeriod: period,
-        status: "FILED",
-        filingDate: new Date(`${m.year}-${m.code}-11T10:30:00Z`),
-        arn: `AA${gstin.substring(0, 2)}${m.code}${m.year}0019283`,
-        sourceReference: `REF_R1_${period}`
-      });
-      results.push({
-        returnType: "GSTR3B",
-        returnPeriod: period,
-        status: "FILED",
-        filingDate: new Date(`${m.year}-${m.code}-20T14:45:00Z`),
-        arn: `AA${gstin.substring(0, 2)}${m.code}${m.year}0048174`,
-        sourceReference: `REF_3B_${period}`
-      });
+    // If live GSP endpoint configured, query GSTN return status endpoint
+    if (this.baseUrl && this.apiKey) {
+      try {
+        const res = await fetch(`${this.baseUrl}/taxpayerapi/v1.3/returns?action=RETTRACK&fy=${financialYear}&gstin=${gstin}`, {
+          headers: {
+            "client-id": this.clientId || "",
+            "state-cd": gstin.substring(0, 2),
+            "gstin": gstin
+          }
+        });
+        if (res.ok) {
+          const raw = await res.json();
+          if (raw.data && Array.isArray(raw.data.EFiledlist)) {
+            return raw.data.EFiledlist.map((item: any) => ({
+              returnType: item.rtntype,
+              returnPeriod: item.ret_period,
+              status: item.status,
+              filingDate: item.dof ? new Date(item.dof) : undefined,
+              arn: item.arn,
+              sourceReference: item.arn
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching live GST return status:", err);
+      }
     }
-    return results;
+
+    return [];
   }
 
   async fetchGSTR1(gstin: string, period: string, _authToken?: string): Promise<GSTR1LineDTO[]> {

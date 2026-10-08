@@ -29,6 +29,7 @@ export class GSTReconciliationEngine {
       missingInGstCount: number;
       missingInBooksCount: number;
       matchRatePct: number;
+      gstr1RecordCount: number;
     };
     items: GSTSalesReconItem[];
   }> {
@@ -285,7 +286,8 @@ export class GSTReconciliationEngine {
         mismatchedCount,
         missingInGstCount,
         missingInBooksCount,
-        matchRatePct
+        matchRatePct,
+        gstr1RecordCount: gstr1Records.length
       },
       items
     };
@@ -307,6 +309,7 @@ export class GSTReconciliationEngine {
       unmatchedBooksCount: number;
       unmatched2bCount: number;
       matchRatePct: number;
+      gstr2bRecordCount: number;
     };
     items: GSTPurchaseITCReconItem[];
   }> {
@@ -556,7 +559,8 @@ export class GSTReconciliationEngine {
         mismatchedCount,
         unmatchedBooksCount,
         unmatched2bCount,
-        matchRatePct
+        matchRatePct,
+        gstr2bRecordCount: gstr2bRecords.length
       },
       items
     };
@@ -602,7 +606,9 @@ export class GSTReconciliationEngine {
     const isItcBalanced = Math.abs(itcVariance) < 100;
 
     let riskSummary = "GSTR-3B reconciles cleanly with Books and GSTR-1/2B.";
-    if (!isOutwardBalanced && !isItcBalanced) {
+    if (!gstr3b && salesRecon.summary.gstr1RecordCount === 0 && itcRecon.summary.gstr2bRecordCount === 0) {
+      riskSummary = `No GST return filings have been synchronized yet for ${period}.`;
+    } else if (!isOutwardBalanced && !isItcBalanced) {
       riskSummary = "Material variances detected in both Outward Taxable Turnover and Input Tax Credit claimed in GSTR-3B.";
     } else if (!isOutwardBalanced) {
       riskSummary = `Outward turnover in GSTR-3B differs from Books by ₹${Math.abs(outwardTaxableVariance).toLocaleString("en-IN")}.`;
@@ -629,7 +635,8 @@ export class GSTReconciliationEngine {
       itcVariance,
       isOutwardBalanced,
       isItcBalanced,
-      riskSummary
+      riskSummary,
+      gstr3bExists: !!gstr3b
     };
   }
 }
