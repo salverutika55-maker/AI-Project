@@ -33,13 +33,17 @@ interface GSTConnectDashboardProps {
   clientName: string;
   fiscalYearStartMonth?: number;
   initialYear?: number;
+  selectedMonth?: string;
+  fyType?: "APR_MAR" | "JAN_DEC";
 }
 
 export function GSTConnectDashboard({
   clientId,
   clientName,
   fiscalYearStartMonth = 4,
-  initialYear = 2025
+  initialYear = 2025,
+  selectedMonth = "Mar",
+  fyType = "APR_MAR"
 }: GSTConnectDashboardProps) {
   // Connection State
   const [connection, setConnection] = useState<any>(null);
@@ -48,9 +52,19 @@ export function GSTConnectDashboard({
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
-  // Period State
+  // Period State - sync with parent dashboard
   const [selectedYear, setSelectedYear] = useState<number>(initialYear);
-  const [selectedMonthKey, setSelectedMonthKey] = useState<string>("Mar");
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(selectedMonth);
+
+  useEffect(() => {
+    setSelectedYear(initialYear);
+  }, [initialYear]);
+
+  useEffect(() => {
+    if (selectedMonth) {
+      setSelectedMonthKey(selectedMonth);
+    }
+  }, [selectedMonth]);
   
   // Active Sub-Tab
   const [subTab, setSubTab] = useState<"overview" | "gstr1" | "gstr2b" | "gstr3b" | "compliance" | "insights">("overview");
@@ -69,7 +83,7 @@ export function GSTConnectDashboard({
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
 
   // Generate Canonical Months for selected FY
-  const fyMonths = getFinancialYearMonths(selectedYear, "APR_MAR", fiscalYearStartMonth);
+  const fyMonths = getFinancialYearMonths(selectedYear, fyType, fiscalYearStartMonth);
   const currentSelectedMonth = fyMonths.find(m => m.monthName.toLowerCase() === selectedMonthKey.toLowerCase()) || fyMonths[fyMonths.length - 1];
   const activePeriodStr = currentSelectedMonth.periodKey; // e.g. "2026-03"
 
@@ -81,15 +95,26 @@ export function GSTConnectDashboard({
       if (res.ok) {
         const data = await res.json();
         setConnection(data);
+      } else {
+        setConnection({ isConnected: false });
       }
     } catch (err) {
       console.error("Failed to fetch GST connection:", err);
+      setConnection({ isConnected: false });
     } finally {
       setLoadingConn(false);
     }
   };
 
   useEffect(() => {
+    // Immediate state reset when switching clients to prevent stale cross-client data
+    setConnection(null);
+    setReconData(null);
+    setComplianceData(null);
+    setConnectGstinInput("");
+    setConnectError(null);
+    setSyncSuccessMsg(null);
+    setSyncErrorMsg(null);
     fetchConnection();
   }, [clientId]);
 
@@ -453,12 +478,21 @@ export function GSTConnectDashboard({
                 <div className="bg-[#13131A] p-5 rounded-2xl border border-white/5 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-400">GSTR-1 Outward Status</span>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> FILED
-                    </span>
+                    {(reconData?.salesRecon?.summary?.gstr1RecordCount ?? 0) > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> FILED
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 text-xs font-bold flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> NOT SYNCED
+                      </span>
+                    )}
                   </div>
                   <div className="text-xl font-black text-white">
-                    {formatCurrency(reconData?.salesRecon?.summary?.totalGstTaxable || 0)}
+                    {(reconData?.salesRecon?.summary?.gstr1RecordCount ?? 0) > 0 
+                      ? formatCurrency(reconData?.salesRecon?.summary?.totalGstTaxable || 0)
+                      : <span className="text-sm font-semibold text-slate-500">No data available</span>
+                    }
                   </div>
                   <p className="text-xs text-slate-500">Reported B2B & B2C Taxable Turnover</p>
                 </div>
@@ -466,12 +500,21 @@ export function GSTConnectDashboard({
                 <div className="bg-[#13131A] p-5 rounded-2xl border border-white/5 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-400">GSTR-2B ITC Status</span>
-                    <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 text-xs font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> AVAILABLE
-                    </span>
+                    {(reconData?.itcRecon?.summary?.gstr2bRecordCount ?? 0) > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 text-xs font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> AVAILABLE
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 text-xs font-bold flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> NOT SYNCED
+                      </span>
+                    )}
                   </div>
                   <div className="text-xl font-black text-white">
-                    {formatCurrency(reconData?.itcRecon?.summary?.totalGst2bITC || 0)}
+                    {(reconData?.itcRecon?.summary?.gstr2bRecordCount ?? 0) > 0
+                      ? formatCurrency(reconData?.itcRecon?.summary?.totalGst2bITC || 0)
+                      : <span className="text-sm font-semibold text-slate-500">No data available</span>
+                    }
                   </div>
                   <p className="text-xs text-slate-500">Auto-Drafted Eligible Input Tax Credit</p>
                 </div>
@@ -479,12 +522,21 @@ export function GSTConnectDashboard({
                 <div className="bg-[#13131A] p-5 rounded-2xl border border-white/5 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-400">GSTR-3B Monthly Return</span>
-                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 text-xs font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> {reconData?.gstr3bRecon?.filingStatus || "FILED"}
-                    </span>
+                    {reconData?.gstr3bRecon?.gstr3bExists ? (
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 text-xs font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> {reconData?.gstr3bRecon?.filingStatus || "FILED"}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 text-xs font-bold flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> NOT SYNCED
+                      </span>
+                    )}
                   </div>
                   <div className="text-xl font-black text-white">
-                    {formatCurrency(reconData?.gstr3bRecon?.gstr3bOutwardTaxable || reconData?.salesRecon?.summary?.totalGstTaxable || 0)}
+                    {reconData?.gstr3bRecon?.gstr3bExists
+                      ? formatCurrency(reconData?.gstr3bRecon?.gstr3bOutwardTaxable || 0)
+                      : <span className="text-sm font-semibold text-slate-500">No data available</span>
+                    }
                   </div>
                   <p className="text-xs text-slate-500">Tax Discharged in Return</p>
                 </div>

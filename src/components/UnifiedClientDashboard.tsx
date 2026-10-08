@@ -1362,6 +1362,8 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                 clientName={client.name} 
                 fiscalYearStartMonth={client.fiscalYearStartMonth}
                 initialYear={selectedYear}
+                selectedMonth={selectedMonth}
+                fyType={fyType}
               />
             </ErrorBoundary>
           )}
