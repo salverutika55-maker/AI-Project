@@ -35,7 +35,8 @@ import LedgerDrilldownDrawer from "./LedgerDrilldownDrawer";
 import ProvisionDashboard from "./ProvisionDashboard";
 import ChartExplorer from "./ChartExplorer";
 import FundFlowDashboard from "./FundFlowDashboard";
-import { Waves } from "lucide-react";
+import { GSTConnectDashboard } from "./GSTConnectDashboard";
+import { Waves, Receipt } from "lucide-react";
 
 interface UnifiedDashboardProps {
   client: any;
@@ -48,7 +49,7 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
   const isAdmin = ['SUPER_ADMIN', 'ORG_ADMIN', 'FINANCE_MANAGER'].includes(userRole);
 
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"executive" | "performance" | "balanceSheet" | "analytics" | "compliance" | "risk" | "advisory" | "diagnostics" | "insights" | "chartExplorer" | "provision" | "fundFlow">("executive");
+  const [activeTab, setActiveTab] = useState<"executive" | "performance" | "balanceSheet" | "analytics" | "compliance" | "risk" | "advisory" | "diagnostics" | "insights" | "chartExplorer" | "provision" | "fundFlow" | "gstConnect">("executive");
   const [fyType, setFyType] = useState<"APR_MAR" | "JAN_DEC">("APR_MAR");
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedMonth, setSelectedMonth] = useState("May");
@@ -807,6 +808,9 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
           <button onClick={() => setActiveTab("fundFlow")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "fundFlow" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
             <Waves className="w-4 h-4" /> Fund Flow
           </button>
+          <button onClick={() => setActiveTab("gstConnect")} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black whitespace-nowrap transition-all ${activeTab === "gstConnect" ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <Receipt className="w-4 h-4" /> GST Connect
+          </button>
         </div>
 
         {/* 3. TAB CONTENT */}
@@ -1347,6 +1351,17 @@ export default function UnifiedClientDashboard({ client, allClients, sections, u
                 displayCurrency={displayCurrency}
                 selectedMonth={selectedMonth}
                 fyType={fyType}
+              />
+            </ErrorBoundary>
+          )}
+
+          {activeTab === "gstConnect" && (
+            <ErrorBoundary title="GST Connect Module Error">
+              <GSTConnectDashboard 
+                clientId={client.id} 
+                clientName={client.name} 
+                fiscalYearStartMonth={client.fiscalYearStartMonth}
+                initialYear={selectedYear}
               />
             </ErrorBoundary>
           )}

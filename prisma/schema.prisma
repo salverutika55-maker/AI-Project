@@ -138,6 +138,7 @@ model Client {
   bsValues             BSValue[]
   accessLogs           ClientAccessLog[]
   provisions           Provision[]
+  gstConnection        GSTConnection?
   createdAt            DateTime          @default(now())
 
   @@index([clientCode])
@@ -636,4 +637,218 @@ model Provision {
   reversedBy           User?             @relation("ReversedProvisions", fields: [reversedById], references: [id])
   reversalDate         DateTime?
   reversalReason       String?           @db.Text
+}
+
+// ==========================================
+// GST CONNECT INTEGRATION MODELS (ADDITIVE)
+// ==========================================
+
+model GSTConnection {
+  id                   String            @id @default(cuid())
+  organizationId       String
+  clientId             String            @unique
+  client               Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  gstin                String
+  provider             String            @default("GSTN_GSP") // GSP provider identifier e.g. "GSTN_SANDBOX", "CLEAR_TAX", "MASTERS_INDIA"
+  status               String            @default("CONNECTED") // "CONNECTED", "DISCONNECTED", "ERROR", "PENDING_AUTH"
+  legalName            String?
+  tradeName            String?
+  stateCode            String?
+  registrationStatus   String?           @default("Active") // "Active", "Suspended", "Cancelled"
+  registrationDate     DateTime?
+  taxpayerType         String?           @default("Regular") // "Regular", "Composition", etc.
+  encryptedAuthToken   String?           @db.Text
+  encryptedTokenExpiry DateTime?
+  lastSuccessfulSync   DateTime?
+  lastSyncAttempt      DateTime?
+  lastSyncStatus       String?
+  lastSyncError        String?           @db.Text
+  metadata             Json?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  syncRuns             GSTSyncRun[]
+  gstr1Records         GSTR1Record[]
+  gstr2bRecords        GSTR2BRecord[]
+  gstr3bRecords        GSTR3BRecord[]
+  returnStatuses       GSTReturnStatus[]
+  auditLogs            GSTAuditLog[]
+
+  @@index([organizationId, gstin])
+  @@index([clientId, status])
+}
+
+model GSTSyncRun {
+  id                String         @id @default(cuid())
+  organizationId    String
+  clientId          String
+  gstConnectionId   String
+  gstConnection     GSTConnection  @relation(fields: [gstConnectionId], references: [id], onDelete: Cascade)
+  returnPeriod      String         // e.g. "2026-03"
+  periodStart       DateTime
+  periodEnd         DateTime
+  dataType          String         // "GSTR1", "GSTR2B", "GSTR3B", "RETURN_STATUS", "PROFILE", "ALL"
+  status            String         // "RUNNING", "COMPLETED", "FAILED", "PARTIALLY_SYNCED"
+  startedAt         DateTime       @default(now())
+  completedAt       DateTime?
+  recordsFetched    Int            @default(0)
+  recordsCreated    Int            @default(0)
+  recordsUpdated    Int            @default(0)
+  recordsFailed     Int            @default(0)
+  errorSummary      String?        @db.Text
+  metadata          Json?
+
+  @@index([clientId, returnPeriod, dataType])
+  @@index([gstConnectionId, startedAt])
+}
+
+model GSTR1Record {
+  id                String         @id @default(cuid())
+  organizationId    String
+  clientId          String
+  gstConnectionId   String
+  gstConnection     GSTConnection  @relation(fields: [gstConnectionId], references: [id], onDelete: Cascade)
+  gstin             String
+  returnPeriod      String         // e.g. "2026-03"
+  documentNumber    String         // Invoice Number
+  documentDate      DateTime       // Invoice Date
+  documentType      String         @default("INV") // "INV", "CRN", "DBN", "EXP", "AT"
+  customerGSTIN     String?
+  customerName      String?
+  pos               String?        // Place of supply (e.g. "27-Maharashtra")
+  reverseCharge     Boolean        @default(false)
+  taxableValue      Float          @default(0.0)
+  igst              Float          @default(0.0)
+  cgst              Float          @default(0.0)
+  sgst              Float          @default(0.0)
+  cess              Float          @default(0.0)
+  totalValue        Float          @default(0.0)
+  sourceReference   String?        // GSP/GSTN line or doc reference ID
+  sourceProvider    String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([clientId, gstin, returnPeriod, documentNumber, documentType])
+  @@index([clientId, returnPeriod])
+  @@index([customerGSTIN])
+  @@index([documentNumber])
+}
+
+model GSTR2BRecord {
+  id                String         @id @default(cuid())
+  organizationId    String
+  clientId          String
+  gstConnectionId   String
+  gstConnection     GSTConnection  @relation(fields: [gstConnectionId], references: [id], onDelete: Cascade)
+  gstin             String         // Recipient GSTIN
+  returnPeriod      String         // e.g. "2026-03"
+  supplierGSTIN     String
+  supplierName      String?
+  invoiceNumber     String
+  invoiceDate       DateTime
+  invoiceType       String         @default("INV") // "INV", "CRN", "DBN"
+  pos               String?
+  reverseCharge     Boolean        @default(false)
+  itcAvailable      Boolean        @default(true)
+  itcReason         String?        // "ELIGIBLE", "INELIGIBLE_RULE_38", "INELIGIBLE_SECTION_17_5", etc.
+  taxableValue      Float          @default(0.0)
+  igst              Float          @default(0.0)
+  cgst              Float          @default(0.0)
+  sgst              Float          @default(0.0)
+  cess              Float          @default(0.0)
+  totalValue        Float          @default(0.0)
+  gstr1FilingDate   DateTime?
+  sourceReference   String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([clientId, gstin, returnPeriod, supplierGSTIN, invoiceNumber, invoiceType])
+  @@index([clientId, returnPeriod])
+  @@index([supplierGSTIN])
+  @@index([invoiceNumber])
+}
+
+model GSTR3BRecord {
+  id                     String         @id @default(cuid())
+  organizationId         String
+  clientId               String
+  gstConnectionId        String
+  gstConnection          GSTConnection  @relation(fields: [gstConnectionId], references: [id], onDelete: Cascade)
+  gstin                  String
+  returnPeriod           String         // e.g. "2026-03"
+  
+  // 3.1 Outward supplies and inward supplies liable to reverse charge
+  outwardTaxableSupplies Float          @default(0.0)
+  outwardIgst            Float          @default(0.0)
+  outwardCgst            Float          @default(0.0)
+  outwardSgst            Float          @default(0.0)
+  outwardCess            Float          @default(0.0)
+  
+  outwardInterStateUnreg Float          @default(0.0)
+  outwardZeroRated       Float          @default(0.0)
+  outwardNilExempt       Float          @default(0.0)
+  inwardReverseCharge    Float          @default(0.0)
+  
+  // 4. Eligible ITC
+  itcIgst                Float          @default(0.0)
+  itcCgst                Float          @default(0.0)
+  itcSgst                Float          @default(0.0)
+  itcCess                Float          @default(0.0)
+  
+  // 5. Values of exempt, nil-rated and non-GST inward supplies
+  inwardExemptNilNonGst  Float          @default(0.0)
+  
+  // 6. Payment of Tax
+  taxPaidIgst            Float          @default(0.0)
+  taxPaidCgst            Float          @default(0.0)
+  taxPaidSgst            Float          @default(0.0)
+  taxPaidCess            Float          @default(0.0)
+  interestPaid           Float          @default(0.0)
+  lateFeePaid            Float          @default(0.0)
+  
+  filingDate             DateTime?
+  arn                    String?
+  sourceReference        String?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  @@unique([clientId, gstin, returnPeriod])
+  @@index([clientId, returnPeriod])
+}
+
+model GSTReturnStatus {
+  id                String         @id @default(cuid())
+  organizationId    String
+  clientId          String
+  gstConnectionId   String
+  gstConnection     GSTConnection  @relation(fields: [gstConnectionId], references: [id], onDelete: Cascade)
+  gstin             String
+  returnType        String         // "GSTR1", "GSTR2B", "GSTR3B", "GSTR9", "GSTR9C"
+  returnPeriod      String         // e.g. "2026-03"
+  status            String         // "FILED", "NOT_FILED", "PENDING", "SUBMITTED"
+  filingDate        DateTime?
+  arn               String?
+  sourceReference   String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([clientId, gstin, returnType, returnPeriod])
+  @@index([clientId, returnPeriod])
+}
+
+model GSTAuditLog {
+  id                String         @id @default(cuid())
+  organizationId    String
+  clientId          String
+  gstConnectionId   String?
+  gstConnection     GSTConnection? @relation(fields: [gstConnectionId], references: [id], onDelete: SetNull)
+  action            String         // "CONNECT_INITIATED", "CONNECTED", "DISCONNECTED", "SYNC_STARTED", "SYNC_COMPLETED", "SYNC_FAILED", "RECON_RUN"
+  performedByUserId String?
+  details           String?        @db.Text
+  metadata          Json?
+  ipAddress         String?
+  createdAt         DateTime       @default(now())
+
+  @@index([clientId, action])
+  @@index([createdAt])
 }
