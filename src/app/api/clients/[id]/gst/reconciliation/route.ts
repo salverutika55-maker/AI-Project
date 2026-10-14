@@ -45,6 +45,7 @@ export async function GET(
     });
   } catch (err: any) {
     console.error("Error executing GST reconciliation:", err);
-    return NextResponse.json({ error: err?.message || "Failed to execute GST reconciliation." }, { status: 500 });
+    const isAuthError = err?.message?.includes("Access Denied");
+    return NextResponse.json({ error: err?.message || "Failed to execute GST reconciliation." }, { status: isAuthError ? 403 : 500 });
   }
 }

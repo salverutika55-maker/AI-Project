@@ -24,7 +24,8 @@ export async function GET(
     const history = await GSTSyncService.getSyncHistory(id, 10);
     return NextResponse.json({ syncHistory: history });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "Failed to fetch sync history" }, { status: 500 });
+    const isAuthError = err?.message?.includes("Access Denied");
+    return NextResponse.json({ error: err?.message || "Failed to fetch sync history" }, { status: isAuthError ? 403 : 500 });
   }
 }
 
@@ -62,6 +63,7 @@ export async function POST(
     return NextResponse.json(result);
   } catch (err: any) {
     console.error("Error running GST sync:", err);
-    return NextResponse.json({ error: err?.message || "GST synchronization failed" }, { status: 400 });
+    const isAuthError = err?.message?.includes("Access Denied");
+    return NextResponse.json({ error: err?.message || "GST synchronization failed" }, { status: isAuthError ? 403 : 400 });
   }
 }

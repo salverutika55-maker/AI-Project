@@ -25,7 +25,8 @@ export async function GET(
     return NextResponse.json(status);
   } catch (err: any) {
     console.error("Error fetching GST connection status:", err);
-    return NextResponse.json({ error: err?.message || "Failed to fetch GST connection" }, { status: 500 });
+    const isAuthError = err?.message?.includes("Access Denied");
+    return NextResponse.json({ error: err?.message || "Failed to fetch GST connection" }, { status: isAuthError ? 403 : 500 });
   }
 }
 
@@ -64,7 +65,8 @@ export async function POST(
     return NextResponse.json(result);
   } catch (err: any) {
     console.error("Error connecting GSTIN:", err);
-    return NextResponse.json({ error: err?.message || "Failed to connect GSTIN" }, { status: 400 });
+    const isAuthError = err?.message?.includes("Access Denied");
+    return NextResponse.json({ error: err?.message || "Failed to connect GSTIN" }, { status: isAuthError ? 403 : 400 });
   }
 }
 
@@ -90,6 +92,7 @@ export async function DELETE(
     return NextResponse.json(result);
   } catch (err: any) {
     console.error("Error disconnecting GSTIN:", err);
-    return NextResponse.json({ error: err?.message || "Failed to disconnect GSTIN" }, { status: 500 });
+    const isAuthError = err?.message?.includes("Access Denied");
+    return NextResponse.json({ error: err?.message || "Failed to disconnect GSTIN" }, { status: isAuthError ? 403 : 500 });
   }
 }

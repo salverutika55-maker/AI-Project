@@ -41,6 +41,7 @@ export async function GET(
     });
   } catch (err: any) {
     console.error("Error evaluating GST compliance and insights:", err);
-    return NextResponse.json({ error: err?.message || "Failed to generate compliance data." }, { status: 500 });
+    const isAuthError = err?.message?.includes("Access Denied");
+    return NextResponse.json({ error: err?.message || "Failed to generate compliance data." }, { status: isAuthError ? 403 : 500 });
   }
 }
